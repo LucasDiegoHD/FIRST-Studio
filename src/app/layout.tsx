@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "FIRST Studio — Ciprix FRC Generator",
   description:
-    "Visual FRC robot architecture studio generating compile-ready Ciprix & WPILib projects.",
+    "Minimalist FRC architecture studio generating compile-ready Ciprix & WPILib projects.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="font-sans antialiased selection:bg-sky-500/30 selection:text-sky-100">
+      <body className="bg-black text-[#f3f5f8] font-sans antialiased selection:bg-[#142c4f] selection:text-white">
         {children}
       </body>
     </html>

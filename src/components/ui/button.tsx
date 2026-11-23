@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 
-type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive";
+type ButtonVariant = "primary" | "outline" | "ghost" | "destructive";
 type ButtonSize = "sm" | "md" | "icon";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -11,19 +11,19 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-sky-500 text-slate-950 hover:bg-sky-400 font-semibold shadow-sm shadow-sky-500/20",
-  secondary: "bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700",
+    "bg-[#142c4f] text-slate-50 border border-[#264f8a] hover:bg-[#1c3c6b] font-medium",
   outline:
-    "bg-transparent text-slate-200 border border-slate-700/80 hover:bg-slate-800/70 hover:border-slate-600",
-  ghost: "bg-transparent text-slate-300 hover:bg-slate-800/70 hover:text-white",
+    "bg-[#070a10] text-slate-200 border border-[#1d2432] hover:border-[#2c384e] hover:bg-[#0c111b]",
+  ghost:
+    "bg-transparent text-[#8a94a6] border border-transparent hover:text-slate-100 hover:bg-[#0c111b]",
   destructive:
-    "bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500/25",
+    "bg-transparent text-rose-400 border border-rose-900/60 hover:bg-rose-950/50 hover:border-rose-700/70",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-xs rounded-md",
-  md: "h-9 px-4 text-sm rounded-md",
-  icon: "h-9 w-9 rounded-md",
+  sm: "h-7 px-2.5 text-xs rounded",
+  md: "h-8 px-3 text-xs rounded",
+  icon: "h-7 w-7 rounded",
 };
 
 export function Button({
@@ -37,7 +37,7 @@ export function Button({
     <button
       type={type}
       className={cn(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:pointer-events-none disabled:opacity-45 cursor-pointer",
+        "inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#264f8a] disabled:pointer-events-none disabled:opacity-40 cursor-pointer",
         variantClasses[variant],
         sizeClasses[size],
         className,

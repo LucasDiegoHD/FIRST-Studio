@@ -2,9 +2,7 @@
 
 import React from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
 import type { XboxButton } from "@/lib/schema/ciprix-project";
@@ -14,14 +12,14 @@ const XBOX_BUTTONS: { value: XboxButton; label: string }[] = [
   { value: "b", label: "B" },
   { value: "x", label: "X" },
   { value: "y", label: "Y" },
-  { value: "leftBumper", label: "Left Bumper (LB)" },
-  { value: "rightBumper", label: "Right Bumper (RB)" },
-  { value: "leftTrigger", label: "Left Trigger (LT)" },
-  { value: "rightTrigger", label: "Right Trigger (RT)" },
-  { value: "povUp", label: "D-Pad Up" },
-  { value: "povDown", label: "D-Pad Down" },
-  { value: "povLeft", label: "D-Pad Left" },
-  { value: "povRight", label: "D-Pad Right" },
+  { value: "leftBumper", label: "LB" },
+  { value: "rightBumper", label: "RB" },
+  { value: "leftTrigger", label: "LT" },
+  { value: "rightTrigger", label: "RT" },
+  { value: "povUp", label: "D-Up" },
+  { value: "povDown", label: "D-Down" },
+  { value: "povLeft", label: "D-Left" },
+  { value: "povRight", label: "D-Right" },
   { value: "start", label: "Start" },
   { value: "back", label: "Back" },
 ];
@@ -40,62 +38,43 @@ export function ControlsTab() {
     });
   };
 
-  const addPilotRule = () => {
-    const firstReq = project.superstructure.requests[0] ?? "IDLE";
-    updateProject((prev) => ({
-      ...prev,
-      controls: {
-        ...prev.controls,
-        pilotPriority: [
-          ...prev.controls.pilotPriority,
-          { id: `pilot-${Date.now()}`, button: "x", request: firstReq },
-        ],
-      },
-    }));
-  };
-
-  const addCopilotOverride = () => {
-    const firstSub = project.subsystems[0];
-    if (!firstSub) return;
-    updateProject((prev) => ({
-      ...prev,
-      controls: {
-        ...prev.controls,
-        copilotOverrides: [
-          ...prev.controls.copilotOverrides,
-          {
-            id: `copilot-${Date.now()}`,
-            button: "x",
-            subsystemId: firstSub.id,
-            request: firstSub.fsm.requests[0] ?? "STOP",
-          },
-        ],
-      },
-    }));
-  };
-
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card>
-        <CardHeader className="flex-row items-start justify-between space-y-0">
+    <div className="grid h-full grid-cols-1 divide-y divide-[#171c26] bg-black lg:grid-cols-2 lg:divide-y-0 lg:divide-x">
+      {/* Pilot */}
+      <div className="flex flex-col overflow-y-auto p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle>{t("controls.pilot_title")}</CardTitle>
-            <CardDescription>{t("controls.pilot_desc")}</CardDescription>
+            <h2 className="text-sm font-semibold text-slate-100">{t("controls.pilot_title")}</h2>
+            <p className="text-xs text-[#7c8ba1]">{t("controls.pilot_desc")}</p>
           </div>
-          <Button size="sm" onClick={addPilotRule}>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => {
+              const firstReq = project.superstructure.requests[0] ?? "IDLE";
+              updateProject((prev) => ({
+                ...prev,
+                controls: {
+                  ...prev.controls,
+                  pilotPriority: [
+                    ...prev.controls.pilotPriority,
+                    { id: `pilot-${Date.now()}`, button: "x", request: firstReq },
+                  ],
+                },
+              }));
+            }}
+          >
             <Plus className="h-3.5 w-3.5" />
             {t("controls.add_pilot")}
           </Button>
-        </CardHeader>
-        <CardContent className="space-y-2.5">
+        </div>
+
+        <div className="divide-y divide-[#171c26] rounded border border-[#171c26] bg-[#05070b]">
           {project.controls.pilotPriority.map((rule, idx) => (
-            <div
-              key={rule.id}
-              className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2.5"
-            >
-              <Badge variant="info">#{idx + 1}</Badge>
+            <div key={rule.id} className="flex items-center gap-2 px-3 py-2">
+              <span className="w-6 font-mono text-[11px] text-[#6b7689]">#{idx + 1}</span>
               <Select
-                className="flex-1 text-xs h-8"
+                className="flex-1 h-7"
                 value={rule.button}
                 onChange={(e) =>
                   updateProject((prev) => ({
@@ -118,7 +97,7 @@ export function ControlsTab() {
                 ))}
               </Select>
               <Select
-                className="flex-1 font-mono text-xs h-8"
+                className="flex-1 font-mono h-7"
                 value={rule.request}
                 onChange={(e) =>
                   updateProject((prev) => ({
@@ -166,30 +145,52 @@ export function ControlsTab() {
               </Button>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader className="flex-row items-start justify-between space-y-0">
+      {/* Copilot */}
+      <div className="flex flex-col overflow-y-auto p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle>{t("controls.copilot_title")}</CardTitle>
-            <CardDescription>{t("controls.copilot_desc")}</CardDescription>
+            <h2 className="text-sm font-semibold text-slate-100">{t("controls.copilot_title")}</h2>
+            <p className="text-xs text-[#7c8ba1]">{t("controls.copilot_desc")}</p>
           </div>
-          <Button size="sm" onClick={addCopilotOverride} disabled={project.subsystems.length === 0}>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={project.subsystems.length === 0}
+            onClick={() => {
+              const firstSub = project.subsystems[0];
+              if (!firstSub) return;
+              updateProject((prev) => ({
+                ...prev,
+                controls: {
+                  ...prev.controls,
+                  copilotOverrides: [
+                    ...prev.controls.copilotOverrides,
+                    {
+                      id: `copilot-${Date.now()}`,
+                      button: "x",
+                      subsystemId: firstSub.id,
+                      request: firstSub.fsm.requests[0] ?? "STOP",
+                    },
+                  ],
+                },
+              }));
+            }}
+          >
             <Plus className="h-3.5 w-3.5" />
             {t("controls.add_copilot")}
           </Button>
-        </CardHeader>
-        <CardContent className="space-y-2.5">
+        </div>
+
+        <div className="divide-y divide-[#171c26] rounded border border-[#171c26] bg-[#05070b]">
           {project.controls.copilotOverrides.map((ov) => {
             const sub = project.subsystems.find((s) => s.id === ov.subsystemId);
             return (
-              <div
-                key={ov.id}
-                className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2.5"
-              >
+              <div key={ov.id} className="flex items-center gap-2 px-3 py-2">
                 <Select
-                  className="w-36 text-xs h-8"
+                  className="w-28 h-7"
                   value={ov.button}
                   onChange={(e) =>
                     updateProject((prev) => ({
@@ -212,7 +213,7 @@ export function ControlsTab() {
                   ))}
                 </Select>
                 <Select
-                  className="flex-1 text-xs h-8"
+                  className="flex-1 h-7"
                   value={ov.subsystemId}
                   onChange={(e) => {
                     const nextSub = project.subsystems.find((s) => s.id === e.target.value);
@@ -240,7 +241,7 @@ export function ControlsTab() {
                   ))}
                 </Select>
                 <Select
-                  className="flex-1 font-mono text-xs h-8"
+                  className="flex-1 font-mono h-7"
                   value={ov.request}
                   onChange={(e) =>
                     updateProject((prev) => ({
@@ -280,8 +281,8 @@ export function ControlsTab() {
               </div>
             );
           })}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

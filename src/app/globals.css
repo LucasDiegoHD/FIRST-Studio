@@ -7,44 +7,45 @@
 
 :root {
   color-scheme: dark;
-  --bg-canvas: #090d16;
-  --bg-surface: #0f1523;
-  --bg-elevated: #151d2f;
-  --border-subtle: rgba(148, 163, 184, 0.16);
-  --border-strong: rgba(148, 163, 184, 0.3);
+  --bg-void: #000000;
+  --bg-panel: #05070b;
+  --bg-surface: #080c14;
+  --bg-elevated: #0c121e;
+  --accent: #142c4f;
+  --accent-hover: #1c3c6b;
+  --accent-border: #264f8a;
+  --accent-tint: rgba(20, 44, 79, 0.3);
+  --border-hairline: #171c26;
 }
 
 html,
 body {
-  background-color: var(--bg-canvas);
-  color: #e2e8f0;
+  background-color: var(--bg-void);
+  color: #f3f5f8;
   min-height: 100%;
   overflow-x: clip;
 }
 
-.bg-engineering-grid {
-  background-color: #0b101b;
-  background-image:
-    radial-gradient(ellipse 75% 65% at 50% -10%, rgba(56, 189, 248, 0.14), transparent 70%),
-    linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-  background-size: 100% 100%, 24px 24px, 24px 24px;
+.bg-dot-matrix {
+  background-color: #000000;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 22px 22px;
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.5);
+  background: #000000;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.45);
+  background: #1b2230;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.65);
+  background: #2b384e;
 }

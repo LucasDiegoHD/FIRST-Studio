@@ -24,6 +24,8 @@ interface ProjectContextValue {
   setActiveTab: (tab: StudioTab) => void;
   selectedSubsystemId: string | null;
   setSelectedSubsystemId: (id: string | null) => void;
+  selectedFilePath: string | null;
+  setSelectedFilePath: (path: string | null) => void;
   issues: ValidationIssue[];
   generatedFiles: GeneratedFile[];
   updateProject: (updater: (prev: CiprixProject) => CiprixProject) => void;
@@ -52,6 +54,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [selectedSubsystemId, setSelectedSubsystemId] = useState<string | null>(
     initialPreset.subsystems[0]?.id ?? null,
   );
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -192,6 +195,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setActiveTab,
     selectedSubsystemId,
     setSelectedSubsystemId,
+    selectedFilePath,
+    setSelectedFilePath,
     issues,
     generatedFiles,
     updateProject,
