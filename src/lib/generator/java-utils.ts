@@ -1,0 +1,81 @@
+import type { XboxButton } from "../schema/ciprix-project";
+
+const JAVA_KEYWORDS = new Set([
+  "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class",
+  "const", "continue", "default", "do", "double", "else", "enum", "extends", "final",
+  "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int",
+  "interface", "long", "native", "new", "package", "private", "protected", "public",
+  "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this",
+  "throw", "throws", "transient", "try", "void", "volatile", "while", "true", "false", "null",
+]);
+
+export function isValidJavaIdentifier(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) && !JAVA_KEYWORDS.has(value);
+}
+
+export function isValidPackageName(value: string): boolean {
+  const parts = value.split(".");
+  return parts.length > 0 && parts.every((part) => /^[a-z_][a-z0-9_]*$/.test(part) && !JAVA_KEYWORDS.has(part));
+}
+
+export function toPascalCase(input: string): string {
+  const cleaned = input
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (cleaned.length === 0) return "Subsystem";
+  const result = cleaned
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join("");
+  return /^[0-9]/.test(result) ? `S${result}` : result;
+}
+
+export function toCamelCase(input: string): string {
+  const words = input
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return "value";
+  const [first, ...rest] = words;
+  return (
+    first.toLowerCase() +
+    rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join("")
+  );
+}
+
+export function toUpperSnake(input: string): string {
+  const normalized = input
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+  if (!normalized) return "VALUE";
+  return /^[0-9]/.test(normalized) ? `_${normalized}` : normalized;
+}
+
+export function toPackageSegment(input: string): string {
+  const cleaned = input.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+  if (!cleaned) return "subsystem";
+  return /^[0-9]/.test(cleaned) ? `s${cleaned}` : cleaned;
+}
+
+export function formatDouble(value: number): string {
+  if (!Number.isFinite(value)) return "0.0";
+  const text = String(value);
+  return text.includes(".") ? text : `${text}.0`;
+}
+
+export function xboxButtonToJavaMethod(button: XboxButton): string {
+  return `${button}()`;
+}
+
+/**
+ * Mirrors Ciprix CommandFactoryProcessor's enum-to-method-name convention
+ * (e.g. INTAKE -> intake, SCORE_HIGH -> scoreHigh).
+ */
+export function requestToCommandMethod(requestName: string): string {
+  return toCamelCase(requestName);
+}
