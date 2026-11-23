@@ -95,14 +95,14 @@ export function ControlsTab() {
   return (
     <div className="flex h-full flex-col bg-black">
       {/* Top Port Switcher */}
-      <div className="flex items-center justify-between border-b border-[#171c26] bg-[#05070b] px-4 py-2 shrink-0">
+      <div className="flex items-center justify-between border-b border-[#172030] bg-[#05070b] px-4 py-2 shrink-0">
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setPort("pilot")}
-            className={`rounded px-3 py-1 text-xs cursor-pointer ${
+            className={`rounded-md px-3 py-1 text-xs font-medium cursor-pointer transition-all ${
               port === "pilot"
-                ? "bg-[#142c4f] border border-[#264f8a] text-white"
+                ? "bg-[#142c4f] border border-[#3b6bb5] text-white"
                 : "border border-[#1a2232] bg-black text-[#8a94a6]"
             }`}
           >
@@ -111,9 +111,9 @@ export function ControlsTab() {
           <button
             type="button"
             onClick={() => setPort("copilot")}
-            className={`rounded px-3 py-1 text-xs cursor-pointer ${
+            className={`rounded-md px-3 py-1 text-xs font-medium cursor-pointer transition-all ${
               port === "copilot"
-                ? "bg-[#142c4f] border border-[#264f8a] text-white"
+                ? "bg-[#142c4f] border border-[#3b6bb5] text-white"
                 : "border border-[#1a2232] bg-black text-[#8a94a6]"
             }`}
           >
@@ -126,7 +126,7 @@ export function ControlsTab() {
       </div>
 
       {/* Main Split */}
-      <div className="grid flex-1 min-h-0 grid-cols-1 divide-y divide-[#171c26] lg:grid-cols-12 lg:divide-y-0 lg:divide-x">
+      <div className="grid flex-1 min-h-0 grid-cols-1 divide-y divide-[#172030] lg:grid-cols-12 lg:divide-y-0 lg:divide-x">
         {/* Interactive Xbox SVG */}
         <div className="bg-dot-matrix lg:col-span-6 flex flex-col items-center justify-center p-6 gap-5">
           <XboxControllerSvg
@@ -135,13 +135,13 @@ export function ControlsTab() {
             onSelectButton={setSelectedButton}
           />
 
-          <div className="flex items-center justify-between gap-4 rounded border border-[#171c26] bg-[#05070b] px-4 py-2.5 w-full max-w-[420px]">
+          <div className="flex items-center justify-between gap-4 rounded-md border border-[#264f8a]/80 bg-[#050811] px-4 py-2.5 w-full max-w-[460px]">
             <div className="font-mono text-xs">
-              <span className="text-[#60a5fa]">
+              <span className="text-[#93c5fd] font-semibold">
                 {XBOX_BUTTONS.find((b) => b.value === selectedButton)?.label ?? selectedButton}
               </span>
               <span className="mx-2 text-[#475266]">→</span>
-              <span className="text-slate-200">{selectedLabel ?? "livre"}</span>
+              <span className="text-slate-100">{selectedLabel ?? "livre"}</span>
             </div>
             <Button
               size="sm"
@@ -158,16 +158,18 @@ export function ControlsTab() {
         {/* Binding List */}
         <div className="lg:col-span-6 overflow-y-auto bg-[#05070b] p-6 space-y-3">
           {port === "pilot" ? (
-            <div className="divide-y divide-[#171c26] rounded border border-[#171c26] bg-black">
+            <div className="divide-y divide-[#172030] rounded-md border border-[#172030] bg-black">
               {project.controls.pilotPriority.map((rule, idx) => (
                 <div
                   key={rule.id}
                   onClick={() => setSelectedButton(rule.button)}
                   className={`flex items-center gap-2 px-3 py-2.5 transition-colors cursor-pointer ${
-                    selectedButton === rule.button ? "bg-[#0a1526]" : "hover:bg-[#070b14]"
+                    selectedButton === rule.button
+                      ? "bg-[#142c4f]/45 border-l-2 border-l-[#3b82f6]"
+                      : "hover:bg-[#070b14]"
                   }`}
                 >
-                  <span className="w-6 font-mono text-[11px] text-[#6b7689]">#{idx + 1}</span>
+                  <span className="w-6 font-mono text-[11px] text-[#7cb3ff]">#{idx + 1}</span>
                   <Select
                     className="flex-1 h-7"
                     value={rule.button}
@@ -254,7 +256,7 @@ export function ControlsTab() {
               ))}
             </div>
           ) : (
-            <div className="divide-y divide-[#171c26] rounded border border-[#171c26] bg-black">
+            <div className="divide-y divide-[#172030] rounded-md border border-[#172030] bg-black">
               {project.controls.copilotOverrides.map((ov) => {
                 const sub = project.subsystems.find((s) => s.id === ov.subsystemId);
                 return (
@@ -262,7 +264,9 @@ export function ControlsTab() {
                     key={ov.id}
                     onClick={() => setSelectedButton(ov.button)}
                     className={`flex items-center gap-2 px-3 py-2.5 transition-colors cursor-pointer ${
-                      selectedButton === ov.button ? "bg-[#0a1526]" : "hover:bg-[#070b14]"
+                      selectedButton === ov.button
+                        ? "bg-[#142c4f]/45 border-l-2 border-l-[#3b82f6]"
+                        : "hover:bg-[#070b14]"
                     }`}
                   >
                     <Select

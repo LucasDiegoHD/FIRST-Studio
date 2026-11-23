@@ -44,7 +44,7 @@ type AnyStateNodeData = {
 
 function AnyStateFlowNode({ data }: NodeProps<Node<AnyStateNodeData>>) {
   return (
-    <div className="rounded-md border border-[#1d2c46] bg-[#080f1d] px-3.5 py-2 font-mono text-[11px] text-[#93c5fd]">
+    <div className="rounded-md border border-[#264f8a] bg-[#081222] px-3.5 py-2 font-mono text-[11px] font-semibold text-[#93c5fd] shadow-[0_0_20px_-8px_rgba(37,99,235,0.6)]">
       {data.label}
       <Handle type="source" position={Position.Right} />
     </div>
@@ -55,22 +55,24 @@ function FsmStateFlowNode({ data }: NodeProps<Node<FsmStateNodeData>>) {
   return (
     <div
       onClick={() => data.onSelect(data.label)}
-      className={`w-[200px] rounded-md border p-3 text-left transition-colors cursor-pointer ${
+      className={`w-[215px] rounded-md border p-3 text-left transition-all cursor-pointer ${
         data.isActive
-          ? "border-[#3b82f6] bg-[#142c4f]/70"
+          ? "border-[#3b82f6] bg-[#142c4f]/80 shadow-[0_0_24px_-6px_rgba(59,130,246,0.7)]"
           : data.isSelected
-            ? "border-[#264f8a] bg-[#0a1526]"
-            : "border-[#1a2232] bg-[#070a11] hover:border-[#2c3b57]"
+            ? "border-[#264f8a] bg-[#0b182d]"
+            : "border-[#1b2434] bg-[#060910] hover:border-[#2e4266]"
       }`}
     >
       <Handle type="target" position={Position.Left} />
       <div className="flex items-center justify-between">
         <span className="font-mono text-xs font-semibold text-white">{data.label}</span>
         {data.isInitial && (
-          <span className="font-mono text-[9px] uppercase text-[#60a5fa]">init</span>
+          <span className="rounded bg-[#142c4f] px-1.5 py-0.5 font-mono text-[9px] uppercase text-[#93c5fd]">
+            init
+          </span>
         )}
       </div>
-      <p className="mt-1 truncate font-mono text-[10px] text-[#8a94a6]">{data.actionLabel}</p>
+      <p className="mt-1.5 truncate font-mono text-[10px] text-[#8a94a6]">{data.actionLabel}</p>
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -133,7 +135,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
 
     activeSub.fsm.states.forEach((st, idx) => {
       const id = `state-${st.name}`;
-      const pos = posRef.current[id] ?? { x: 280, y: 40 + idx * 105 };
+      const pos = posRef.current[id] ?? { x: 290, y: 40 + idx * 105 };
       const actionLabel =
         st.onEnter.type === "stop"
           ? "onEnter: stop()"
@@ -184,7 +186,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
         labelBgStyle: { fill: isFired ? "#142c4f" : "#05070b", fillOpacity: 0.95 },
         style: {
           stroke: isFired ? "#3b82f6" : "#1e3150",
-          strokeWidth: isFired ? 2 : 1.25,
+          strokeWidth: isFired ? 2.2 : 1.3,
         },
       };
     });
@@ -198,7 +200,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
   return (
     <div className="flex h-full flex-col bg-black">
       {/* Selector Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#171c26] bg-[#05070b] px-4 py-2 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#172030] bg-[#05070b] px-4 py-2 shrink-0">
         <div className="flex flex-wrap items-center gap-1.5">
           {project.subsystems.map((sub) => (
             <button
@@ -208,9 +210,9 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                 setSelectedSubsystemId(sub.id);
                 setTarget("subsystem");
               }}
-              className={`rounded px-2.5 py-1 text-xs transition-colors cursor-pointer ${
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
                 target === "subsystem" && activeSub?.id === sub.id
-                  ? "bg-[#142c4f] border border-[#264f8a] text-white"
+                  ? "bg-[#142c4f] border border-[#3b6bb5] text-white"
                   : "border border-[#1a2232] bg-black text-[#8a94a6] hover:text-white"
               }`}
             >
@@ -220,9 +222,9 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
           <button
             type="button"
             onClick={() => setTarget("superstructure")}
-            className={`rounded px-2.5 py-1 text-xs transition-colors cursor-pointer ${
+            className={`rounded-md px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
               target === "superstructure"
-                ? "bg-[#142c4f] border border-[#264f8a] text-white"
+                ? "bg-[#142c4f] border border-[#3b6bb5] text-white"
                 : "border border-[#1a2232] bg-black text-[#8a94a6] hover:text-white"
             }`}
           >
@@ -234,7 +236,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
           <button
             type="button"
             onClick={() => setShowMermaid((v) => !v)}
-            className="font-mono text-[11px] text-[#7c8ba1] hover:text-white cursor-pointer"
+            className="font-mono text-[11px] text-[#7cb3ff] hover:text-white cursor-pointer"
           >
             {showMermaid ? t("fsm.diagram_preview") : "toMermaid()"}
           </button>
@@ -247,7 +249,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
             <SuperStructureTab />
           </div>
           {superJavaFile && (
-            <aside className="hidden lg:flex w-[390px] shrink-0 border-l border-[#171c26]">
+            <aside className="hidden lg:flex w-[390px] shrink-0 border-l border-[#172030]">
               <CodeViewer
                 filePath={superJavaFile.path}
                 content={superJavaFile.content}
@@ -266,7 +268,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
           <div className="relative flex-1 min-w-0 h-full">
             {showMermaid ? (
               <div className="h-full overflow-auto p-6">
-                <pre className="rounded border border-[#171c26] bg-[#030508] p-4 font-mono text-xs text-slate-200">
+                <pre className="rounded border border-[#172030] bg-[#030508] p-4 font-mono text-xs text-slate-200">
                   {generateSubsystemMermaid(activeSub)}
                 </pre>
               </div>
@@ -288,18 +290,18 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                 />
                 <Controls showInteractive={false} />
                 <Panel position="top-left">
-                  <div className="flex flex-wrap items-center gap-1.5 rounded border border-[#171c26] bg-[#05070b]/95 px-2.5 py-1.5">
-                    <span className="font-mono text-[10px] uppercase text-[#6b7689] mr-1">
-                      Disparar Request:
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-[#264f8a]/70 bg-[#050811]/95 px-2.5 py-1.5 shadow-lg">
+                    <span className="font-mono text-[10px] uppercase text-[#7cb3ff] mr-1">
+                      Disparar:
                     </span>
                     {activeSub.fsm.requests.map((req) => (
                       <button
                         key={req}
                         type="button"
                         onClick={() => setSimRequest(req)}
-                        className={`rounded px-2 py-0.5 font-mono text-[11px] cursor-pointer ${
+                        className={`rounded px-2 py-0.5 font-mono text-[11px] transition-all cursor-pointer ${
                           activeRequest === req
-                            ? "bg-[#142c4f] border border-[#264f8a] text-white"
+                            ? "bg-[#142c4f] border border-[#3b82f6] text-white"
                             : "border border-[#1a2232] bg-black text-[#8a94a6] hover:text-white"
                         }`}
                       >
@@ -313,7 +315,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
           </div>
 
           {/* Right State & Bindings Editor */}
-          <aside className="flex h-full w-[380px] shrink-0 flex-col overflow-y-auto border-l border-[#171c26] bg-[#05070b] divide-y divide-[#171c26] text-xs">
+          <aside className="flex h-full w-[380px] shrink-0 flex-col overflow-y-auto border-l border-[#172030] bg-[#05070b] divide-y divide-[#172030] text-xs">
             <div className="grid grid-cols-2 gap-2.5 p-4">
               <div className="space-y-1">
                 <label className="text-[11px] text-[#8a94a6]">{t("fsm.initial_state")}</label>
@@ -384,10 +386,10 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                 <div
                   key={`${st.name}-${idx}`}
                   onClick={() => setSelectedStateName(st.name)}
-                  className={`space-y-2 rounded border p-2.5 transition-colors ${
+                  className={`space-y-2 rounded-md border p-2.5 transition-colors ${
                     activeStateObj?.name === st.name
-                      ? "border-[#264f8a] bg-[#0a1526]"
-                      : "border-[#171c26] bg-[#070a10]"
+                      ? "border-[#3b6bb5] bg-[#0a1526]"
+                      : "border-[#172030] bg-[#070a10]"
                   }`}
                 >
                   <div className="flex items-center gap-1.5">
@@ -462,54 +464,84 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                   </div>
 
                   {st.onEnter.type === "percentOutput" && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        value={st.onEnter.constantName}
-                        className="font-mono h-7"
-                        onChange={(e) => {
-                          const nextConst = toUpperSnake(e.target.value);
-                          updateSubsystem(activeSub.id, (prev) => ({
-                            ...prev,
-                            fsm: {
-                              ...prev.fsm,
-                              states: prev.fsm.states.map((item, i) =>
-                                i === idx && item.onEnter.type === "percentOutput"
-                                  ? {
-                                      ...item,
-                                      onEnter: { ...item.onEnter, constantName: nextConst },
-                                    }
-                                  : item,
-                              ),
-                            },
-                          }));
-                        }}
-                      />
-                      <UnitInput
-                        unit="pct"
-                        type="number"
-                        step={0.05}
-                        min={-1}
-                        max={1}
-                        className="h-7"
-                        value={st.onEnter.value}
-                        onChange={(e) => {
-                          const val = Math.min(
-                            1,
-                            Math.max(-1, Number.parseFloat(e.target.value || "0") || 0),
-                          );
-                          updateSubsystem(activeSub.id, (prev) => ({
-                            ...prev,
-                            fsm: {
-                              ...prev.fsm,
-                              states: prev.fsm.states.map((item, i) =>
-                                i === idx && item.onEnter.type === "percentOutput"
-                                  ? { ...item, onEnter: { ...item.onEnter, value: val } }
-                                  : item,
-                              ),
-                            },
-                          }));
-                        }}
-                      />
+                    <div className="space-y-2 pt-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          value={st.onEnter.constantName}
+                          className="font-mono h-7"
+                          onChange={(e) => {
+                            const nextConst = toUpperSnake(e.target.value);
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                states: prev.fsm.states.map((item, i) =>
+                                  i === idx && item.onEnter.type === "percentOutput"
+                                    ? {
+                                        ...item,
+                                        onEnter: { ...item.onEnter, constantName: nextConst },
+                                      }
+                                    : item,
+                                ),
+                              },
+                            }));
+                          }}
+                        />
+                        <UnitInput
+                          unit="pct"
+                          type="number"
+                          step={0.05}
+                          min={-1}
+                          max={1}
+                          className="h-7"
+                          value={st.onEnter.value}
+                          onChange={(e) => {
+                            const val = Math.min(
+                              1,
+                              Math.max(-1, Number.parseFloat(e.target.value || "0") || 0),
+                            );
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                states: prev.fsm.states.map((item, i) =>
+                                  i === idx && item.onEnter.type === "percentOutput"
+                                    ? { ...item, onEnter: { ...item.onEnter, value: val } }
+                                    : item,
+                                ),
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-14 font-mono text-[10px] text-[#7cb3ff]">
+                          {st.onEnter.value >= 0 ? "FWD" : "REV"}{" "}
+                          {Math.round(st.onEnter.value * 100)}%
+                        </span>
+                        <input
+                          type="range"
+                          min={-1}
+                          max={1}
+                          step={0.05}
+                          value={st.onEnter.value}
+                          onChange={(e) => {
+                            const val = Number.parseFloat(e.target.value);
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                states: prev.fsm.states.map((item, i) =>
+                                  i === idx && item.onEnter.type === "percentOutput"
+                                    ? { ...item, onEnter: { ...item.onEnter, value: val } }
+                                    : item,
+                                ),
+                              },
+                            }));
+                          }}
+                          className="flex-1"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>

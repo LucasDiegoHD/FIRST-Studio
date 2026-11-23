@@ -4,12 +4,17 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
+import * as Tooltip from "@radix-ui/react-tooltip";
 import {
   ArrowLeft,
   ArrowRight,
+  Cpu,
   Download,
   FolderOpen,
+  Gamepad2,
+  GitBranch,
   MoreHorizontal,
+  Package,
   Pencil,
   Redo2,
   RotateCcw,
@@ -78,6 +83,30 @@ export function StudioShell() {
         setPaletteOpen((v) => !v);
         return;
       }
+
+      if (e.altKey) {
+        if (e.key === "1") {
+          e.preventDefault();
+          setActiveTab("subsystems");
+          return;
+        }
+        if (e.key === "2") {
+          e.preventDefault();
+          setActiveTab("fsm");
+          return;
+        }
+        if (e.key === "3") {
+          e.preventDefault();
+          setActiveTab("controls");
+          return;
+        }
+        if (e.key === "4") {
+          e.preventDefault();
+          setActiveTab("code");
+          return;
+        }
+      }
+
       const target = e.target as HTMLElement | null;
       const isInput =
         target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
@@ -93,10 +122,14 @@ export function StudioShell() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, setActiveTab]);
 
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const currentStep = tabToStep(activeTab);
+
+  const totalFsmStates = project.subsystems.reduce((sum, s) => sum + s.fsm.states.length, 0);
+  const totalBindings =
+    project.controls.pilotPriority.length + project.controls.copilotOverrides.length;
 
   const handleSaveJson = () => {
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
@@ -143,80 +176,168 @@ export function StudioShell() {
     }
   };
 
-  const steps: { id: GuidedStep; tab: StudioTab; label: string }[] = [
-    { id: "robot", tab: "subsystems", label: t("step.robot") },
-    { id: "states", tab: "fsm", label: t("step.states") },
-    { id: "controls", tab: "controls", label: t("step.controls") },
-    { id: "export", tab: "code", label: t("step.export") },
+  const steps: {
+    id: GuidedStep;
+    tab: StudioTab;
+    label: string;
+    icon: React.ReactNode;
+    badge: string;
+    shortcut: string;
+  }[] = [
+    {
+      id: "robot",
+      tab: "subsystems",
+      label: t("step.robot"),
+      icon: <Cpu className="h-3.5 w-3.5" />,
+      badge: String(project.subsystems.length),
+      shortcut: "Alt+1",
+    },
+    {
+      id: "states",
+      tab: "fsm",
+      label: t("step.states"),
+      icon: <GitBranch className="h-3.5 w-3.5" />,
+      badge: String(totalFsmStates),
+      shortcut: "Alt+2",
+    },
+    {
+      id: "controls",
+      tab: "controls",
+      label: t("step.controls"),
+      icon: <Gamepad2 className="h-3.5 w-3.5" />,
+      badge: String(totalBindings),
+      shortcut: "Alt+3",
+    },
+    {
+      id: "export",
+      tab: "code",
+      label: t("step.export"),
+      icon: <Package className="h-3.5 w-3.5" />,
+      badge: errorCount === 0 ? "OK" : `${errorCount}!`,
+      shortcut: "Alt+4",
+    },
   ];
 
   const stepIndex = steps.findIndex((s) => s.id === currentStep);
   const nextStep = steps[stepIndex + 1];
+  const progressPct = ((stepIndex + 1) / steps.length) * 100;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-black text-[#f3f5f8]">
-      {/* Guided Studio Header (48px) */}
-      <header className="flex h-[48px] shrink-0 items-center justify-between border-b border-[#171c26] bg-[#05070b] px-3 gap-2">
+      {/* Guided Studio Header (54px) */}
+      <header className="flex h-[54px] shrink-0 items-center justify-between border-b border-[#172030] bg-[#05070b]/95 backdrop-blur-md px-3 gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Link
             href="/"
-            className="inline-flex h-7 items-center gap-1 rounded px-2 text-xs text-[#8a94a6] hover:bg-[#0c121e] hover:text-white"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-[#9aa5b6] hover:bg-[#0c1424] hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t("header.home")}</span>
           </Link>
 
-          <span className="h-4 w-px bg-[#171c26]" />
+          <span className="h-4 w-px bg-[#172030]" />
 
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs text-slate-200 hover:bg-[#0c121e] cursor-pointer truncate"
+            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-slate-100 hover:border-[#1d2738] hover:bg-[#0c1424] cursor-pointer truncate"
           >
-            <span className="font-medium truncate">{project.project.name}</span>
-            <span className="font-mono text-[11px] text-[#6b7689]">
+            <span className="font-semibold truncate">{project.project.name}</span>
+            <span className="font-mono text-[11px] text-[#7cb3ff]">
               #{project.project.teamNumber}
             </span>
             <Pencil className="h-3 w-3 text-[#6b7689]" />
           </button>
         </div>
 
-        {/* 4-Step Linear Navigation */}
-        <nav className="flex items-center gap-1 rounded-md border border-[#171c26] bg-black p-0.5 overflow-x-auto">
-          {steps.map((st) => (
-            <button
-              key={st.id}
-              type="button"
-              onClick={() => setActiveTab(st.tab)}
-              className={cn(
-                "rounded px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors cursor-pointer",
-                currentStep === st.id
-                  ? "bg-[#142c4f] border border-[#264f8a] text-white"
-                  : "border border-transparent text-[#8a94a6] hover:text-slate-100",
-              )}
-            >
-              {st.label}
-            </button>
-          ))}
+        {/* 4-Step Live Stepper with Icons & Counters */}
+        <nav className="flex items-center gap-1 rounded-lg border border-[#1a2538] bg-black p-1 overflow-x-auto">
+          {steps.map((st) => {
+            const active = currentStep === st.id;
+            return (
+              <Tooltip.Root key={st.id}>
+                <Tooltip.Trigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(st.tab)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition-all cursor-pointer",
+                      active
+                        ? "bg-[#142c4f] border border-[#3b6bb5] text-white shadow-[0_0_18px_-5px_rgba(37,99,235,0.65)]"
+                        : "border border-transparent text-[#8a94a6] hover:bg-[#091120] hover:text-slate-100",
+                    )}
+                  >
+                    {st.icon}
+                    <span>{st.label}</span>
+                    <span
+                      className={cn(
+                        "rounded px-1.5 py-0.2 font-mono text-[10px]",
+                        active
+                          ? "bg-[#1e3f73] text-[#dbeafe]"
+                          : "bg-[#0a101d] text-[#6b7689]",
+                      )}
+                    >
+                      {st.badge}
+                    </span>
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    sideOffset={6}
+                    className="z-50 rounded border border-[#264f8a] bg-[#060910] px-2 py-1 font-mono text-[10px] text-slate-200 shadow-lg"
+                  >
+                    {st.shortcut}
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            );
+          })}
         </nav>
 
-        {/* Right Actions with Radix Popover & Dropdown */}
+        {/* Right Quick Utilities */}
         <div className="flex items-center gap-1.5">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => setPaletteOpen(true)}
-            title="Ctrl+K"
-          >
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <Button size="icon" variant="ghost" onClick={undo} disabled={!canUndo}>
+                <Undo2 className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                sideOffset={6}
+                className="z-50 rounded border border-[#264f8a] bg-[#060910] px-2 py-1 font-mono text-[10px] text-slate-200"
+              >
+                {t("header.undo")}
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+
+          <Tooltip.Root>
+            <Tooltip.Trigger asChild>
+              <Button size="icon" variant="ghost" onClick={redo} disabled={!canRedo}>
+                <Redo2 className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content
+                sideOffset={6}
+                className="z-50 rounded border border-[#264f8a] bg-[#060910] px-2 py-1 font-mono text-[10px] text-slate-200"
+              >
+                {t("header.redo")}
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+
+          <Button size="icon" variant="ghost" onClick={() => setPaletteOpen(true)} title="Ctrl+K">
             <Search className="h-3.5 w-3.5" />
           </Button>
 
           <Popover.Root>
             <Popover.Trigger asChild>
-              <Button size="sm" variant="ghost">
+              <Button size="sm" variant="outline">
                 <span
                   className={cn(
-                    "h-1.5 w-1.5 rounded-full",
+                    "h-2 w-2 rounded-full",
                     errorCount > 0
                       ? "bg-rose-400"
                       : issues.length > 0
@@ -306,23 +427,6 @@ export function StudioShell() {
                 </DropdownMenu.Item>
                 <DropdownMenu.Separator className="my-1 h-px bg-[#171c26]" />
                 <DropdownMenu.Item
-                  disabled={!canUndo}
-                  onSelect={undo}
-                  className="flex items-center gap-2 px-3 py-1.5 text-slate-200 outline-none hover:bg-[#0c121e] data-[disabled]:opacity-40 cursor-pointer"
-                >
-                  <Undo2 className="h-3.5 w-3.5 text-[#7c8ba1]" />
-                  {t("header.undo")}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  disabled={!canRedo}
-                  onSelect={redo}
-                  className="flex items-center gap-2 px-3 py-1.5 text-slate-200 outline-none hover:bg-[#0c121e] data-[disabled]:opacity-40 cursor-pointer"
-                >
-                  <Redo2 className="h-3.5 w-3.5 text-[#7c8ba1]" />
-                  {t("header.redo")}
-                </DropdownMenu.Item>
-                <DropdownMenu.Separator className="my-1 h-px bg-[#171c26]" />
-                <DropdownMenu.Item
                   onSelect={() => setLocale(locale === "pt" ? "en" : "pt")}
                   className="flex items-center justify-between px-3 py-1.5 text-slate-200 outline-none hover:bg-[#0c121e] cursor-pointer"
                 >
@@ -376,8 +480,12 @@ export function StudioShell() {
         )}
       </main>
 
-      {/* Bottom Status Bar */}
-      <footer className="flex h-[28px] shrink-0 items-center justify-between border-t border-[#171c26] bg-[#05070b] px-3 font-mono text-[10px] text-[#6b7689]">
+      {/* Bottom Progress & Status Bar */}
+      <footer className="relative flex h-[32px] shrink-0 items-center justify-between border-t border-[#172030] bg-[#05070b] px-3 font-mono text-[11px] text-[#7c8ba1]">
+        <div
+          className="absolute left-0 top-0 h-[2px] bg-[#2563eb] transition-all duration-300"
+          style={{ width: `${progressPct}%` }}
+        />
         <div className="flex items-center gap-3">
           <span>Ciprix 2026.3.0</span>
           <span>
@@ -389,16 +497,12 @@ export function StudioShell() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline">Ctrl+K Palette</span>
+          <span className="hidden sm:inline text-[#556072]">Ctrl+K · Alt+1..4</span>
           {nextStep && (
-            <button
-              type="button"
-              onClick={() => setActiveTab(nextStep.tab)}
-              className="inline-flex items-center gap-1 text-[#93c5fd] hover:text-white cursor-pointer"
-            >
+            <Button size="sm" variant="primary" className="h-6 px-2.5 text-[11px]" onClick={() => setActiveTab(nextStep.tab)}>
               {t("step.next")}: {nextStep.label}
               <ArrowRight className="h-3 w-3" />
-            </button>
+            </Button>
           )}
         </div>
       </footer>
@@ -417,9 +521,9 @@ export function StudioShell() {
       {toastMsg && (
         <div
           className={cn(
-            "fixed bottom-9 right-4 z-50 rounded border px-3 py-2 text-xs shadow-lg",
+            "fixed bottom-11 right-4 z-50 rounded-md border px-3.5 py-2 text-xs shadow-xl",
             toastMsg.tone === "ok"
-              ? "border-[#264f8a] bg-[#081222] text-slate-100"
+              ? "border-[#3b6bb5] bg-[#0c1b33] text-white"
               : "border-rose-700/70 bg-rose-950/90 text-rose-200",
           )}
         >

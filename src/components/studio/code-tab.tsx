@@ -44,7 +44,7 @@ function TreeBranch({
   const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <ul className={depth > 0 ? "ml-2.5 border-l border-[#171c26] pl-2" : ""}>
+    <ul className={depth > 0 ? "ml-2.5 border-l border-[#172030] pl-2" : ""}>
       {folderNames.map((folder) => (
         <li key={folder} className="mt-1">
           <div className="flex items-center gap-1.5 px-1.5 py-0.5 text-[11px] font-mono text-[#6b7689]">
@@ -66,7 +66,7 @@ function TreeBranch({
             onClick={() => onSelect(file.fullPath)}
             className={`w-full flex items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] font-mono transition-colors cursor-pointer ${
               activePath === file.fullPath
-                ? "bg-[#142c4f]/60 text-white"
+                ? "bg-[#142c4f]/70 text-white"
                 : "text-[#9aa5b6] hover:bg-[#0c121e]"
             }`}
           >
@@ -110,32 +110,44 @@ export function CodeTab({
 
   return (
     <div className="flex h-full flex-col bg-black">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#171c26] bg-[#05070b] px-4 py-2 shrink-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[11px] text-[#6b7689]">vendordeps:</span>
-          <span className="font-mono text-[11px] text-slate-300">
-            {vendordeps.map((d) => d.replace(".json", "")).join(" · ")}
-          </span>
+      {/* Top Metrics & Export Strip */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#172030] bg-[#05070b] px-4 py-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-5 font-mono text-[11px]">
+          <div>
+            <span className="text-[#6b7689]">Equipe: </span>
+            <strong className="text-slate-100">#{project.project.teamNumber}</strong>
+          </div>
+          <div>
+            <span className="text-[#6b7689]">Arquivos: </span>
+            <strong className="text-slate-100">{generatedFiles.length}</strong>
+          </div>
+          <div>
+            <span className="text-[#6b7689]">Vendordeps: </span>
+            <strong className="text-[#93c5fd]">
+              {vendordeps.map((d) => d.replace(".json", "")).join(" · ")}
+            </strong>
+          </div>
+          <div>
+            <span className="text-[#6b7689]">Validação: </span>
+            <strong className={errorCount === 0 ? "text-emerald-400" : "text-rose-400"}>
+              {errorCount === 0 ? "OK" : `${errorCount} erros`}
+            </strong>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className={`font-mono text-[11px] ${errorCount === 0 ? "text-emerald-400" : "text-rose-400"}`}>
-            {errorCount === 0 ? "0 errors" : `${errorCount} errors`}
-          </span>
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={onDownloadZip}
-            disabled={exporting || errorCount > 0}
-          >
-            <Download className="h-3.5 w-3.5" />
-            {exporting ? t("header.exporting") : t("code.download_zip")}
-          </Button>
-        </div>
+        <Button
+          size="md"
+          variant="primary"
+          onClick={onDownloadZip}
+          disabled={exporting || errorCount > 0}
+        >
+          <Download className="h-3.5 w-3.5" />
+          {exporting ? t("header.exporting") : t("code.download_zip")}
+        </Button>
       </div>
 
       <div className="flex flex-1 min-h-0">
-        <div className="w-[240px] shrink-0 overflow-y-auto border-r border-[#171c26] bg-[#04060a] p-2.5">
+        <div className="w-[245px] shrink-0 overflow-y-auto border-r border-[#172030] bg-[#04060a] p-2.5">
           <TreeBranch node={tree} activePath={activePath} onSelect={setSelectedFilePath} />
         </div>
         <CodeViewer filePath={activePath} content={activeContent} className="flex-1 min-w-0" />

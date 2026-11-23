@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-source-sans), "Source Sans Pro", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
 }
 
@@ -32,6 +32,21 @@ body {
   background-size: 22px 22px;
 }
 
+.bg-studio-glow {
+  background-color: #000000;
+  background-image: radial-gradient(
+    ellipse 65% 45% at 50% 0%,
+    rgba(20, 44, 79, 0.58),
+    transparent 72%
+  );
+}
+
+.glow-accent {
+  box-shadow:
+    0 0 24px -6px rgba(37, 99, 235, 0.55),
+    inset 0 1px 0 rgba(147, 197, 253, 0.16);
+}
+
 /* React Flow dark theme overrides (#000000 + #142c4f) */
 .react-flow {
   --xy-background-color: #000000;
@@ -49,8 +64,8 @@ body {
 }
 
 .react-flow__handle {
-  width: 7px !important;
-  height: 7px !important;
+  width: 8px !important;
+  height: 8px !important;
   background: #142c4f !important;
   border: 1px solid #3b82f6 !important;
 }
@@ -77,12 +92,57 @@ body {
   }
 }
 
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
 .animate-motor-cw {
-  animation: spin-cw 1.2s linear infinite;
+  animation: spin-cw 1.1s linear infinite;
 }
 
 .animate-motor-ccw {
-  animation: spin-ccw 1.2s linear infinite;
+  animation: spin-ccw 1.1s linear infinite;
+}
+
+.animate-flow-dash {
+  stroke-dasharray: 6 6;
+  animation: flow-dash 0.7s linear infinite;
+}
+
+/* Slim range sliders in #142c4f / #3b82f6 */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  background: #111827;
+  border-radius: 9999px;
+  border: 1px solid #1e293b;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #2563eb;
+  border: 2px solid #93c5fd;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.65);
+  cursor: pointer;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #2563eb;
+  border: 2px solid #93c5fd;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.65);
+  cursor: pointer;
 }
 
 ::-webkit-scrollbar {
