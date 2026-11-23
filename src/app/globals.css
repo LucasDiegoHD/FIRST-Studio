@@ -32,6 +32,59 @@ body {
   background-size: 22px 22px;
 }
 
+/* React Flow dark theme overrides (#000000 + #142c4f) */
+.react-flow {
+  --xy-background-color: #000000;
+  --xy-node-border-radius: 6px;
+  --xy-controls-button-background-color: #05070b;
+  --xy-controls-button-background-color-hover: #0c121e;
+  --xy-controls-button-color: #9aa5b6;
+  --xy-controls-button-border-color: #171c26;
+  --xy-attribution-background-color: rgba(5, 7, 11, 0.7);
+}
+
+.react-flow__controls {
+  border: 1px solid #171c26;
+  box-shadow: none !important;
+}
+
+.react-flow__handle {
+  width: 7px !important;
+  height: 7px !important;
+  background: #142c4f !important;
+  border: 1px solid #3b82f6 !important;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+@keyframes spin-cw {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-ccw {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-motor-cw {
+  animation: spin-cw 1.2s linear infinite;
+}
+
+.animate-motor-ccw {
+  animation: spin-ccw 1.2s linear infinite;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

@@ -5,7 +5,7 @@ import { useHistoryState } from "@/hooks/useHistoryState";
 import { generateProjectFiles } from "@/lib/generator";
 import type { GeneratedFile } from "@/lib/generator/subsystems/roller";
 import { translate, type Locale, type TranslationKey } from "@/lib/i18n";
-import { createNewSubsystem, createSkeletonPreset } from "@/lib/presets/skeleton";
+import { createBlankPreset, createNewSubsystem, createSkeletonPreset } from "@/lib/presets/skeleton";
 import {
   CiprixProjectSchema,
   type CiprixProject,
@@ -17,6 +17,7 @@ const STORAGE_KEY = "firstStudio_ciprixProject_v1";
 
 interface ProjectContextValue {
   project: CiprixProject;
+  hasSavedProject: boolean;
   locale: Locale;
   setLocale: (locale: Locale) => void;
   t: (key: TranslationKey) => string;
@@ -31,6 +32,7 @@ interface ProjectContextValue {
   updateProject: (updater: (prev: CiprixProject) => CiprixProject) => void;
   loadProject: (next: CiprixProject) => void;
   resetToSkeleton: () => void;
+  resetToBlank: () => void;
   addSubsystem: (type: "roller" | "generic") => void;
   removeSubsystem: (id: string) => void;
   reorderSubsystems: (orderedIds: string[]) => void;
@@ -49,6 +51,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     useHistoryState<CiprixProject>(initialPreset);
 
   const [hydrated, setHydrated] = useState(false);
+  const [hasSavedProject, setHasSavedProject] = useState(false);
   const [locale, setLocale] = useState<Locale>("pt");
   const [activeTab, setActiveTab] = useState<StudioTab>("subsystems");
   const [selectedSubsystemId, setSelectedSubsystemId] = useState<string | null>(
@@ -64,6 +67,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
         if (parsed.success) {
           set(parsed.data, true);
           setSelectedSubsystemId(parsed.data.subsystems[0]?.id ?? null);
+          setHasSavedProject(true);
         }
       }
     } catch {
@@ -92,6 +96,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     (next: CiprixProject) => {
       set(next);
       setSelectedSubsystemId(next.subsystems[0]?.id ?? null);
+      setHasSavedProject(true);
     },
     [set],
   );
@@ -100,6 +105,12 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     const preset = createSkeletonPreset();
     set(preset);
     setSelectedSubsystemId(preset.subsystems[0]?.id ?? null);
+  }, [set]);
+
+  const resetToBlank = useCallback(() => {
+    const preset = createBlankPreset();
+    set(preset);
+    setSelectedSubsystemId(null);
   }, [set]);
 
   const addSubsystem = useCallback(
@@ -188,6 +199,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
 
   const value: ProjectContextValue = {
     project,
+    hasSavedProject,
     locale,
     setLocale,
     t,
@@ -202,6 +214,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     updateProject,
     loadProject,
     resetToSkeleton,
+    resetToBlank,
     addSubsystem,
     removeSubsystem,
     reorderSubsystems,

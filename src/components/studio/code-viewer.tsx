@@ -2,54 +2,45 @@
 
 import React, { useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { Highlight, Prism, type PrismTheme } from "prism-react-renderer";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/context/project-context";
 
-const JAVA_KEYWORDS =
-  /^(package|import|public|private|protected|class|interface|extends|implements|enum|final|static|void|return|new|switch|case|default|if|else|boolean|int|double|true|false)$/;
+const studioCodeTheme: PrismTheme = {
+  plain: {
+    color: "#e2e8f0",
+    backgroundColor: "#030508",
+  },
+  styles: [
+    { types: ["comment", "prolog", "doctype", "cdata"], style: { color: "#565f89" } },
+    { types: ["punctuation"], style: { color: "#7c8ba1" } },
+    { types: ["property", "tag", "boolean", "number", "constant", "symbol"], style: { color: "#93c5fd" } },
+    { types: ["selector", "attr-name", "string", "char", "builtin"], style: { color: "#86efac" } },
+    { types: ["operator", "entity", "url"], style: { color: "#a5b4fc" } },
+    { types: ["atrule", "attr-value", "keyword"], style: { color: "#60a5fa" } },
+    { types: ["function", "class-name"], style: { color: "#cbd5e1" } },
+    { types: ["annotation"], style: { color: "#fbbf24" } },
+  ],
+};
 
-function highlightLine(line: string): React.ReactNode {
-  const trimmed = line.trimStart();
-  if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
-    return <span className="text-[#565f89]">{line}</span>;
+function resolveLanguage(filePath: string): string {
+  if (filePath.endsWith(".json")) return "json";
+  if (filePath.endsWith(".java")) {
+    return (Prism.languages as Record<string, unknown>).java ? "java" : "clike";
   }
-
-  const tokens = line.split(/(\s+|"[^"]*"|@[A-Za-z_][A-Za-z0-9_]*)/g);
-  return tokens.map((token, idx) => {
-    if (!token) return null;
-    if (token.startsWith('"') && token.endsWith('"')) {
-      return (
-        <span key={idx} className="text-[#9ece6a]">
-          {token}
-        </span>
-      );
-    }
-    if (token.startsWith("@")) {
-      return (
-        <span key={idx} className="text-[#c0caf5]">
-          {token}
-        </span>
-      );
-    }
-    if (JAVA_KEYWORDS.test(token)) {
-      return (
-        <span key={idx} className="text-[#7aa2f7]">
-          {token}
-        </span>
-      );
-    }
-    return <React.Fragment key={idx}>{token}</React.Fragment>;
-  });
+  return "clike";
 }
 
 export function CodeViewer({
   filePath,
   content,
   className = "",
+  hideHeader = false,
 }: {
   filePath: string;
   content: string;
   className?: string;
+  hideHeader?: boolean;
 }) {
   const { t } = useProject();
   const [copied, setCopied] = useState(false);
@@ -61,28 +52,38 @@ export function CodeViewer({
     setTimeout(() => setCopied(false), 1400);
   };
 
+  const language = resolveLanguage(filePath);
+
   return (
     <div className={`flex flex-col min-h-0 bg-[#030508] ${className}`}>
-      <div className="flex items-center justify-between border-b border-[#171c26] bg-[#05070b] px-3 py-1.5 shrink-0">
-        <span className="truncate font-mono text-[11px] text-[#8a94a6]">{filePath}</span>
-        <Button size="sm" variant="ghost" onClick={handleCopy} className="h-6 px-2 text-[11px]">
-          {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-          {copied ? t("code.copied") : t("code.copy")}
-        </Button>
-      </div>
+      {!hideHeader && (
+        <div className="flex items-center justify-between border-b border-[#171c26] bg-[#05070b] px-3 py-1.5 shrink-0">
+          <span className="truncate font-mono text-[11px] text-[#8a94a6]">{filePath}</span>
+          <Button size="sm" variant="ghost" onClick={handleCopy} className="h-6 px-2 text-[11px]">
+            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+            {copied ? t("code.copied") : t("code.copy")}
+          </Button>
+        </div>
+      )}
       <div className="flex-1 overflow-auto">
-        <pre className="p-3 font-mono text-[12px] leading-[1.6] text-slate-200">
-          <code>
-            {content.split("\n").map((line, i) => (
-              <div key={i} className="table-row">
-                <span className="table-cell w-8 select-none pr-3 text-right text-[#475266]">
-                  {i + 1}
-                </span>
-                <span className="table-cell">{highlightLine(line)}</span>
-              </div>
-            ))}
-          </code>
-        </pre>
+        <Highlight theme={studioCodeTheme} code={content.trimEnd()} language={language}>
+          {({ tokens, getLineProps, getTokenProps }) => (
+            <pre className="p-3 font-mono text-[12px] leading-[1.6] bg-[#030508]">
+              {tokens.map((line, i) => (
+                <div key={i} {...getLineProps({ line })} className="table-row">
+                  <span className="table-cell w-8 select-none pr-3 text-right text-[#475266]">
+                    {i + 1}
+                  </span>
+                  <span className="table-cell">
+                    {line.map((token, key) => (
+                      <span key={key} {...getTokenProps({ token })} />
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </pre>
+          )}
+        </Highlight>
       </div>
     </div>
   );

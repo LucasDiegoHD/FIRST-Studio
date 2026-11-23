@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 
 const inter = Inter({
@@ -17,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "FIRST Studio — Ciprix FRC Generator",
   description:
-    "Minimalist FRC architecture studio generating compile-ready Ciprix & WPILib projects.",
+    "Interactive FRC robot architecture studio generating compile-ready Ciprix & WPILib projects.",
 };
 
 export default function RootLayout({
@@ -28,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="bg-black text-[#f3f5f8] font-sans antialiased selection:bg-[#142c4f] selection:text-white">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

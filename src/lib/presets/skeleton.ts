@@ -126,6 +126,42 @@ export function createSkeletonPreset(): CiprixProject {
   };
 }
 
+export function createBlankPreset(): CiprixProject {
+  return {
+    schemaVersion: 1,
+    project: {
+      name: "my-robot",
+      teamNumber: 0,
+      year: 2026,
+      packageName: "frc.robot",
+      simMode: "SIM",
+      tuningMode: true,
+      controllerDeadband: 0.08,
+      defaultAlliance: "Blue",
+      fieldLengthMeters: 16.541,
+      fieldWidthMeters: 8.069,
+    },
+    subsystems: [],
+    superstructure: {
+      requests: ["IDLE"],
+      states: ["IDLE"],
+      initialState: "IDLE",
+      initialRequest: "IDLE",
+      stateActions: {
+        IDLE: {},
+      },
+      bindings: [{ request: "IDLE", entryState: "IDLE" }],
+    },
+    controls: {
+      pilotPriority: [],
+      copilotOverrides: [],
+    },
+    features: {
+      driveContextStub: false,
+    },
+  };
+}
+
 export function createNewSubsystem(
   type: "roller" | "generic",
   existing: SubsystemConfig[],

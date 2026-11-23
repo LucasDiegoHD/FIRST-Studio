@@ -1,10 +1,5 @@
-import { ProjectProvider } from "@/context/project-context";
-import { StudioShell } from "@/components/studio/studio-shell";
+import { LandingPage } from "@/components/home/landing-page";
 
 export default function HomePage() {
-  return (
-    <ProjectProvider>
-      <StudioShell />
-    </ProjectProvider>
-  );
+  return <LandingPage />;
 }

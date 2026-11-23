@@ -1,7 +1,21 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Code2, Cpu, Download, FileCode2, FolderOpen, Gamepad2, Layers, Plus, RotateCcw, Save, Search, Settings2, Undo2 } from "lucide-react";
+import {
+  Code2,
+  Cpu,
+  Download,
+  FileCode2,
+  FolderOpen,
+  Gamepad2,
+  GitBranch,
+  Plus,
+  RotateCcw,
+  Save,
+  Search,
+  Settings2,
+  Undo2,
+} from "lucide-react";
 import { useProject } from "@/context/project-context";
 
 interface PaletteItem {
@@ -19,18 +33,14 @@ export function CommandPalette({
   onSaveJson,
   onLoadJson,
   onDownloadZip,
-  onToggleSidebar,
-  onToggleInspector,
-  onOpenSubsystemFsm,
+  onOpenProjectSettings,
 }: {
   open: boolean;
   onClose: () => void;
   onSaveJson: () => void;
   onLoadJson: () => void;
   onDownloadZip: () => void;
-  onToggleSidebar: () => void;
-  onToggleInspector: () => void;
-  onOpenSubsystemFsm: (id: string) => void;
+  onOpenProjectSettings: () => void;
 }) {
   const {
     project,
@@ -62,44 +72,43 @@ export function CommandPalette({
   const items = useMemo<PaletteItem[]>(() => {
     const list: PaletteItem[] = [
       {
-        id: "nav-arch",
-        group: "Navegação",
-        label: t("nav.architecture"),
+        id: "nav-robot",
+        group: "Etapas",
+        label: t("step.robot"),
         hint: "1",
         icon: <Cpu className="h-3.5 w-3.5" />,
         run: () => setActiveTab("subsystems"),
       },
       {
-        id: "nav-super",
-        group: "Navegação",
-        label: "SuperStructure",
+        id: "nav-states",
+        group: "Etapas",
+        label: t("step.states"),
         hint: "2",
-        icon: <Layers className="h-3.5 w-3.5" />,
-        run: () => setActiveTab("superstructure"),
+        icon: <GitBranch className="h-3.5 w-3.5" />,
+        run: () => setActiveTab("fsm"),
       },
       {
         id: "nav-controls",
-        group: "Navegação",
-        label: t("tabs.controls"),
+        group: "Etapas",
+        label: t("step.controls"),
         hint: "3",
         icon: <Gamepad2 className="h-3.5 w-3.5" />,
         run: () => setActiveTab("controls"),
       },
       {
-        id: "nav-code",
-        group: "Navegação",
-        label: t("nav.files"),
+        id: "nav-export",
+        group: "Etapas",
+        label: t("step.export"),
         hint: "4",
         icon: <Code2 className="h-3.5 w-3.5" />,
         run: () => setActiveTab("code"),
       },
       {
         id: "nav-project",
-        group: "Navegação",
-        label: t("nav.project"),
-        hint: "5",
+        group: "Etapas",
+        label: t("tabs.project"),
         icon: <Settings2 className="h-3.5 w-3.5" />,
-        run: () => setActiveTab("project"),
+        run: onOpenProjectSettings,
       },
     ];
 
@@ -120,9 +129,10 @@ export function CommandPalette({
         group: t("nav.subsystems"),
         label: `${sub.name} — FSM`,
         hint: `${sub.fsm.states.length} states`,
-        icon: <Cpu className="h-3.5 w-3.5" />,
+        icon: <GitBranch className="h-3.5 w-3.5" />,
         run: () => {
-          onOpenSubsystemFsm(sub.id);
+          setSelectedSubsystemId(sub.id);
+          setActiveTab("fsm");
         },
       });
     }
@@ -150,16 +160,6 @@ export function CommandPalette({
         icon: <Plus className="h-3.5 w-3.5" />,
         run: () => {
           addSubsystem("roller");
-          setActiveTab("subsystems");
-        },
-      },
-      {
-        id: "act-add-generic",
-        group: "Ações",
-        label: `+ ${t("subsystems.generic")}`,
-        icon: <Plus className="h-3.5 w-3.5" />,
-        run: () => {
-          addSubsystem("generic");
           setActiveTab("subsystems");
         },
       },
@@ -208,22 +208,6 @@ export function CommandPalette({
         run: redo,
       },
       {
-        id: "act-sidebar",
-        group: "Ações",
-        label: "Sidebar",
-        hint: "Ctrl+B",
-        icon: <Layers className="h-3.5 w-3.5" />,
-        run: onToggleSidebar,
-      },
-      {
-        id: "act-inspector",
-        group: "Ações",
-        label: "Inspector / Java Preview",
-        hint: "Ctrl+\\",
-        icon: <Code2 className="h-3.5 w-3.5" />,
-        run: onToggleInspector,
-      },
-      {
         id: "act-lang",
         group: "Ações",
         label: `Idioma / Language (${locale === "pt" ? "EN" : "PT"})`,
@@ -249,9 +233,7 @@ export function CommandPalette({
     onSaveJson,
     onLoadJson,
     onDownloadZip,
-    onToggleSidebar,
-    onToggleInspector,
-    onOpenSubsystemFsm,
+    onOpenProjectSettings,
   ]);
 
   const filtered = useMemo(() => {
