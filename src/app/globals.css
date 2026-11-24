@@ -19,6 +19,10 @@
   --border-hairline: #22304a;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body {
   background-color: var(--bg-void);
@@ -141,6 +145,112 @@ body {
 .animate-flow-dash {
   stroke-dasharray: 6 6;
   animation: flow-dash 0.7s linear infinite;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.65);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(96, 165, 250, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-page-enter {
+  animation: page-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out both;
+}
+
+.animate-pop-in {
+  animation: pop-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 0.9s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-toast-in {
+  animation: toast-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-page-enter,
+  .animate-fade-in,
+  .animate-pop-in,
+  .animate-pulse-ring,
+  .animate-slide-in-left,
+  .animate-toast-in,
+  .animate-select-bounce,
+  .animate-motor-cw,
+  .animate-motor-ccw,
+  .animate-flow-dash {
+    animation: none !important;
+  }
 }
 
 /* Slim range sliders in #142c4f / #3b82f6 */

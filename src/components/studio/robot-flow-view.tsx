@@ -20,10 +20,13 @@ import {
 } from "@xyflow/react";
 import {
   AlertTriangle,
+  Anchor,
   ArrowLeft,
   ArrowRight,
+  ArrowUpDown,
   Blocks,
   Cog,
+  Compass,
   Cpu,
   Gamepad2,
   GripVertical,
@@ -31,6 +34,7 @@ import {
   Layers,
   LayoutGrid,
   Plus,
+  Target,
   Trash2,
   Workflow,
 } from "lucide-react";
@@ -43,9 +47,85 @@ import { Switch } from "@/components/ui/switch";
 import { UnitInput } from "@/components/ui/unit-input";
 import { useProject } from "@/context/project-context";
 import { toPackageSegment } from "@/lib/generator/java-utils";
-import type { MotorVendor, SubsystemConfig } from "@/lib/schema/ciprix-project";
+import type {
+  MotorVendor,
+  SubsystemAction,
+  SubsystemConfig,
+  SubsystemType,
+} from "@/lib/schema/ciprix-project";
 import { cn } from "@/lib/utils";
 import { CodeViewer } from "./code-viewer";
+
+const VALID_TYPES = new Set<SubsystemType>([
+  "roller",
+  "shooter",
+  "arm",
+  "elevator",
+  "climber",
+  "generic",
+]);
+
+function SubsystemIcon({
+  type,
+  className,
+}: {
+  type: SubsystemType;
+  className?: string;
+}) {
+  switch (type) {
+    case "shooter":
+      return <Target className={className} />;
+    case "arm":
+      return <Compass className={className} />;
+    case "elevator":
+      return <ArrowUpDown className={className} />;
+    case "climber":
+      return <Anchor className={className} />;
+    case "generic":
+      return <Cpu className={className} />;
+    case "roller":
+    default:
+      return <Cog className={className} />;
+  }
+}
+
+function formatSetpoint(action: SubsystemAction | undefined): {
+  label: string;
+  barPct: number;
+  activeDir: number;
+} {
+  if (!action || action.type === "stop") {
+    return { label: "0%", barPct: 0, activeDir: 0 };
+  }
+  switch (action.type) {
+    case "percentOutput": {
+      const pct = Math.round(action.value * 100);
+      return {
+        label: pct > 0 ? `+${pct}%` : `${pct}%`,
+        barPct: Math.abs(action.value) * 100,
+        activeDir: action.value,
+      };
+    }
+    case "velocityRpm":
+      return {
+        label: `${Math.round(action.value)} RPM`,
+        barPct: Math.min(100, (Math.abs(action.value) / 6000) * 100),
+        activeDir: action.value,
+      };
+    case "positionDeg":
+      return {
+        label: `${action.value}°`,
+        barPct: Math.min(100, (Math.abs(action.value) / 120) * 100),
+        activeDir: action.value === 0 ? 0 : 1,
+      };
+    case "positionRot":
+      return {
+        label: `${action.value} rot`,
+        barPct: Math.min(100, (Math.abs(action.value) / 10) * 100),
+        activeDir: action.value === 0 ? 0 : 1,
+      };
+  }
+}
 
 type XboxNodeData = {
   buttons: { label: string; request: string }[];
@@ -66,7 +146,9 @@ type SubsystemNodeData = {
   subsystem: SubsystemConfig;
   activeRequest: string;
   activeStateName: string;
-  outputPct: number;
+  setpointLabel: string;
+  barPct: number;
+  activeDir: number;
   selected: boolean;
   errorCount: number;
   onSelect: (id: string) => void;
@@ -157,8 +239,17 @@ function SuperNode({ data }: NodeProps<Node<SuperNodeData>>) {
 }
 
 function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
-  const { subsystem, activeRequest, activeStateName, outputPct, selected, errorCount, onSelect } =
-    data;
+  const {
+    subsystem,
+    activeRequest,
+    activeStateName,
+    setpointLabel,
+    barPct,
+    activeDir,
+    selected,
+    errorCount,
+    onSelect,
+  } = data;
   const vendor =
     subsystem.motor.vendor === "talonfx"
       ? "TalonFX"
@@ -172,7 +263,7 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
       className={`w-[270px] overflow-hidden rounded-lg border text-left transition-all cursor-pointer ${
         selected
           ? "border-[#60a5fa] bg-[#19253d] shadow-[0_0_24px_-6px_rgba(59,130,246,0.55)]"
-          : outputPct !== 0
+          : activeDir !== 0
             ? "border-[#3b6bb5] bg-[#152036] shadow-lg"
             : "border-[#253552] bg-[#131c2e] hover:border-[#3b6bb5]"
       }`}
@@ -180,12 +271,17 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
       <Handle type="target" position={Position.Left} />
       <div className="flex items-center justify-between border-b border-[#22304a] bg-[#142c4f]/75 px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Cog
+          <SubsystemIcon
+            type={subsystem.type}
             className={`h-3.5 w-3.5 shrink-0 ${
-              outputPct > 0
-                ? "text-[#93c5fd] animate-motor-cw"
-                : outputPct < 0
-                  ? "text-[#93c5fd] animate-motor-ccw"
+              subsystem.type === "roller" || subsystem.type === "shooter"
+                ? activeDir > 0
+                  ? "text-[#93c5fd] animate-motor-cw"
+                  : activeDir < 0
+                    ? "text-[#93c5fd] animate-motor-ccw"
+                    : "text-slate-400"
+                : activeDir !== 0
+                  ? "text-[#93c5fd]"
                   : "text-slate-400"
             }`}
           />
@@ -207,15 +303,15 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
           <span className="text-slate-300">
             {vendor} · {subsystem.motor.currentLimitAmps}A
           </span>
-          <span className={outputPct !== 0 ? "text-[#93c5fd] font-semibold" : "text-slate-400"}>
-            {outputPct > 0 ? `+${Math.round(outputPct * 100)}%` : `${Math.round(outputPct * 100)}%`}
+          <span className={activeDir !== 0 ? "text-[#93c5fd] font-semibold" : "text-slate-400"}>
+            {setpointLabel}
           </span>
         </div>
 
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#0b0f17] border border-[#22304a]">
           <div
             className="h-full bg-[#60a5fa] transition-all duration-300"
-            style={{ width: `${Math.abs(outputPct) * 100}%` }}
+            style={{ width: `${barPct}%` }}
           />
         </div>
 
@@ -249,7 +345,7 @@ function HelpHint({ text }: { text: string }) {
         <Popover.Content
           side="top"
           sideOffset={6}
-          className="z-50 max-w-xs rounded-lg border border-[#3b6bb5] bg-[#0f1624] p-2.5 text-xs text-slate-200 shadow-xl"
+          className="z-50 max-w-xs rounded-lg border border-[#3b6bb5] bg-[#0f1624] p-2.5 text-xs text-slate-200 shadow-xl animate-fade-in"
         >
           {text}
         </Popover.Content>
@@ -285,9 +381,24 @@ export function RobotFlowView({
   const [simRequest, setSimRequest] = useState<string>(project.superstructure.initialRequest);
   const [autoSim, setAutoSim] = useState(false);
   const [selectedJavaIdx, setSelectedJavaIdx] = useState(0);
+  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
   const dragCounter = useRef(0);
+  const prevCountRef = useRef(project.subsystems.length);
   const positionsRef = useRef<Record<string, { x: number; y: number }>>({});
+
+  useEffect(() => {
+    if (project.subsystems.length > prevCountRef.current) {
+      const newest = project.subsystems[project.subsystems.length - 1];
+      if (newest) {
+        setLastAddedId(newest.id);
+        const timer = setTimeout(() => setLastAddedId(null), 900);
+        prevCountRef.current = project.subsystems.length;
+        return () => clearTimeout(timer);
+      }
+    }
+    prevCountRef.current = project.subsystems.length;
+  }, [project.subsystems]);
 
   useEffect(() => {
     if (!autoSim || project.superstructure.requests.length <= 1) return;
@@ -353,7 +464,7 @@ export function RobotFlowView({
       const binding = sub.fsm.bindings.find((b) => b.request === subReq);
       const activeStateName = binding?.goalState ?? binding?.entryState ?? sub.fsm.initialState;
       const stObj = sub.fsm.states.find((s) => s.name === activeStateName);
-      const outputPct = stObj?.onEnter.type === "percentOutput" ? stObj.onEnter.value : 0;
+      const sp = formatSetpoint(stObj?.onEnter);
       const errorCount = issues.filter(
         (i) => i.targetId === sub.id && i.severity === "error",
       ).length;
@@ -366,7 +477,9 @@ export function RobotFlowView({
           subsystem: sub,
           activeRequest: subReq,
           activeStateName,
-          outputPct,
+          setpointLabel: sp.label,
+          barPct: sp.barPct,
+          activeDir: sp.activeDir,
           selected: selectedSubsystemId === sub.id,
           errorCount,
           onSelect: setSelectedSubsystemId,
@@ -460,7 +573,7 @@ export function RobotFlowView({
     reorderSubsystems(ids);
   };
 
-  const handleDragStart = (e: React.DragEvent<HTMLButtonElement>, kind: "roller" | "generic") => {
+  const handleDragStart = (e: React.DragEvent<HTMLButtonElement>, kind: SubsystemType) => {
     e.dataTransfer.setData("text/plain", kind);
     e.dataTransfer.effectAllowed = "copy";
   };
@@ -469,29 +582,31 @@ export function RobotFlowView({
     e.preventDefault();
     dragCounter.current = 0;
     setIsDragOver(false);
-    const kind = e.dataTransfer.getData("text/plain");
-    if (kind === "roller" || kind === "generic") {
+    const kind = e.dataTransfer.getData("text/plain") as SubsystemType;
+    if (VALID_TYPES.has(kind)) {
       addSubsystem(kind);
     }
   };
 
-  const paletteItems: {
-    kind: "roller" | "generic";
-    title: string;
-    desc: string;
-    icon: React.ReactNode;
+  const paletteGroups: {
+    groupTitle: string;
+    items: { kind: SubsystemType; title: string; desc: string }[];
   }[] = [
     {
-      kind: "roller",
-      title: "Roller / Intake",
-      desc: "Motor + FSM STOP / INTAKE / EJECT",
-      icon: <Cog className="h-7 w-7 text-[#93c5fd] shrink-0" />,
+      groupTitle: "Velocidade & Força",
+      items: [
+        { kind: "roller", title: "Roller / Intake", desc: "PercentOutput · STOP/INTAKE/EJECT" },
+        { kind: "shooter", title: "Shooter / Flywheel", desc: "Velocity RPM + PID/SVAG" },
+        { kind: "climber", title: "Climber", desc: "Brake 60A · EXTEND/CLIMB" },
+      ],
     },
     {
-      kind: "generic",
-      title: "Subsistema Genérico",
-      desc: "Motor + StateSubsystem básica",
-      icon: <Cpu className="h-7 w-7 text-[#93c5fd] shrink-0" />,
+      groupTitle: "Posição & Geral",
+      items: [
+        { kind: "arm", title: "Arm / Pivot", desc: "Degrees + armGravity()" },
+        { kind: "elevator", title: "Elevator", desc: "Rotations + Gravity kG" },
+        { kind: "generic", title: "Motor Genérico", desc: "StateSubsystem simples" },
+      ],
     },
   ];
 
@@ -499,7 +614,7 @@ export function RobotFlowView({
     <div className="space-y-6">
       <PageHeader
         title="Editor do Robô"
-        description="Arraste ou clique em componentes para montar seu robô e inspecione a lógica da SuperStructure."
+        description="Arraste ou clique em mecanismos Ciprix para montar seu robô e inspecione a lógica da SuperStructure."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -509,31 +624,38 @@ export function RobotFlowView({
             <CardTitle>Componentes</CardTitle>
             <CardDescription>Arraste para o canvas ou clique para adicionar</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2.5">
-              <p className="font-headline text-sm font-semibold text-[#93c5fd]">
-                Mecanismos &amp; Templates
-              </p>
-              <div className="flex flex-col gap-2.5">
-                {paletteItems.map((item) => (
-                  <button
-                    key={item.kind}
-                    type="button"
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, item.kind)}
-                    onClick={() => addSubsystem(item.kind)}
-                    className="group flex items-center gap-3.5 rounded-xl border border-[#2c3f61] bg-[#0f1624] p-4 text-left transition-all hover:scale-[1.02] hover:border-[#60a5fa] hover:bg-[#19253d] cursor-grab active:cursor-grabbing"
-                  >
-                    {item.icon}
-                    <div className="min-w-0 flex-1">
-                      <p className="font-headline text-sm font-semibold text-white">{item.title}</p>
-                      <p className="mt-0.5 text-xs text-slate-400">{item.desc}</p>
-                    </div>
-                    <Plus className="h-4 w-4 text-slate-500 group-hover:text-white shrink-0" />
-                  </button>
-                ))}
+          <CardContent className="space-y-5">
+            {paletteGroups.map((group) => (
+              <div key={group.groupTitle} className="space-y-2.5">
+                <p className="font-headline text-xs font-semibold uppercase tracking-wider text-[#93c5fd]">
+                  {group.groupTitle}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.kind}
+                      type="button"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, item.kind)}
+                      onClick={() => addSubsystem(item.kind)}
+                      className="group flex items-center gap-3 rounded-xl border border-[#2c3f61] bg-[#0f1624] p-3.5 text-left transition-all duration-150 hover:scale-[1.02] hover:border-[#60a5fa] hover:bg-[#19253d] active:scale-[0.98] cursor-grab active:cursor-grabbing"
+                    >
+                      <SubsystemIcon
+                        type={item.kind}
+                        className="h-6 w-6 text-[#93c5fd] shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-headline text-sm font-semibold text-white">
+                          {item.title}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{item.desc}</p>
+                      </div>
+                      <Plus className="h-4 w-4 text-slate-500 group-hover:text-white shrink-0" />
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            ))}
           </CardContent>
         </Card>
 
@@ -597,8 +719,9 @@ export function RobotFlowView({
             >
               {canvasView === "blocks" ? (
                 <div
+                  key="blocks"
                   className={cn(
-                    "relative h-full w-full overflow-y-auto bg-[#0b0f17] transition-colors",
+                    "relative h-full w-full overflow-y-auto bg-[#0b0f17] transition-colors animate-fade-in",
                     isDragOver && "ring-2 ring-inset ring-[#60a5fa] bg-[#0f182a]",
                   )}
                 >
@@ -610,13 +733,14 @@ export function RobotFlowView({
                       <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
                         <Blocks className="h-12 w-12 text-slate-500" />
                         <p className="mt-3 font-headline text-lg font-medium text-slate-200">
-                          Arraste um componente ou clique na barra à esquerda
+                          Arraste um mecanismo ou clique na barra à esquerda
                         </p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-4">
                         {project.subsystems.map((sub, idx) => {
                           const isSelected = selected?.id === sub.id;
+                          const isNewlyAdded = lastAddedId === sub.id;
                           const subErrors = issues.filter(
                             (i) => i.targetId === sub.id && i.severity === "error",
                           ).length;
@@ -636,6 +760,7 @@ export function RobotFlowView({
                                 isSelected
                                   ? "border-[#60a5fa] bg-[#1b2c4a] shadow-[0_0_24px_-8px_rgba(96,165,250,0.65)] animate-select-bounce"
                                   : "border-[#253552]",
+                                isNewlyAdded && "animate-pop-in animate-pulse-ring",
                                 subErrors > 0 && "border-rose-500/80",
                               )}
                             >
@@ -673,7 +798,8 @@ export function RobotFlowView({
                                 </span>
                               )}
 
-                              <Cog
+                              <SubsystemIcon
+                                type={sub.type}
                                 className={cn(
                                   "mb-2.5 h-10 w-10",
                                   isSelected ? "text-[#93c5fd]" : "text-[#60a5fa]",
@@ -698,7 +824,7 @@ export function RobotFlowView({
                   </div>
                 </div>
               ) : (
-                <div className="h-full w-full bg-[#0b0f17]">
+                <div key="flow" className="h-full w-full bg-[#0b0f17] animate-fade-in">
                   <ReactFlow
                     nodes={nodes}
                     edges={edges}
@@ -772,8 +898,12 @@ export function RobotFlowView({
                 <>
                   <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-[#22304a] pb-4">
                     <div className="flex items-center gap-3 min-w-0">
+                      <SubsystemIcon type={selected.type} className="h-5 w-5 text-[#93c5fd] shrink-0" />
                       <CardTitle className="truncate">{selected.name}</CardTitle>
                       <Badge variant="default">CAN {selected.motor.canId}</Badge>
+                      <Badge variant="outline" className="capitalize">
+                        {selected.type}
+                      </Badge>
                     </div>
                     <Button
                       size="icon"
@@ -927,14 +1057,14 @@ export function RobotFlowView({
                           Mostrar Configurações Avançadas
                         </p>
                         <p className="text-xs text-slate-400">
-                          Barramento CAN, modo neutro, inversão, redução, MOI e Self-Test
+                          CAN, Neutro, Inversão, PID/SVAG, Física Sim e Pit Self-Test
                         </p>
                       </div>
                       <Switch checked={showAdvanced} onCheckedChange={setShowAdvanced} />
                     </div>
 
                     {showAdvanced && (
-                      <div className="space-y-4 rounded-xl border border-[#22304a] bg-[#0f1624] p-4">
+                      <div className="space-y-4 rounded-xl border border-[#22304a] bg-[#0f1624] p-4 animate-fade-in">
                         {selected.motor.vendor === "talonfx" && (
                           <div className="flex items-center justify-between gap-4">
                             <label className="text-sm font-medium text-slate-200">
@@ -1047,6 +1177,178 @@ export function RobotFlowView({
                           </div>
                         </div>
 
+                        {/* Physics parameters for Arm / Elevator / Climber */}
+                        {selected.physics && (
+                          <div className="grid grid-cols-2 gap-3 border-t border-[#22304a] pt-3">
+                            <div className="space-y-1.5">
+                              <label className="text-xs text-slate-300">Massa Sim</label>
+                              <UnitInput
+                                unit="kg"
+                                type="number"
+                                step={0.5}
+                                min={0.1}
+                                value={selected.physics.massKg ?? 4}
+                                onChange={(e) =>
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    physics: {
+                                      ...(prev.physics ?? {}),
+                                      massKg: Math.max(
+                                        0.1,
+                                        Number.parseFloat(e.target.value || "4") || 4,
+                                      ),
+                                    },
+                                  }))
+                                }
+                              />
+                            </div>
+                            {selected.type === "arm" ? (
+                              <div className="space-y-1.5">
+                                <label className="text-xs text-slate-300">Comprimento</label>
+                                <UnitInput
+                                  unit="m"
+                                  type="number"
+                                  step={0.05}
+                                  min={0.05}
+                                  value={selected.physics.lengthMeters ?? 0.5}
+                                  onChange={(e) =>
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      physics: {
+                                        ...(prev.physics ?? {}),
+                                        lengthMeters: Math.max(
+                                          0.05,
+                                          Number.parseFloat(e.target.value || "0.5") || 0.5,
+                                        ),
+                                      },
+                                    }))
+                                  }
+                                />
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                <label className="text-xs text-slate-300">Raio Tambor</label>
+                                <UnitInput
+                                  unit="m"
+                                  type="number"
+                                  step={0.005}
+                                  min={0.005}
+                                  value={selected.physics.drumRadiusMeters ?? 0.025}
+                                  onChange={(e) =>
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      physics: {
+                                        ...(prev.physics ?? {}),
+                                        drumRadiusMeters: Math.max(
+                                          0.005,
+                                          Number.parseFloat(e.target.value || "0.025") || 0.025,
+                                        ),
+                                      },
+                                    }))
+                                  }
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Closed-Loop PID & SVAG + Soft Limits */}
+                        {selected.closedLoop && (
+                          <div className="space-y-3 border-t border-[#22304a] pt-3">
+                            <p className="font-mono text-[11px] uppercase tracking-wider text-[#93c5fd]">
+                              Closed-Loop PID / SVAG
+                            </p>
+                            <div className="grid grid-cols-3 gap-2">
+                              {(["kP", "kI", "kD"] as const).map((gain) => (
+                                <div key={gain} className="space-y-1">
+                                  <label className="font-mono text-[11px] text-slate-400">
+                                    {gain}
+                                  </label>
+                                  <Input
+                                    type="number"
+                                    step={0.01}
+                                    className="font-mono h-8 text-xs"
+                                    value={selected.closedLoop?.[gain] ?? 0}
+                                    onChange={(e) => {
+                                      const val = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateSubsystem(selected.id, (prev) => ({
+                                        ...prev,
+                                        closedLoop: prev.closedLoop
+                                          ? { ...prev.closedLoop, [gain]: val }
+                                          : undefined,
+                                      }));
+                                    }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-4 gap-2">
+                              {(["kS", "kV", "kA", "kG"] as const).map((gain) => (
+                                <div key={gain} className="space-y-1">
+                                  <label className="font-mono text-[11px] text-slate-400">
+                                    {gain}
+                                  </label>
+                                  <Input
+                                    type="number"
+                                    step={0.01}
+                                    className="font-mono h-8 text-xs"
+                                    value={selected.closedLoop?.[gain] ?? 0}
+                                    onChange={(e) => {
+                                      const val = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateSubsystem(selected.id, (prev) => ({
+                                        ...prev,
+                                        closedLoop: prev.closedLoop
+                                          ? { ...prev.closedLoop, [gain]: val }
+                                          : undefined,
+                                      }));
+                                    }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            {selected.closedLoop.limitUnit && (
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                  <label className="text-xs text-slate-300">Soft Limit Mín</label>
+                                  <UnitInput
+                                    unit={selected.closedLoop.limitUnit}
+                                    type="number"
+                                    step={1}
+                                    value={selected.closedLoop.minLimit ?? 0}
+                                    onChange={(e) => {
+                                      const val = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateSubsystem(selected.id, (prev) => ({
+                                        ...prev,
+                                        closedLoop: prev.closedLoop
+                                          ? { ...prev.closedLoop, minLimit: val }
+                                          : undefined,
+                                      }));
+                                    }}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs text-slate-300">Soft Limit Máx</label>
+                                  <UnitInput
+                                    unit={selected.closedLoop.limitUnit}
+                                    type="number"
+                                    step={1}
+                                    value={selected.closedLoop.maxLimit ?? 90}
+                                    onChange={(e) => {
+                                      const val = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateSubsystem(selected.id, (prev) => ({
+                                        ...prev,
+                                        closedLoop: prev.closedLoop
+                                          ? { ...prev.closedLoop, maxLimit: val }
+                                          : undefined,
+                                      }));
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <div className="space-y-2.5 border-t border-[#22304a] pt-3">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-slate-200">
@@ -1154,11 +1456,14 @@ export function RobotFlowView({
 
               {rightTab === "code" ? (
                 subJavaFiles.length === 0 ? (
-                  <div className="flex flex-1 items-center justify-center p-6 text-sm text-slate-400">
+                  <div
+                    key="code-empty"
+                    className="flex flex-1 items-center justify-center p-6 text-sm text-slate-400 animate-fade-in"
+                  >
                     Selecione um subsistema para visualizar os arquivos Java gerados.
                   </div>
                 ) : (
-                  <div className="flex flex-1 flex-col min-h-0">
+                  <div key="code" className="flex flex-1 flex-col min-h-0 animate-fade-in">
                     <div className="flex items-center gap-1.5 overflow-x-auto border-b border-[#22304a] bg-[#0b0f17] px-3 py-2 shrink-0">
                       {subJavaFiles.map((f, idx) => (
                         <button
@@ -1185,7 +1490,7 @@ export function RobotFlowView({
                   </div>
                 )
               ) : (
-                <div className="flex-1 overflow-auto p-4">
+                <div key="summary" className="flex-1 overflow-auto p-4 animate-fade-in">
                   {project.subsystems.length === 0 ? (
                     <p className="text-sm text-slate-400 text-center py-8">
                       Nenhum subsistema configurado.
@@ -1195,9 +1500,9 @@ export function RobotFlowView({
                       <thead className="border-b border-[#22304a] text-slate-400 font-mono">
                         <tr>
                           <th className="py-2 pr-2">Nome</th>
+                          <th className="py-2 px-2">Tipo</th>
                           <th className="py-2 px-2">Vendor</th>
                           <th className="py-2 px-2">CAN</th>
-                          <th className="py-2 px-2">Bus</th>
                           <th className="py-2 px-2">Limite</th>
                           <th className="py-2 pl-2">Neutro</th>
                         </tr>
@@ -1212,9 +1517,9 @@ export function RobotFlowView({
                             <td className="py-2.5 pr-2 font-sans font-medium text-white">
                               {sub.name}
                             </td>
+                            <td className="py-2.5 px-2 capitalize text-slate-300">{sub.type}</td>
                             <td className="py-2.5 px-2 text-slate-300">{sub.motor.vendor}</td>
                             <td className="py-2.5 px-2 text-[#93c5fd]">{sub.motor.canId}</td>
-                            <td className="py-2.5 px-2 text-slate-400">{sub.motor.canBus}</td>
                             <td className="py-2.5 px-2 text-slate-300">
                               {sub.motor.currentLimitAmps}A
                             </td>

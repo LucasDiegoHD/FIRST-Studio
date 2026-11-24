@@ -10,6 +10,7 @@ import {
   CiprixProjectSchema,
   type CiprixProject,
   type SubsystemConfig,
+  type SubsystemType,
 } from "@/lib/schema/ciprix-project";
 import { validateProject, type StudioTab, type ValidationIssue } from "@/lib/validator";
 
@@ -33,7 +34,7 @@ interface ProjectContextValue {
   loadProject: (next: CiprixProject) => void;
   resetToSkeleton: () => void;
   resetToBlank: () => void;
-  addSubsystem: (type: "roller" | "generic") => void;
+  addSubsystem: (type: SubsystemType) => void;
   removeSubsystem: (id: string) => void;
   reorderSubsystems: (orderedIds: string[]) => void;
   updateSubsystem: (id: string, updater: (prev: SubsystemConfig) => SubsystemConfig) => void;
@@ -114,7 +115,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   }, [set]);
 
   const addSubsystem = useCallback(
-    (type: "roller" | "generic") => {
+    (type: SubsystemType) => {
       let createdId = "";
       set((prev) => {
         const created = createNewSubsystem(type, prev.subsystems);

@@ -270,13 +270,16 @@ export function StudioShell() {
                 if (isMobile) setMobileMenuOpen(false);
               }}
               className={cn(
-                "flex w-full items-center rounded-lg text-[13px] font-medium transition-all cursor-pointer",
+                "relative flex w-full items-center rounded-lg text-[13px] font-medium transition-all duration-150 active:scale-[0.98] cursor-pointer",
                 collapsed ? "justify-center p-2.5" : "justify-between px-3 py-2.5",
                 active
                   ? "bg-[#142c4f] border border-[#3b6bb5] text-white shadow-sm"
                   : "border border-transparent text-slate-300 hover:bg-[#19253d] hover:text-white",
               )}
             >
+              {active && !collapsed && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-[#60a5fa]" />
+              )}
               <span className="flex items-center gap-2.5 min-w-0">
                 {item.icon}
                 {!collapsed && <span className="truncate">{item.label}</span>}
@@ -408,7 +411,7 @@ export function StudioShell() {
       {/* Desktop Collapsible Sidebar */}
       <aside
         className={cn(
-          "hidden md:flex shrink-0 flex-col border-r border-[#22304a] transition-all duration-200",
+          "hidden md:flex shrink-0 flex-col border-r border-[#22304a] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
           sidebarCollapsed ? "w-[72px]" : "w-64",
         )}
       >
@@ -418,11 +421,11 @@ export function StudioShell() {
       {/* Mobile Drawer Sidebar */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-50 flex md:hidden bg-[#0b0f17]/80 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex md:hidden bg-[#0b0f17]/80 backdrop-blur-xs animate-fade-in"
           onClick={() => setMobileMenuOpen(false)}
         >
           <aside
-            className="w-68 h-full border-r border-[#22304a]"
+            className="w-68 h-full border-r border-[#22304a] animate-slide-in-left"
             onClick={(e) => e.stopPropagation()}
           >
             {renderSidebarBody(false, true)}
@@ -711,7 +714,7 @@ export function StudioShell() {
 
         {/* Scrollable Workspace Content */}
         <main className="flex-1 overflow-y-auto overflow-x-clip bg-[#0b0f17] p-6 lg:p-8">
-          <div className="mx-auto max-w-[1440px] space-y-6">
+          <div key={currentStep} className="mx-auto max-w-[1440px] space-y-6 animate-page-enter">
             {currentStep === "robot" && (
               <RobotFlowView
                 onGoToStates={() => setActiveTab("fsm")}
@@ -745,7 +748,7 @@ export function StudioShell() {
       {toastMsg && (
         <div
           className={cn(
-            "fixed bottom-6 right-6 z-50 rounded-lg border px-4 py-2.5 text-[13px] shadow-2xl",
+            "fixed bottom-6 right-6 z-50 rounded-lg border px-4 py-2.5 text-[13px] shadow-2xl animate-toast-in",
             toastMsg.tone === "ok"
               ? "border-[#3b6bb5] bg-[#131c2e] text-white"
               : "border-rose-700/70 bg-rose-950/90 text-rose-200",

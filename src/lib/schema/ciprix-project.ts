@@ -21,6 +21,16 @@ export const XboxButtonSchema = z.enum([
 ]);
 export type XboxButton = z.infer<typeof XboxButtonSchema>;
 
+export const SubsystemTypeSchema = z.enum([
+  "roller",
+  "shooter",
+  "arm",
+  "elevator",
+  "climber",
+  "generic",
+]);
+export type SubsystemType = z.infer<typeof SubsystemTypeSchema>;
+
 export const SubsystemActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("stop"),
@@ -29,6 +39,21 @@ export const SubsystemActionSchema = z.discriminatedUnion("type", [
     type: z.literal("percentOutput"),
     constantName: z.string().min(1),
     value: z.number().min(-1).max(1),
+  }),
+  z.object({
+    type: z.literal("velocityRpm"),
+    constantName: z.string().min(1),
+    value: z.number().min(-10000).max(10000),
+  }),
+  z.object({
+    type: z.literal("positionDeg"),
+    constantName: z.string().min(1),
+    value: z.number().min(-360).max(360),
+  }),
+  z.object({
+    type: z.literal("positionRot"),
+    constantName: z.string().min(1),
+    value: z.number().min(-100).max(200),
   }),
 ]);
 export type SubsystemAction = z.infer<typeof SubsystemActionSchema>;
@@ -51,7 +76,7 @@ export type FsmBinding = z.infer<typeof FsmBindingSchema>;
 export const SubsystemSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  type: z.enum(["roller", "generic"]),
+  type: SubsystemTypeSchema,
   motor: z.object({
     vendor: MotorVendorSchema,
     canId: z.number().int().min(0).max(62),
@@ -62,6 +87,27 @@ export const SubsystemSchema = z.object({
     gearRatio: z.number().positive(),
     moiKgM2: z.number().positive(),
   }),
+  closedLoop: z
+    .object({
+      kP: z.number(),
+      kI: z.number(),
+      kD: z.number(),
+      kS: z.number(),
+      kV: z.number(),
+      kA: z.number(),
+      kG: z.number(),
+      minLimit: z.number().optional(),
+      maxLimit: z.number().optional(),
+      limitUnit: z.enum(["deg", "rot"]).optional(),
+    })
+    .optional(),
+  physics: z
+    .object({
+      massKg: z.number().positive().optional(),
+      lengthMeters: z.number().positive().optional(),
+      drumRadiusMeters: z.number().positive().optional(),
+    })
+    .optional(),
   fsm: z.object({
     initialState: z.string().min(1),
     initialRequest: z.string().min(1),

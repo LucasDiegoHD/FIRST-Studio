@@ -100,7 +100,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           message: `Estado "${st.name}" em ${sub.name} não é um identificador Java válido.`,
         });
       }
-      if (st.onEnter.type === "percentOutput" && !isValidJavaIdentifier(st.onEnter.constantName)) {
+      if (st.onEnter.type !== "stop" && !isValidJavaIdentifier(st.onEnter.constantName)) {
         issues.push({
           id: `fsm-const-invalid-${sub.id}-${st.name}`,
           severity: "error",

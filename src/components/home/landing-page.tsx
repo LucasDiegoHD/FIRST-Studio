@@ -122,7 +122,7 @@ export function LandingPage() {
       </header>
 
       {/* Main Content */}
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center gap-16 px-6 py-14">
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center gap-16 px-6 py-14 animate-page-enter">
         <section className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12">
           {/* Left Hero */}
           <div className="lg:col-span-6 space-y-6">
@@ -301,7 +301,7 @@ export function LandingPage() {
                 resetToSkeleton();
                 router.push("/studio");
               }}
-              className="group flex items-center justify-between rounded-xl border border-[#253552] bg-[#131c2e] px-5 py-5 text-left transition-all hover:border-[#60a5fa] hover:bg-[#19253d] hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.45)] cursor-pointer"
+              className="group flex items-center justify-between rounded-xl border border-[#253552] bg-[#131c2e] px-5 py-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#60a5fa] hover:bg-[#19253d] hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.45)] cursor-pointer"
             >
               <div className="flex items-start gap-3.5">
                 <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#3b6bb5] bg-[#142c4f] text-[#93c5fd]">
@@ -329,7 +329,7 @@ export function LandingPage() {
                 resetToBlank();
                 router.push("/studio");
               }}
-              className="group flex items-center justify-between rounded-xl border border-[#253552] bg-[#131c2e] px-5 py-5 text-left transition-all hover:border-[#60a5fa] hover:bg-[#19253d] hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.45)] cursor-pointer"
+              className="group flex items-center justify-between rounded-xl border border-[#253552] bg-[#131c2e] px-5 py-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#60a5fa] hover:bg-[#19253d] hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.45)] cursor-pointer"
             >
               <div className="flex items-start gap-3.5">
                 <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#2c3f61] bg-[#0f1624] text-slate-300">

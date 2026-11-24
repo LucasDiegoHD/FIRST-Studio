@@ -11,20 +11,49 @@ function renderActionCall(constantsClass: string, action: SubsystemAction): stri
     return "io.controlMotor().stop()";
   }
   const constName = toUpperSnake(action.constantName);
-  return `io.controlMotor().runPercentOutput(${constantsClass}.${constName})`;
+  switch (action.type) {
+    case "percentOutput":
+      return `io.controlMotor().runPercentOutput(${constantsClass}.${constName})`;
+    case "velocityRpm":
+      return `io.controlMotor().runVelocity(${constantsClass}.${constName})`;
+    case "positionDeg":
+    case "positionRot":
+      return `io.controlMotor().runPosition(${constantsClass}.${constName})`;
+  }
 }
 
-function collectPercentConstants(subsystem: SubsystemConfig): Array<{ name: string; value: number }> {
-  const seen = new Map<string, number>();
+interface CollectedConstant {
+  name: string;
+  actionType: Exclude<SubsystemAction["type"], "stop">;
+  value: number;
+}
+
+function collectActionConstants(subsystem: SubsystemConfig): CollectedConstant[] {
+  const seen = new Map<string, CollectedConstant>();
   for (const state of subsystem.fsm.states) {
-    if (state.onEnter.type === "percentOutput") {
-      seen.set(toUpperSnake(state.onEnter.constantName), state.onEnter.value);
+    if (state.onEnter.type !== "stop") {
+      const name = toUpperSnake(state.onEnter.constantName);
+      seen.set(name, { name, actionType: state.onEnter.type, value: state.onEnter.value });
     }
-    if (state.onUpdate?.type === "percentOutput") {
-      seen.set(toUpperSnake(state.onUpdate.constantName), state.onUpdate.value);
+    if (state.onUpdate && state.onUpdate.type !== "stop") {
+      const name = toUpperSnake(state.onUpdate.constantName);
+      seen.set(name, { name, actionType: state.onUpdate.type, value: state.onUpdate.value });
     }
   }
-  return Array.from(seen.entries()).map(([name, value]) => ({ name, value }));
+  return Array.from(seen.values());
+}
+
+function renderConstantDeclaration(c: CollectedConstant): string {
+  switch (c.actionType) {
+    case "percentOutput":
+      return `  public static final double ${c.name} = ${formatDouble(c.value)};`;
+    case "velocityRpm":
+      return `  public static final AngularVelocity ${c.name} = RPM.of(${formatDouble(c.value)});`;
+    case "positionDeg":
+      return `  public static final Angle ${c.name} = Degrees.of(${formatDouble(c.value)});`;
+    case "positionRot":
+      return `  public static final Angle ${c.name} = Rotations.of(${formatDouble(c.value)});`;
+  }
 }
 
 export function getVendorIoClassName(subsystemName: string, vendor: SubsystemConfig["motor"]["vendor"]): string {
@@ -56,22 +85,87 @@ export function generateSingleMotorSubsystem(
   const inputsAutoLogged = `${className}IOInputsAutoLogged`;
   const vendorClass = getVendorIoClassName(subsystem.name, subsystem.motor.vendor);
 
-  const percentConstants = collectPercentConstants(subsystem);
-  const percentLines =
-    percentConstants.length > 0
-      ? percentConstants
-          .map((c) => `  public static final double ${c.name} = ${formatDouble(c.value)};`)
-          .join("\n") + "\n\n"
+  const actionConstants = collectActionConstants(subsystem);
+  const constantLines =
+    actionConstants.length > 0
+      ? actionConstants.map(renderConstantDeclaration).join("\n") + "\n\n"
+      : "";
+
+  const unitImports = new Set<string>(["Amps"]);
+  const measureImports = new Set<string>();
+  const cl = subsystem.closedLoop;
+
+  for (const c of actionConstants) {
+    if (c.actionType === "velocityRpm") {
+      unitImports.add("RPM");
+      measureImports.add("AngularVelocity");
+    } else if (c.actionType === "positionDeg") {
+      unitImports.add("Degrees");
+      measureImports.add("Angle");
+    } else if (c.actionType === "positionRot") {
+      unitImports.add("Rotations");
+      measureImports.add("Angle");
+    }
+  }
+
+  if (cl?.minLimit !== undefined && cl?.maxLimit !== undefined) {
+    unitImports.add(cl.limitUnit === "deg" ? "Degrees" : "Rotations");
+  }
+  if (cl && subsystem.type === "shooter") unitImports.add("RPM");
+  if (cl && subsystem.type === "arm") unitImports.add("Degrees");
+  if (cl && subsystem.type === "elevator") unitImports.add("Rotations");
+
+  const unitImportBlock = Array.from(unitImports)
+    .sort()
+    .map((u) => `import static edu.wpi.first.units.Units.${u};`)
+    .join("\n");
+
+  const measureImportBlock =
+    measureImports.size > 0
+      ? "\n" +
+        Array.from(measureImports)
+          .sort()
+          .map((m) => `import edu.wpi.first.units.measure.${m};`)
+          .join("\n") +
+        "\n"
       : "";
 
   const neutralChain = subsystem.motor.neutralMode === "brake" ? ".brakeMode()" : ".coastMode()";
   const invertChain = subsystem.motor.inverted ? ".inverted(true)" : "";
 
+  const configExtras: string[] = [];
+  if (subsystem.type === "arm") {
+    configExtras.push("          .armGravity()");
+  }
+  if (cl) {
+    configExtras.push(
+      `          .pid(0, ${formatDouble(cl.kP)}, ${formatDouble(cl.kI)}, ${formatDouble(cl.kD)})`,
+    );
+    configExtras.push(
+      `          .svag(0, ${formatDouble(cl.kS)}, ${formatDouble(cl.kV)}, ${formatDouble(cl.kA)}, ${formatDouble(cl.kG)})`,
+    );
+    if (cl.minLimit !== undefined && cl.maxLimit !== undefined) {
+      const unitCls = cl.limitUnit === "deg" ? "Degrees" : "Rotations";
+      configExtras.push(
+        `          .softLimits(${unitCls}.of(${formatDouble(cl.minLimit)}), ${unitCls}.of(${formatDouble(cl.maxLimit)}))`,
+      );
+    }
+    if (subsystem.type === "shooter") {
+      configExtras.push("          .withVelocityTolerance(RPM.of(100.0))");
+    } else if (subsystem.type === "arm") {
+      configExtras.push("          .withPositionTolerance(Degrees.of(2.0))");
+    } else if (subsystem.type === "elevator") {
+      configExtras.push("          .withPositionTolerance(Rotations.of(0.15))");
+    }
+  }
+
+  const extraChain = configExtras.length > 0 ? "\n" + configExtras.join("\n") : "";
+
   // 1. Constants
   const constantsContent = `package ${fullSubPkg};
 
-import static edu.wpi.first.units.Units.Amps;
-
+${unitImportBlock}
+${measureImportBlock}
 import org.ciprix.interfaces.motor.advanced.MotorConfig;
 
 /** ${className} constants: ids, power levels, motor configuration, requests and states. */
@@ -80,8 +174,8 @@ public final class ${constantsClass} {
 
   public static final int MOTOR_ID = ${subsystem.motor.canId};
 
-${percentLines}  public static final MotorConfig MOTOR_CONFIG =
-      new MotorConfig().currentLimit(Amps.of(${subsystem.motor.currentLimitAmps}))${neutralChain}${invertChain};
+${constantLines}  public static final MotorConfig MOTOR_CONFIG =
+      new MotorConfig().currentLimit(Amps.of(${subsystem.motor.currentLimitAmps}))${neutralChain}${invertChain}${extraChain};
 
   /** What the SuperStructure (or the co-driver) asks of the ${className.toLowerCase()}. */
   public enum ${requestEnum} {
@@ -203,6 +297,56 @@ public class ${vendorClass} implements ${ioInterface} {
   const simFactory = isSpark ? "MotorIOSim.spark" : "MotorIOSim.talonFX";
   const dcMotor = isSpark ? "DCMotor.getNEO(1)" : "DCMotor.getKrakenX60(1)";
 
+  let simMechanismExpr = "";
+  if (subsystem.type === "shooter") {
+    simMechanismExpr = `SimMechanism.flywheel(
+                  ${dcMotor}, ${formatDouble(subsystem.motor.gearRatio)}, ${formatDouble(subsystem.motor.moiKgM2)})
+              .withFriction(0.02, 0.0)`;
+  } else if (subsystem.type === "arm") {
+    const massKg = subsystem.physics?.massKg ?? 4.0;
+    const lengthMeters = subsystem.physics?.lengthMeters ?? 0.5;
+    const minRot =
+      cl?.minLimit !== undefined
+        ? cl.limitUnit === "deg"
+          ? cl.minLimit / 360.0
+          : cl.minLimit
+        : -10.0 / 360.0;
+    const maxRot =
+      cl?.maxLimit !== undefined
+        ? cl.limitUnit === "deg"
+          ? cl.maxLimit / 360.0
+          : cl.maxLimit
+        : 100.0 / 360.0;
+    simMechanismExpr = `SimMechanism.arm(
+                  ${dcMotor}, ${formatDouble(subsystem.motor.gearRatio)}, ${formatDouble(massKg)}, ${formatDouble(lengthMeters)})
+              .withLimits(${formatDouble(minRot)}, ${formatDouble(maxRot)})
+              .withStartPosition(${formatDouble(minRot)})`;
+  } else if (subsystem.type === "elevator" || subsystem.type === "climber") {
+    const massKg = subsystem.physics?.massKg ?? (subsystem.type === "climber" ? 8.0 : 6.0);
+    const drumRadius =
+      subsystem.physics?.drumRadiusMeters ?? (subsystem.type === "climber" ? 0.02 : 0.025);
+    const minRot =
+      cl?.minLimit !== undefined
+        ? cl.limitUnit === "deg"
+          ? cl.minLimit / 360.0
+          : cl.minLimit
+        : 0.0;
+    const maxRot =
+      cl?.maxLimit !== undefined
+        ? cl.limitUnit === "deg"
+          ? cl.maxLimit / 360.0
+          : cl.maxLimit
+        : 7.5;
+    simMechanismExpr = `SimMechanism.elevator(
+                  ${dcMotor}, ${formatDouble(subsystem.motor.gearRatio)}, ${formatDouble(massKg)}, ${formatDouble(drumRadius)})
+              .withLimits(${formatDouble(minRot)}, ${formatDouble(maxRot)})
+              .withStartPosition(0.0)`;
+  } else {
+    simMechanismExpr = `SimMechanism.roller(
+                  ${dcMotor}, ${formatDouble(subsystem.motor.gearRatio)}, ${formatDouble(subsystem.motor.moiKgM2)})
+              .withFriction(0.05, 0.0)`;
+  }
+
   const simContent = `package ${fullSubPkg};
 
 import edu.wpi.first.math.system.plant.DCMotor;
@@ -216,9 +360,7 @@ public class ${className}IOSim implements ${ioInterface} {
       ${simFactory}(
           "${className}/Motor",
           ${constantsClass}.MOTOR_CONFIG,
-          SimMechanism.roller(
-                  ${dcMotor}, ${formatDouble(subsystem.motor.gearRatio)}, ${formatDouble(subsystem.motor.moiKgM2)})
-              .withFriction(0.05, 0.0));
+          ${simMechanismExpr});
 
   @Override
   public void updateInputs(${inputsAutoLogged} inputs) {

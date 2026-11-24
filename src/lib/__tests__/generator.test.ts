@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generateProjectFiles, getRequiredVendordeps } from "../generator";
-import { createSkeletonPreset } from "../presets/skeleton";
+import { createBlankPreset, createNewSubsystem, createSkeletonPreset } from "../presets/skeleton";
 import { CiprixProjectSchema } from "../schema/ciprix-project";
 import { validateProject } from "../validator";
 
@@ -101,5 +101,52 @@ describe("FIRST Studio Ciprix generator", () => {
     expect(issues.some((i) => i.id.startsWith("sub-dup-name"))).toBe(true);
     expect(issues.some((i) => i.id.startsWith("can-dup"))).toBe(true);
     expect(issues.some((i) => i.id.startsWith("pilot-btn-dup"))).toBe(true);
+  });
+
+  it("generates Ciprix closed-loop and physics code for shooter, arm, elevator, and climber", () => {
+    const project = createBlankPreset();
+    for (const type of ["shooter", "arm", "elevator", "climber"] as const) {
+      const created = createNewSubsystem(type, project.subsystems);
+      project.subsystems.push(created);
+      project.superstructure.stateActions.IDLE[created.id] = created.fsm.initialRequest;
+    }
+
+    expect(() => CiprixProjectSchema.parse(project)).not.toThrow();
+    expect(validateProject(project)).toEqual([]);
+
+    const files = new Map(generateProjectFiles(project).map((f) => [f.path, f.content]));
+
+    const shooterConst = files.get("src/main/java/frc/robot/subsystems/shooter/ShooterConstants.java")!;
+    expect(shooterConst).toContain("RPM.of(");
+    expect(shooterConst).toContain(".pid(0,");
+    expect(shooterConst).toContain(".svag(0,");
+    expect(shooterConst).toContain(".withVelocityTolerance(RPM.of(");
+
+    const shooterJava = files.get("src/main/java/frc/robot/subsystems/shooter/Shooter.java")!;
+    expect(shooterJava).toContain("runVelocity(");
+
+    const shooterSim = files.get("src/main/java/frc/robot/subsystems/shooter/ShooterIOSim.java")!;
+    expect(shooterSim).toContain("SimMechanism.flywheel(");
+
+    const armConst = files.get("src/main/java/frc/robot/subsystems/arm/ArmConstants.java")!;
+    expect(armConst).toContain("Degrees.of(");
+    expect(armConst).toContain(".armGravity()");
+    expect(armConst).toContain(".softLimits(");
+
+    const armJava = files.get("src/main/java/frc/robot/subsystems/arm/Arm.java")!;
+    expect(armJava).toContain("runPosition(");
+
+    const armSim = files.get("src/main/java/frc/robot/subsystems/arm/ArmIOSim.java")!;
+    expect(armSim).toContain("SimMechanism.arm(");
+
+    const elevatorConst = files.get("src/main/java/frc/robot/subsystems/elevator/ElevatorConstants.java")!;
+    expect(elevatorConst).toContain("Rotations.of(");
+    expect(elevatorConst).toContain(".softLimits(");
+
+    const elevatorSim = files.get("src/main/java/frc/robot/subsystems/elevator/ElevatorIOSim.java")!;
+    expect(elevatorSim).toContain("SimMechanism.elevator(");
+
+    const climberSim = files.get("src/main/java/frc/robot/subsystems/climber/ClimberIOSim.java")!;
+    expect(climberSim).toContain("SimMechanism.elevator(");
   });
 });

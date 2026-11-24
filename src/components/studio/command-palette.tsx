@@ -164,6 +164,46 @@ export function CommandPalette({
         },
       },
       {
+        id: "act-add-shooter",
+        group: "Ações",
+        label: "+ Shooter (Flywheel)",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        run: () => {
+          addSubsystem("shooter");
+          setActiveTab("subsystems");
+        },
+      },
+      {
+        id: "act-add-arm",
+        group: "Ações",
+        label: "+ Arm (Pivot)",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        run: () => {
+          addSubsystem("arm");
+          setActiveTab("subsystems");
+        },
+      },
+      {
+        id: "act-add-elevator",
+        group: "Ações",
+        label: "+ Elevator",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        run: () => {
+          addSubsystem("elevator");
+          setActiveTab("subsystems");
+        },
+      },
+      {
+        id: "act-add-climber",
+        group: "Ações",
+        label: "+ Climber",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        run: () => {
+          addSubsystem("climber");
+          setActiveTab("subsystems");
+        },
+      },
+      {
         id: "act-zip",
         group: "Ações",
         label: t("header.download_zip"),
@@ -259,11 +299,11 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-[#0b0f17]/80 pt-[12vh] px-4"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-[#0b0f17]/80 pt-[12vh] px-4 animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-[#2c3f61] bg-[#131c2e] shadow-2xl"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-[#2c3f61] bg-[#131c2e] shadow-2xl animate-pop-in"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") {

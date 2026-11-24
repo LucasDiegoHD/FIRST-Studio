@@ -32,6 +32,21 @@ import type { SubsystemAction } from "@/lib/schema/ciprix-project";
 import { CodeViewer } from "./code-viewer";
 import { SuperStructureTab } from "./superstructure-tab";
 
+function formatActionSummary(action: SubsystemAction): string {
+  switch (action.type) {
+    case "stop":
+      return "onEnter: stop()";
+    case "percentOutput":
+      return `onEnter: ${action.constantName} (${action.value})`;
+    case "velocityRpm":
+      return `onEnter: ${action.constantName} (${action.value} RPM)`;
+    case "positionDeg":
+      return `onEnter: ${action.constantName} (${action.value}°)`;
+    case "positionRot":
+      return `onEnter: ${action.constantName} (${action.value} rot)`;
+  }
+}
+
 type FsmStateNodeData = {
   label: string;
   actionLabel: string;
@@ -146,10 +161,6 @@ export function StatesView({
     activeSub.fsm.states.forEach((st, idx) => {
       const id = `state-${st.name}`;
       const pos = posRef.current[id] ?? { x: 290, y: 40 + idx * 105 };
-      const actionLabel =
-        st.onEnter.type === "stop"
-          ? "onEnter: stop()"
-          : `onEnter: ${st.onEnter.constantName} (${st.onEnter.value})`;
 
       list.push({
         id,
@@ -157,7 +168,7 @@ export function StatesView({
         position: pos,
         data: {
           label: st.name,
-          actionLabel,
+          actionLabel: formatActionSummary(st.onEnter),
           isInitial: st.name === activeSub.fsm.initialState,
           isActive: st.name === activeSimState,
           isSelected: activeStateObj?.name === st.name,
@@ -262,12 +273,15 @@ export function StatesView({
       />
 
       {target === "superstructure" ? (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        <div
+          key="superstructure"
+          className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start animate-fade-in"
+        >
           <div className={showSuperJava && superJavaFile ? "xl:col-span-7" : "xl:col-span-12"}>
             <SuperStructureTab />
           </div>
           {showSuperJava && superJavaFile && (
-            <Card className="xl:col-span-5 h-[560px] flex flex-col overflow-hidden">
+            <Card className="xl:col-span-5 h-[560px] flex flex-col overflow-hidden animate-fade-in">
               <CodeViewer
                 filePath={superJavaFile.path}
                 content={superJavaFile.content}
@@ -277,17 +291,20 @@ export function StatesView({
           )}
         </div>
       ) : !activeSub ? (
-        <Card>
+        <Card className="animate-fade-in">
           <CardContent className="flex items-center justify-center py-16 text-sm text-slate-400">
             {t("fsm.no_subsystems")}
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        <div
+          key={activeSub.id}
+          className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start animate-fade-in"
+        >
           {/* Left Interactive FSM Graph or Mermaid */}
           <Card className="xl:col-span-7 h-[540px] flex flex-col overflow-hidden">
             {showMermaid ? (
-              <div className="flex flex-1 flex-col overflow-auto p-6 space-y-3 bg-[#0b0f17]">
+              <div className="flex flex-1 flex-col overflow-auto p-6 space-y-3 bg-[#0b0f17] animate-fade-in">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs text-slate-300">toMermaid()</span>
                   <Button size="sm" variant="outline" onClick={() => setShowMermaid(false)}>
@@ -371,172 +388,196 @@ export function StatesView({
 
             <CardContent className="space-y-4 pt-5">
               <div className="space-y-3">
-                {activeSub.fsm.states.map((st, idx) => (
-                  <div
-                    key={`${st.name}-${idx}`}
-                    onClick={() => setSelectedStateName(st.name)}
-                    className={`space-y-2.5 rounded-xl border p-3.5 transition-colors cursor-pointer ${
-                      activeStateObj?.name === st.name
-                        ? "border-[#60a5fa] bg-[#19253d]"
-                        : "border-[#22304a] bg-[#0f1624]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={st.name}
-                        className="font-mono h-8 text-xs"
-                        onChange={(e) => {
-                          const nextName = toUpperSnake(e.target.value);
-                          const oldName = st.name;
-                          updateSubsystem(activeSub.id, (prev) => ({
-                            ...prev,
-                            fsm: {
-                              ...prev.fsm,
-                              initialState:
-                                prev.fsm.initialState === oldName
-                                  ? nextName
-                                  : prev.fsm.initialState,
-                              states: prev.fsm.states.map((item, i) =>
-                                i === idx ? { ...item, name: nextName } : item,
-                              ),
-                              bindings: prev.fsm.bindings.map((b) => ({
-                                ...b,
-                                entryState: b.entryState === oldName ? nextName : b.entryState,
-                                goalState: b.goalState === oldName ? nextName : b.goalState,
-                              })),
-                            },
-                          }));
-                          setSelectedStateName(nextName);
-                        }}
-                      />
-                      <Select
-                        value={st.onEnter.type}
-                        className="w-32 h-8 text-xs"
-                        onChange={(e) => {
-                          const action: SubsystemAction =
-                            e.target.value === "stop"
-                              ? { type: "stop" }
-                              : {
-                                  type: "percentOutput",
-                                  constantName: `${st.name}_OUTPUT`,
-                                  value: 0.5,
-                                };
-                          updateSubsystem(activeSub.id, (prev) => ({
-                            ...prev,
-                            fsm: {
-                              ...prev.fsm,
-                              states: prev.fsm.states.map((item, i) =>
-                                i === idx ? { ...item, onEnter: action } : item,
-                              ),
-                            },
-                          }));
-                        }}
-                      >
-                        <option value="stop">{t("fsm.action_stop")}</option>
-                        <option value="percentOutput">{t("fsm.action_percent")}</option>
-                      </Select>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={activeSub.fsm.states.length <= 1}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateSubsystem(activeSub.id, (prev) => ({
-                            ...prev,
-                            fsm: {
-                              ...prev.fsm,
-                              states: prev.fsm.states.filter((_, i) => i !== idx),
-                            },
-                          }));
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-rose-400" />
-                      </Button>
-                    </div>
+                {activeSub.fsm.states.map((st, idx) => {
+                  const actionMeta =
+                    st.onEnter.type === "velocityRpm"
+                      ? { unit: "RPM", min: -6000, max: 6000, step: 100, badge: `${Math.round(st.onEnter.value)} RPM` }
+                      : st.onEnter.type === "positionDeg"
+                        ? { unit: "deg", min: -90, max: 180, step: 5, badge: `${st.onEnter.value}°` }
+                        : st.onEnter.type === "positionRot"
+                          ? { unit: "rot", min: 0, max: 20, step: 0.25, badge: `${st.onEnter.value} rot` }
+                          : st.onEnter.type === "percentOutput"
+                            ? {
+                                unit: "pct",
+                                min: -1,
+                                max: 1,
+                                step: 0.05,
+                                badge: `${st.onEnter.value >= 0 ? "FWD" : "REV"} ${Math.round(st.onEnter.value * 100)}%`,
+                              }
+                            : null;
 
-                    {st.onEnter.type === "percentOutput" && (
-                      <div className="space-y-2 pt-1">
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            value={st.onEnter.constantName}
-                            className="font-mono h-8 text-xs"
-                            onChange={(e) => {
-                              const nextConst = toUpperSnake(e.target.value);
-                              updateSubsystem(activeSub.id, (prev) => ({
-                                ...prev,
-                                fsm: {
-                                  ...prev.fsm,
-                                  states: prev.fsm.states.map((item, i) =>
-                                    i === idx && item.onEnter.type === "percentOutput"
-                                      ? {
-                                          ...item,
-                                          onEnter: { ...item.onEnter, constantName: nextConst },
-                                        }
-                                      : item,
-                                  ),
-                                },
-                              }));
-                            }}
-                          />
-                          <UnitInput
-                            unit="pct"
-                            type="number"
-                            step={0.05}
-                            min={-1}
-                            max={1}
-                            className="h-8 text-xs"
-                            value={st.onEnter.value}
-                            onChange={(e) => {
-                              const val = Math.min(
-                                1,
-                                Math.max(-1, Number.parseFloat(e.target.value || "0") || 0),
-                              );
-                              updateSubsystem(activeSub.id, (prev) => ({
-                                ...prev,
-                                fsm: {
-                                  ...prev.fsm,
-                                  states: prev.fsm.states.map((item, i) =>
-                                    i === idx && item.onEnter.type === "percentOutput"
-                                      ? { ...item, onEnter: { ...item.onEnter, value: val } }
-                                      : item,
-                                  ),
-                                },
-                              }));
-                            }}
-                          />
-                        </div>
-                        <div className="flex items-center gap-2.5">
-                          <span className="w-16 font-mono text-[11px] text-[#93c5fd]">
-                            {st.onEnter.value >= 0 ? "FWD" : "REV"}{" "}
-                            {Math.round(st.onEnter.value * 100)}%
-                          </span>
-                          <input
-                            type="range"
-                            min={-1}
-                            max={1}
-                            step={0.05}
-                            value={st.onEnter.value}
-                            onChange={(e) => {
-                              const val = Number.parseFloat(e.target.value);
-                              updateSubsystem(activeSub.id, (prev) => ({
-                                ...prev,
-                                fsm: {
-                                  ...prev.fsm,
-                                  states: prev.fsm.states.map((item, i) =>
-                                    i === idx && item.onEnter.type === "percentOutput"
-                                      ? { ...item, onEnter: { ...item.onEnter, value: val } }
-                                      : item,
-                                  ),
-                                },
-                              }));
-                            }}
-                            className="flex-1"
-                          />
-                        </div>
+                  return (
+                    <div
+                      key={`${st.name}-${idx}`}
+                      onClick={() => setSelectedStateName(st.name)}
+                      className={`space-y-2.5 rounded-xl border p-3.5 transition-colors cursor-pointer ${
+                        activeStateObj?.name === st.name
+                          ? "border-[#60a5fa] bg-[#19253d]"
+                          : "border-[#22304a] bg-[#0f1624]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={st.name}
+                          className="font-mono h-8 text-xs"
+                          onChange={(e) => {
+                            const nextName = toUpperSnake(e.target.value);
+                            const oldName = st.name;
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                initialState:
+                                  prev.fsm.initialState === oldName
+                                    ? nextName
+                                    : prev.fsm.initialState,
+                                states: prev.fsm.states.map((item, i) =>
+                                  i === idx ? { ...item, name: nextName } : item,
+                                ),
+                                bindings: prev.fsm.bindings.map((b) => ({
+                                  ...b,
+                                  entryState: b.entryState === oldName ? nextName : b.entryState,
+                                  goalState: b.goalState === oldName ? nextName : b.goalState,
+                                })),
+                              },
+                            }));
+                            setSelectedStateName(nextName);
+                          }}
+                        />
+                        <Select
+                          value={st.onEnter.type}
+                          className="w-36 h-8 text-xs"
+                          onChange={(e) => {
+                            const nextType = e.target.value as SubsystemAction["type"];
+                            let action: SubsystemAction;
+                            if (nextType === "stop") {
+                              action = { type: "stop" };
+                            } else if (nextType === "velocityRpm") {
+                              action = { type: "velocityRpm", constantName: `${st.name}_RPM`, value: 3000 };
+                            } else if (nextType === "positionDeg") {
+                              action = { type: "positionDeg", constantName: `${st.name}_ANGLE`, value: 45 };
+                            } else if (nextType === "positionRot") {
+                              action = { type: "positionRot", constantName: `${st.name}_POS`, value: 2.5 };
+                            } else {
+                              action = { type: "percentOutput", constantName: `${st.name}_OUTPUT`, value: 0.5 };
+                            }
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                states: prev.fsm.states.map((item, i) =>
+                                  i === idx ? { ...item, onEnter: action } : item,
+                                ),
+                              },
+                            }));
+                          }}
+                        >
+                          <option value="stop">{t("fsm.action_stop")}</option>
+                          <option value="percentOutput">{t("fsm.action_percent")}</option>
+                          <option value="velocityRpm">Velocidade (RPM)</option>
+                          <option value="positionDeg">Posição (°)</option>
+                          <option value="positionRot">Posição (rot)</option>
+                        </Select>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={activeSub.fsm.states.length <= 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                states: prev.fsm.states.filter((_, i) => i !== idx),
+                              },
+                            }));
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                        </Button>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {st.onEnter.type !== "stop" && actionMeta && (
+                        <div className="space-y-2 pt-1">
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              value={st.onEnter.constantName}
+                              className="font-mono h-8 text-xs"
+                              onChange={(e) => {
+                                const nextConst = toUpperSnake(e.target.value);
+                                updateSubsystem(activeSub.id, (prev) => ({
+                                  ...prev,
+                                  fsm: {
+                                    ...prev.fsm,
+                                    states: prev.fsm.states.map((item, i) =>
+                                      i === idx && item.onEnter.type !== "stop"
+                                        ? {
+                                            ...item,
+                                            onEnter: { ...item.onEnter, constantName: nextConst },
+                                          }
+                                        : item,
+                                    ),
+                                  },
+                                }));
+                              }}
+                            />
+                            <UnitInput
+                              unit={actionMeta.unit}
+                              type="number"
+                              step={actionMeta.step}
+                              min={actionMeta.min}
+                              max={actionMeta.max}
+                              className="h-8 text-xs"
+                              value={st.onEnter.value}
+                              onChange={(e) => {
+                                const raw = Number.parseFloat(e.target.value || "0") || 0;
+                                const val = Math.min(actionMeta.max, Math.max(actionMeta.min, raw));
+                                updateSubsystem(activeSub.id, (prev) => ({
+                                  ...prev,
+                                  fsm: {
+                                    ...prev.fsm,
+                                    states: prev.fsm.states.map((item, i) =>
+                                      i === idx && item.onEnter.type !== "stop"
+                                        ? { ...item, onEnter: { ...item.onEnter, value: val } }
+                                        : item,
+                                    ),
+                                  },
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-20 font-mono text-[11px] text-[#93c5fd]">
+                              {actionMeta.badge}
+                            </span>
+                            <input
+                              type="range"
+                              min={actionMeta.min}
+                              max={actionMeta.max}
+                              step={actionMeta.step}
+                              value={st.onEnter.value}
+                              onChange={(e) => {
+                                const val = Number.parseFloat(e.target.value);
+                                updateSubsystem(activeSub.id, (prev) => ({
+                                  ...prev,
+                                  fsm: {
+                                    ...prev.fsm,
+                                    states: prev.fsm.states.map((item, i) =>
+                                      i === idx && item.onEnter.type !== "stop"
+                                        ? { ...item, onEnter: { ...item.onEnter, value: val } }
+                                        : item,
+                                    ),
+                                  },
+                                }));
+                              }}
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Collapsed-by-default Advanced: initialState, initialRequest, bindRequest, toMermaid() */}
@@ -550,7 +591,7 @@ export function StatesView({
                   <span className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
                     {activeSub.fsm.initialState} · {activeSub.fsm.bindings.length} bindings
                     <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform ${
+                      className={`h-3.5 w-3.5 transition-transform duration-200 ${
                         showAdvanced ? "rotate-180" : ""
                       }`}
                     />
@@ -558,7 +599,7 @@ export function StatesView({
                 </button>
 
                 {showAdvanced && (
-                  <div className="mt-3 space-y-4 rounded-xl border border-[#22304a] bg-[#0f1624] p-3.5">
+                  <div className="mt-3 space-y-4 rounded-xl border border-[#22304a] bg-[#0f1624] p-3.5 animate-fade-in">
                     <div className="grid grid-cols-2 gap-2.5">
                       <div className="space-y-1.5">
                         <label className="text-xs text-slate-300">{t("fsm.initial_state")}</label>

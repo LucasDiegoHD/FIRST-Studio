@@ -9,9 +9,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
 import { requestToCommandMethod, toPascalCase } from "@/lib/generator/java-utils";
-import type { XboxButton } from "@/lib/schema/ciprix-project";
+import type { SubsystemAction, XboxButton } from "@/lib/schema/ciprix-project";
 import { CodeViewer } from "./code-viewer";
 import { XboxControllerSvg, type MappedButtonInfo } from "./xbox-svg";
+
+function formatReaction(action: SubsystemAction | undefined): { label: string; dir: number } {
+  if (!action || action.type === "stop") return { label: "0%", dir: 0 };
+  switch (action.type) {
+    case "percentOutput": {
+      const pct = Math.round(action.value * 100);
+      return { label: pct > 0 ? `+${pct}%` : `${pct}%`, dir: action.value };
+    }
+    case "velocityRpm":
+      return { label: `${Math.round(action.value)} RPM`, dir: action.value };
+    case "positionDeg":
+      return { label: `${action.value}°`, dir: action.value === 0 ? 0 : 1 };
+    case "positionRot":
+      return { label: `${action.value} rot`, dir: action.value === 0 ? 0 : 1 };
+  }
+}
 
 const XBOX_BUTTONS: { value: XboxButton; label: string; fullName: string }[] = [
   { value: "a", label: "A", fullName: "A Button" },
@@ -141,10 +157,10 @@ export function ControlsTab() {
         firstSub.fsm.bindings.find((b) => b.request === subReq)?.goalState ??
         firstSub.fsm.initialState;
       const stObj = firstSub.fsm.states.find((s) => s.name === stName);
-      const pct = stObj?.onEnter.type === "percentOutput" ? stObj.onEnter.value : 0;
+      const reaction = formatReaction(stObj?.onEnter);
       return {
-        summary: `${pilotMatch.request} → ${firstSub.name}: ${stName} (${pct > 0 ? `+${Math.round(pct * 100)}%` : `${Math.round(pct * 100)}%`})`,
-        pct,
+        summary: `${pilotMatch.request} → ${firstSub.name}: ${stName} (${reaction.label})`,
+        pct: reaction.dir,
       };
     }
 
@@ -156,10 +172,10 @@ export function ControlsTab() {
       sub.fsm.bindings.find((b) => b.request === copilotMatch.request)?.goalState ??
       sub.fsm.initialState;
     const stObj = sub.fsm.states.find((s) => s.name === stName);
-    const pct = stObj?.onEnter.type === "percentOutput" ? stObj.onEnter.value : 0;
+    const reaction = formatReaction(stObj?.onEnter);
     return {
-      summary: `${sub.name}.${copilotMatch.request} → ${stName} (${pct > 0 ? `+${Math.round(pct * 100)}%` : `${Math.round(pct * 100)}%`})`,
-      pct,
+      summary: `${sub.name}.${copilotMatch.request} → ${stName} (${reaction.label})`,
+      pct: reaction.dir,
     };
   }, [port, selectedButton, project]);
 
@@ -356,7 +372,7 @@ export function ControlsTab() {
               </div>
             </CardHeader>
 
-            <CardContent className="pt-5">
+            <CardContent key={port} className="pt-5 animate-fade-in">
               {port === "pilot" ? (
                 project.controls.pilotPriority.length === 0 ? (
                   <p className="rounded-lg border border-dashed border-[#253552] bg-[#0f1624] p-6 text-center text-[13px] text-slate-400">
@@ -598,7 +614,7 @@ export function ControlsTab() {
           </Card>
 
           {showJava && previewFile && (
-            <Card className="h-[380px] flex flex-col overflow-hidden">
+            <Card className="h-[380px] flex flex-col overflow-hidden animate-fade-in">
               <CodeViewer
                 filePath={previewFile.path}
                 content={previewFile.content}

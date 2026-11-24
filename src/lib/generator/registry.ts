@@ -8,6 +8,10 @@ export type SubsystemGenerator = (
 
 export const SUBSYSTEM_GENERATORS: Record<SubsystemConfig["type"], SubsystemGenerator> = {
   roller: generateSingleMotorSubsystem,
+  shooter: generateSingleMotorSubsystem,
+  arm: generateSingleMotorSubsystem,
+  elevator: generateSingleMotorSubsystem,
+  climber: generateSingleMotorSubsystem,
   generic: generateSingleMotorSubsystem,
 };
 
