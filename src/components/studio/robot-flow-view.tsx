@@ -28,12 +28,16 @@ import {
   Cog,
   Compass,
   Cpu,
+  FastForward,
   Gamepad2,
+  Gauge,
   GripVertical,
   HelpCircle,
   Layers,
   LayoutGrid,
   Plus,
+  RotateCw,
+  SlidersHorizontal,
   Target,
   Trash2,
   Workflow,
@@ -62,6 +66,10 @@ const VALID_TYPES = new Set<SubsystemType>([
   "arm",
   "elevator",
   "climber",
+  "turret",
+  "wrist",
+  "indexer",
+  "hood",
   "generic",
 ]);
 
@@ -81,6 +89,14 @@ function SubsystemIcon({
       return <ArrowUpDown className={className} />;
     case "climber":
       return <Anchor className={className} />;
+    case "turret":
+      return <RotateCw className={className} />;
+    case "wrist":
+      return <SlidersHorizontal className={className} />;
+    case "indexer":
+      return <FastForward className={className} />;
+    case "hood":
+      return <Gauge className={className} />;
     case "generic":
       return <Cpu className={className} />;
     case "roller":
@@ -122,6 +138,18 @@ function formatSetpoint(action: SubsystemAction | undefined): {
       return {
         label: `${action.value} rot`,
         barPct: Math.min(100, (Math.abs(action.value) / 10) * 100),
+        activeDir: action.value === 0 ? 0 : 1,
+      };
+    case "smartPositionDeg":
+      return {
+        label: `${action.value}° SM`,
+        barPct: Math.min(100, (Math.abs(action.value) / 180) * 100),
+        activeDir: action.value === 0 ? 0 : 1,
+      };
+    case "smartPositionRot":
+      return {
+        label: `${action.value} rot SM`,
+        barPct: Math.min(100, (Math.abs(action.value) / 20) * 100),
         activeDir: action.value === 0 ? 0 : 1,
       };
   }
@@ -274,7 +302,9 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
           <SubsystemIcon
             type={subsystem.type}
             className={`h-3.5 w-3.5 shrink-0 ${
-              subsystem.type === "roller" || subsystem.type === "shooter"
+              subsystem.type === "roller" ||
+              subsystem.type === "shooter" ||
+              subsystem.type === "indexer"
                 ? activeDir > 0
                   ? "text-[#93c5fd] animate-motor-cw"
                   : activeDir < 0
@@ -647,18 +677,27 @@ export function RobotFlowView({
     items: { kind: SubsystemType; title: string; desc: string }[];
   }[] = [
     {
-      groupTitle: "Velocidade & Força",
+      groupTitle: "Velocidade & Fluxo",
       items: [
-        { kind: "roller", title: "Roller / Intake", desc: "PercentOutput · STOP/INTAKE/EJECT" },
-        { kind: "shooter", title: "Shooter / Flywheel", desc: "Velocity RPM + PID/SVAG" },
-        { kind: "climber", title: "Climber", desc: "Brake 60A · EXTEND/CLIMB" },
+        { kind: "roller", title: "Roller / Intake", desc: "PercentOutput · Un-Jam & STOP/EJECT" },
+        { kind: "indexer", title: "Indexer / Feeder", desc: "StallReversal · WAIT_SHOOTER → FEEDING" },
+        { kind: "shooter", title: "Shooter / Flywheel", desc: "RPM PID/SVAG · SPOOLING → AT_SPEED" },
       ],
     },
     {
-      groupTitle: "Posição & Geral",
+      groupTitle: "Posição & Precisão",
       items: [
-        { kind: "arm", title: "Arm / Pivot", desc: "Degrees + armGravity()" },
-        { kind: "elevator", title: "Elevator", desc: "Rotations + Gravity kG" },
+        { kind: "arm", title: "Arm / Pivot", desc: "SmartPos (°) · armGravity()" },
+        { kind: "elevator", title: "Elevator", desc: "SmartMotion (rot) · Gravity kG" },
+        { kind: "turret", title: "Turret", desc: "PositionWrap 0–360° · AIM/CENTER" },
+        { kind: "wrist", title: "Wrist", desc: "Degrees · armGravity() compacta" },
+        { kind: "hood", title: "Shooter Hood", desc: "SmartPos (°) · CLOSE/FAR/LOW" },
+      ],
+    },
+    {
+      groupTitle: "Força & Geral",
+      items: [
+        { kind: "climber", title: "Climber", desc: "Brake 60A · EXTEND/CLIMB" },
         { kind: "generic", title: "Motor Genérico", desc: "StateSubsystem simples" },
       ],
     },
@@ -1304,7 +1343,7 @@ export function RobotFlowView({
                                 }
                               />
                             </div>
-                            {selected.type === "arm" ? (
+                            {selected.type === "arm" || selected.type === "wrist" || selected.type === "hood" ? (
                               <div className="space-y-1.5">
                                 <label className="text-xs text-slate-300">Comprimento</label>
                                 <UnitInput
@@ -1448,8 +1487,306 @@ export function RobotFlowView({
                                 </div>
                               </div>
                             )}
+
+                            <div className="space-y-2.5 border-t border-[#22304a]/70 pt-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-300">
+                                  Position Wrap (0–360° Turret)
+                                </span>
+                                <Switch
+                                  checked={Boolean(selected.closedLoop.positionWrap)}
+                                  onCheckedChange={(checked) =>
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      closedLoop: prev.closedLoop
+                                        ? { ...prev.closedLoop, positionWrap: checked }
+                                        : undefined,
+                                    }))
+                                  }
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-300">
+                                  SmartMotion Profiled
+                                </span>
+                                <Switch
+                                  checked={Boolean(selected.closedLoop.smartMotion)}
+                                  onCheckedChange={(checked) =>
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      closedLoop: prev.closedLoop
+                                        ? {
+                                            ...prev.closedLoop,
+                                            smartMotion: checked
+                                              ? prev.closedLoop.smartMotion ?? {
+                                                  maxVelRps: 40,
+                                                  maxAccelRpss: 80,
+                                                  allowedError: 1,
+                                                }
+                                              : undefined,
+                                          }
+                                        : undefined,
+                                    }))
+                                  }
+                                />
+                              </div>
+
+                              {selected.closedLoop.smartMotion && (
+                                <div className="grid grid-cols-3 gap-2">
+                                  <UnitInput
+                                    unit="RPS"
+                                    type="number"
+                                    step={1}
+                                    min={0.5}
+                                    value={selected.closedLoop.smartMotion.maxVelRps}
+                                    onChange={(e) => {
+                                      const val = Math.max(0.5, Number.parseFloat(e.target.value || "40") || 40);
+                                      updateSubsystem(selected.id, (prev) => ({
+                                        ...prev,
+                                        closedLoop: prev.closedLoop?.smartMotion
+                                          ? {
+                                              ...prev.closedLoop,
+                                              smartMotion: { ...prev.closedLoop.smartMotion, maxVelRps: val },
+                                            }
+                                          : prev.closedLoop,
+                                      }));
+                                    }}
+                                  />
+                                  <UnitInput
+                                    unit="RPS²"
+                                    type="number"
+                                    step={5}
+                                    min={1}
+                                    value={selected.closedLoop.smartMotion.maxAccelRpss}
+                                    onChange={(e) => {
+                                      const val = Math.max(1, Number.parseFloat(e.target.value || "80") || 80);
+                                      updateSubsystem(selected.id, (prev) => ({
+                                        ...prev,
+                                        closedLoop: prev.closedLoop?.smartMotion
+                                          ? {
+                                              ...prev.closedLoop,
+                                              smartMotion: { ...prev.closedLoop.smartMotion, maxAccelRpss: val },
+                                            }
+                                          : prev.closedLoop,
+                                      }));
+                                    }}
+                                  />
+                                  <UnitInput
+                                    unit="tol"
+                                    type="number"
+                                    step={0.1}
+                                    min={0.01}
+                                    value={selected.closedLoop.smartMotion.allowedError}
+                                    onChange={(e) => {
+                                      const val = Math.max(0.01, Number.parseFloat(e.target.value || "1") || 1);
+                                      updateSubsystem(selected.id, (prev) => ({
+                                        ...prev,
+                                        closedLoop: prev.closedLoop?.smartMotion
+                                          ? {
+                                              ...prev.closedLoop,
+                                              smartMotion: { ...prev.closedLoop.smartMotion, allowedError: val },
+                                            }
+                                          : prev.closedLoop,
+                                      }));
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
+
+                        {/* Dual-Motor Follower */}
+                        <div className="space-y-2.5 border-t border-[#22304a] pt-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-200">
+                              Dual-Motor Follower
+                            </span>
+                            <Switch
+                              checked={Boolean(selected.motor.follower?.enabled)}
+                              onCheckedChange={(checked) =>
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  motor: {
+                                    ...prev.motor,
+                                    follower: {
+                                      enabled: checked,
+                                      canId: prev.motor.follower?.canId ?? prev.motor.canId + 1,
+                                      inverted: prev.motor.follower?.inverted ?? false,
+                                    },
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                          {selected.motor.follower?.enabled && (
+                            <div className="grid grid-cols-2 gap-3">
+                              <UnitInput
+                                unit="CAN"
+                                type="number"
+                                min={1}
+                                max={62}
+                                value={selected.motor.follower.canId}
+                                onChange={(e) => {
+                                  const canId = Math.min(62, Math.max(1, Number.parseInt(e.target.value || "1", 10) || 1));
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    motor: {
+                                      ...prev.motor,
+                                      follower: {
+                                        enabled: true,
+                                        canId,
+                                        inverted: prev.motor.follower?.inverted ?? false,
+                                      },
+                                    },
+                                  }));
+                                }}
+                              />
+                              <div className="flex items-center justify-between rounded-md border border-[#22304a] bg-[#0b0f17] px-3 py-1.5">
+                                <span className="text-xs text-slate-300">Invertido</span>
+                                <Switch
+                                  checked={Boolean(selected.motor.follower.inverted)}
+                                  onCheckedChange={(checked) =>
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      motor: {
+                                        ...prev.motor,
+                                        follower: {
+                                          enabled: true,
+                                          canId: prev.motor.follower?.canId ?? prev.motor.canId + 1,
+                                          inverted: checked,
+                                        },
+                                      },
+                                    }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Proteção & Un-Jam */}
+                        <div className="space-y-2.5 border-t border-[#22304a] pt-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-200">
+                              Proteção &amp; Stall Reversal
+                            </span>
+                            <Switch
+                              checked={Boolean(selected.protection?.stallReversalEnabled)}
+                              onCheckedChange={(checked) =>
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  protection: {
+                                    ...(prev.protection ?? {}),
+                                    stallReversalEnabled: checked,
+                                    stallCurrentAmps: prev.protection?.stallCurrentAmps ?? 35,
+                                    stallTimeSec: prev.protection?.stallTimeSec ?? 0.25,
+                                    reverseTimeSec: prev.protection?.reverseTimeSec ?? 0.35,
+                                    reverseOutput: prev.protection?.reverseOutput ?? -0.5,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                          {selected.protection?.stallReversalEnabled && (
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <UnitInput
+                                unit="Stall A"
+                                type="number"
+                                step={1}
+                                min={5}
+                                value={selected.protection.stallCurrentAmps ?? 35}
+                                onChange={(e) => {
+                                  const val = Math.max(5, Number.parseFloat(e.target.value || "35") || 35);
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    protection: { ...(prev.protection ?? {}), stallCurrentAmps: val },
+                                  }));
+                                }}
+                              />
+                              <UnitInput
+                                unit="Stall s"
+                                type="number"
+                                step={0.05}
+                                min={0.05}
+                                value={selected.protection.stallTimeSec ?? 0.25}
+                                onChange={(e) => {
+                                  const val = Math.max(0.05, Number.parseFloat(e.target.value || "0.25") || 0.25);
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    protection: { ...(prev.protection ?? {}), stallTimeSec: val },
+                                  }));
+                                }}
+                              />
+                              <UnitInput
+                                unit="Rev s"
+                                type="number"
+                                step={0.05}
+                                min={0.05}
+                                value={selected.protection.reverseTimeSec ?? 0.35}
+                                onChange={(e) => {
+                                  const val = Math.max(0.05, Number.parseFloat(e.target.value || "0.35") || 0.35);
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    protection: { ...(prev.protection ?? {}), reverseTimeSec: val },
+                                  }));
+                                }}
+                              />
+                              <UnitInput
+                                unit="Rev %"
+                                type="number"
+                                step={0.05}
+                                min={-1}
+                                max={1}
+                                value={selected.protection.reverseOutput ?? -0.5}
+                                onChange={(e) => {
+                                  const val = Math.min(1, Math.max(-1, Number.parseFloat(e.target.value || "-0.5") || -0.5));
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    protection: { ...(prev.protection ?? {}), reverseOutput: val },
+                                  }));
+                                }}
+                              />
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <UnitInput
+                              unit="Warn A"
+                              type="number"
+                              step={1}
+                              min={0}
+                              value={selected.protection?.currentWarningAmps ?? 0}
+                              onChange={(e) => {
+                                const raw = Number.parseFloat(e.target.value || "0") || 0;
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  protection: {
+                                    ...(prev.protection ?? {}),
+                                    currentWarningAmps: raw > 0 ? raw : undefined,
+                                  },
+                                }));
+                              }}
+                            />
+                            <UnitInput
+                              unit="Ramp s"
+                              type="number"
+                              step={0.05}
+                              min={0}
+                              value={selected.protection?.openLoopRampSec ?? 0}
+                              onChange={(e) => {
+                                const raw = Number.parseFloat(e.target.value || "0") || 0;
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  protection: {
+                                    ...(prev.protection ?? {}),
+                                    openLoopRampSec: raw > 0 ? raw : undefined,
+                                  },
+                                }));
+                              }}
+                            />
+                          </div>
+                        </div>
 
                         <div className="space-y-2.5 border-t border-[#22304a] pt-3">
                           <div className="flex items-center justify-between">

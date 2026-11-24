@@ -19,6 +19,9 @@ function renderActionCall(constantsClass: string, action: SubsystemAction): stri
     case "positionDeg":
     case "positionRot":
       return `io.controlMotor().runPosition(${constantsClass}.${constName})`;
+    case "smartPositionDeg":
+    case "smartPositionRot":
+      return `io.controlMotor().runSmartPosition(${constantsClass}.${constName})`;
   }
 }
 
@@ -50,8 +53,10 @@ function renderConstantDeclaration(c: CollectedConstant): string {
     case "velocityRpm":
       return `  public static final AngularVelocity ${c.name} = RPM.of(${formatDouble(c.value)});`;
     case "positionDeg":
+    case "smartPositionDeg":
       return `  public static final Angle ${c.name} = Degrees.of(${formatDouble(c.value)});`;
     case "positionRot":
+    case "smartPositionRot":
       return `  public static final Angle ${c.name} = Rotations.of(${formatDouble(c.value)});`;
   }
 }
@@ -94,15 +99,17 @@ export function generateSingleMotorSubsystem(
   const unitImports = new Set<string>(["Amps"]);
   const measureImports = new Set<string>();
   const cl = subsystem.closedLoop;
+  const pr = subsystem.protection;
+  const hasFollower = Boolean(subsystem.motor.follower?.enabled);
 
   for (const c of actionConstants) {
     if (c.actionType === "velocityRpm") {
       unitImports.add("RPM");
       measureImports.add("AngularVelocity");
-    } else if (c.actionType === "positionDeg") {
+    } else if (c.actionType === "positionDeg" || c.actionType === "smartPositionDeg") {
       unitImports.add("Degrees");
       measureImports.add("Angle");
-    } else if (c.actionType === "positionRot") {
+    } else if (c.actionType === "positionRot" || c.actionType === "smartPositionRot") {
       unitImports.add("Rotations");
       measureImports.add("Angle");
     }
@@ -111,8 +118,15 @@ export function generateSingleMotorSubsystem(
   if (cl?.minLimit !== undefined && cl?.maxLimit !== undefined) {
     unitImports.add(cl.limitUnit === "deg" ? "Degrees" : "Rotations");
   }
+  if (cl?.smartMotion) {
+    unitImports.add("RotationsPerSecond");
+    unitImports.add("RotationsPerSecondPerSecond");
+    unitImports.add(cl.limitUnit === "rot" ? "Rotations" : "Degrees");
+  }
   if (cl && subsystem.type === "shooter") unitImports.add("RPM");
-  if (cl && subsystem.type === "arm") unitImports.add("Degrees");
+  if (cl && (subsystem.type === "arm" || subsystem.type === "wrist" || subsystem.type === "hood" || subsystem.type === "turret")) {
+    unitImports.add("Degrees");
+  }
   if (cl && subsystem.type === "elevator") unitImports.add("Rotations");
 
   const unitImportBlock = Array.from(unitImports)
@@ -134,7 +148,7 @@ export function generateSingleMotorSubsystem(
   const invertChain = subsystem.motor.inverted ? ".inverted(true)" : "";
 
   const configExtras: string[] = [];
-  if (subsystem.type === "arm") {
+  if (subsystem.type === "arm" || subsystem.type === "wrist" || subsystem.type === "hood") {
     configExtras.push("          .armGravity()");
   }
   if (cl) {
@@ -144,22 +158,60 @@ export function generateSingleMotorSubsystem(
     configExtras.push(
       `          .svag(0, ${formatDouble(cl.kS)}, ${formatDouble(cl.kV)}, ${formatDouble(cl.kA)}, ${formatDouble(cl.kG)})`,
     );
+    if (cl.smartMotion) {
+      const errUnit = cl.limitUnit === "rot" ? "Rotations" : "Degrees";
+      configExtras.push(
+        `          .smartMotion(0, RotationsPerSecond.of(${formatDouble(cl.smartMotion.maxVelRps)}), RotationsPerSecondPerSecond.of(${formatDouble(cl.smartMotion.maxAccelRpss)}), ${errUnit}.of(${formatDouble(cl.smartMotion.allowedError)}))`,
+      );
+    }
     if (cl.minLimit !== undefined && cl.maxLimit !== undefined) {
       const unitCls = cl.limitUnit === "deg" ? "Degrees" : "Rotations";
+      const limitMethod = cl.positionWrap ? "withPositionWrap" : "softLimits";
       configExtras.push(
-        `          .softLimits(${unitCls}.of(${formatDouble(cl.minLimit)}), ${unitCls}.of(${formatDouble(cl.maxLimit)}))`,
+        `          .${limitMethod}(${unitCls}.of(${formatDouble(cl.minLimit)}), ${unitCls}.of(${formatDouble(cl.maxLimit)}))`,
       );
     }
     if (subsystem.type === "shooter") {
       configExtras.push("          .withVelocityTolerance(RPM.of(100.0))");
-    } else if (subsystem.type === "arm") {
+    } else if (
+      subsystem.type === "arm" ||
+      subsystem.type === "wrist" ||
+      subsystem.type === "hood" ||
+      subsystem.type === "turret"
+    ) {
       configExtras.push("          .withPositionTolerance(Degrees.of(2.0))");
     } else if (subsystem.type === "elevator") {
       configExtras.push("          .withPositionTolerance(Rotations.of(0.15))");
     }
   }
+  if (pr?.openLoopRampSec && pr.openLoopRampSec > 0) {
+    configExtras.push(`          .openLoopRamp(${formatDouble(pr.openLoopRampSec)})`);
+  }
+  if (pr?.closedLoopRampSec && pr.closedLoopRampSec > 0) {
+    configExtras.push(`          .closedLoopRamp(${formatDouble(pr.closedLoopRampSec)})`);
+  }
+  if (pr?.currentWarningAmps && pr.currentWarningAmps > 0) {
+    configExtras.push(
+      `          .withCurrentWarning(Amps.of(${formatDouble(pr.currentWarningAmps)}), 25)`,
+    );
+  }
+  if (pr?.stallReversalEnabled) {
+    configExtras.push(
+      `          .withStallReversal(Amps.of(${formatDouble(pr.stallCurrentAmps ?? 35)}), ${formatDouble(pr.stallTimeSec ?? 0.4)}, ${formatDouble(pr.reverseTimeSec ?? 0.3)}, ${formatDouble(pr.reverseOutput ?? 0.25)})`,
+    );
+  } else if (pr?.stallDetectionEnabled) {
+    configExtras.push(
+      `          .withStallDetection(Amps.of(${formatDouble(pr.stallCurrentAmps ?? 35)}), ${formatDouble(pr.stallTimeSec ?? 0.4)})`,
+    );
+  }
 
   const extraChain = configExtras.length > 0 ? "\n" + configExtras.join("\n") : "";
+  const followerIdLine = hasFollower
+    ? `\n  public static final int FOLLOWER_ID = ${subsystem.motor.follower!.canId};`
+    : "";
+  const followerConfigBlock = hasFollower
+    ? `\n\n  public static final MotorConfig FOLLOWER_CONFIG =\n      new MotorConfig().currentLimit(Amps.of(${subsystem.motor.currentLimitAmps}))${neutralChain}.withMotorLeader(MOTOR_ID).withFollowerInverted(${Boolean(subsystem.motor.follower!.inverted)});`
+    : "";
 
   // 1. Constants
   const constantsContent = `package ${fullSubPkg};
@@ -172,10 +224,10 @@ import org.ciprix.interfaces.motor.advanced.MotorConfig;
 public final class ${constantsClass} {
   private ${constantsClass}() {}
 
-  public static final int MOTOR_ID = ${subsystem.motor.canId};
+  public static final int MOTOR_ID = ${subsystem.motor.canId};${followerIdLine}
 
 ${constantLines}  public static final MotorConfig MOTOR_CONFIG =
-      new MotorConfig().currentLimit(Amps.of(${subsystem.motor.currentLimitAmps}))${neutralChain}${invertChain}${extraChain};
+      new MotorConfig().currentLimit(Amps.of(${subsystem.motor.currentLimitAmps}))${neutralChain}${invertChain}${extraChain};${followerConfigBlock}
 
   /** What the SuperStructure (or the co-driver) asks of the ${className.toLowerCase()}. */
   public enum ${requestEnum} {
@@ -190,6 +242,9 @@ ${subsystem.fsm.states.map((s) => `    ${s.name}`).join(",\n")}
 `;
 
   // 2. IO Interface
+  const followerInputsLine = hasFollower
+    ? "\n    public MotorIOInputs followerInputs = new MotorIOInputs();"
+    : "";
   const ioContent = `package ${fullSubPkg};
 
 import org.ciprix.interfaces.motor.advanced.MotorController;
@@ -202,7 +257,7 @@ import org.littletonrobotics.junction.AutoLog;
 public interface ${ioInterface} extends SubsystemIO<${inputsAutoLogged}> {
   @AutoLog
   class ${ioInterface}Inputs {
-    public MotorIOInputs motorInputs = new MotorIOInputs();
+    public MotorIOInputs motorInputs = new MotorIOInputs();${followerInputsLine}
   }
 
   @Override
@@ -217,9 +272,13 @@ public interface ${ioInterface} extends SubsystemIO<${inputsAutoLogged}> {
   // 3. Vendor IO
   const busName = subsystem.motor.canBus.trim();
   const canBusArg = busName && busName !== "rio" ? `new CANBus("${busName}")` : "new CANBus()";
+  const followerUpdateLine = hasFollower ? "\n    follower.updateInputs(inputs.followerInputs);" : "";
 
   let vendorContent = "";
   if (subsystem.motor.vendor === "talonfx") {
+    const followerDecl = hasFollower
+      ? `\n  private final MotorIO follower =\n      new MotorIOTalonFX(\n          "${className}/Follower", ${constantsClass}.FOLLOWER_ID, ${canBusArg}, ${constantsClass}.FOLLOWER_CONFIG);`
+      : "";
     vendorContent = `package ${fullSubPkg};
 
 import com.ctre.phoenix6.CANBus;
@@ -231,11 +290,11 @@ import org.ciprix.interfaces.motor.advanced.MotorIO;
 public class ${vendorClass} implements ${ioInterface} {
   private final MotorIO motor =
       new MotorIOTalonFX(
-          "${className}/Motor", ${constantsClass}.MOTOR_ID, ${canBusArg}, ${constantsClass}.MOTOR_CONFIG);
+          "${className}/Motor", ${constantsClass}.MOTOR_ID, ${canBusArg}, ${constantsClass}.MOTOR_CONFIG);${followerDecl}
 
   @Override
   public void updateInputs(${inputsAutoLogged} inputs) {
-    motor.updateInputs(inputs.motorInputs);
+    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}
   }
 
   @Override
@@ -245,6 +304,9 @@ public class ${vendorClass} implements ${ioInterface} {
 }
 `;
   } else if (subsystem.motor.vendor === "sparkmax") {
+    const followerDecl = hasFollower
+      ? `\n  private final MotorIO follower =\n      new MotorIOSparkMax("${className}/Follower", ${constantsClass}.FOLLOWER_ID, ${constantsClass}.FOLLOWER_CONFIG);`
+      : "";
     vendorContent = `package ${fullSubPkg};
 
 import org.ciprix.interfaces.motor.MotorIOSparkMax;
@@ -254,11 +316,11 @@ import org.ciprix.interfaces.motor.advanced.MotorIO;
 /** Real ${className} hardware using REV SPARK MAX. */
 public class ${vendorClass} implements ${ioInterface} {
   private final MotorIO motor =
-      new MotorIOSparkMax("${className}/Motor", ${constantsClass}.MOTOR_ID, ${constantsClass}.MOTOR_CONFIG);
+      new MotorIOSparkMax("${className}/Motor", ${constantsClass}.MOTOR_ID, ${constantsClass}.MOTOR_CONFIG);${followerDecl}
 
   @Override
   public void updateInputs(${inputsAutoLogged} inputs) {
-    motor.updateInputs(inputs.motorInputs);
+    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}
   }
 
   @Override
@@ -268,6 +330,9 @@ public class ${vendorClass} implements ${ioInterface} {
 }
 `;
   } else {
+    const followerDecl = hasFollower
+      ? `\n  private final MotorIO follower =\n      new MotorIOTalonSRX("${className}/Follower", ${constantsClass}.FOLLOWER_ID, ${constantsClass}.FOLLOWER_CONFIG);`
+      : "";
     vendorContent = `package ${fullSubPkg};
 
 import org.ciprix.interfaces.motor.MotorIOTalonSRX;
@@ -277,11 +342,11 @@ import org.ciprix.interfaces.motor.advanced.MotorIO;
 /** Real ${className} hardware using CTRE Talon SRX (Phoenix 5). */
 public class ${vendorClass} implements ${ioInterface} {
   private final MotorIO motor =
-      new MotorIOTalonSRX("${className}/Motor", ${constantsClass}.MOTOR_ID, ${constantsClass}.MOTOR_CONFIG);
+      new MotorIOTalonSRX("${className}/Motor", ${constantsClass}.MOTOR_ID, ${constantsClass}.MOTOR_CONFIG);${followerDecl}
 
   @Override
   public void updateInputs(${inputsAutoLogged} inputs) {
-    motor.updateInputs(inputs.motorInputs);
+    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}
   }
 
   @Override
@@ -295,16 +360,19 @@ public class ${vendorClass} implements ${ioInterface} {
   // 4. Sim IO
   const isSpark = subsystem.motor.vendor === "sparkmax";
   const simFactory = isSpark ? "MotorIOSim.spark" : "MotorIOSim.talonFX";
-  const dcMotor = isSpark ? "DCMotor.getNEO(1)" : "DCMotor.getKrakenX60(1)";
+  const motorCount = hasFollower ? 2 : 1;
+  const dcMotor = isSpark ? `DCMotor.getNEO(${motorCount})` : `DCMotor.getKrakenX60(${motorCount})`;
 
   let simMechanismExpr = "";
   if (subsystem.type === "shooter") {
     simMechanismExpr = `SimMechanism.flywheel(
                   ${dcMotor}, ${formatDouble(subsystem.motor.gearRatio)}, ${formatDouble(subsystem.motor.moiKgM2)})
               .withFriction(0.02, 0.0)`;
-  } else if (subsystem.type === "arm") {
-    const massKg = subsystem.physics?.massKg ?? 4.0;
-    const lengthMeters = subsystem.physics?.lengthMeters ?? 0.5;
+  } else if (subsystem.type === "arm" || subsystem.type === "wrist" || subsystem.type === "hood") {
+    const defaultMass = subsystem.type === "hood" ? 0.8 : subsystem.type === "wrist" ? 1.8 : 4.0;
+    const defaultLen = subsystem.type === "hood" ? 0.18 : subsystem.type === "wrist" ? 0.25 : 0.5;
+    const massKg = subsystem.physics?.massKg ?? defaultMass;
+    const lengthMeters = subsystem.physics?.lengthMeters ?? defaultLen;
     const minRot =
       cl?.minLimit !== undefined
         ? cl.limitUnit === "deg"
@@ -375,13 +443,36 @@ public class ${className}IOSim implements ${ioInterface} {
 `;
 
   // 5. Subsystem class
+  const securityLine = subsystem.fsm.securityState
+    ? `    fsm.securityState(${stateEnum}.${subsystem.fsm.securityState});\n\n`
+    : "";
+
   const stateConfigs = subsystem.fsm.states
     .map((state) => {
       const enterCall = renderActionCall(constantsClass, state.onEnter);
       const updateChain = state.onUpdate
         ? `\n        .onUpdate(() -> ${renderActionCall(constantsClass, state.onUpdate)})`
         : "";
-      return `    fsm.state(${stateEnum}.${state.name})\n        .onEnter(() -> ${enterCall})${updateChain};`;
+      const transitionChains = (state.transitions ?? [])
+        .map((tr) => {
+          if (tr.trigger === "afterSeconds") {
+            return `\n        .transitionAfter(${formatDouble(tr.value ?? 0.5)}, ${stateEnum}.${tr.targetState})`;
+          }
+          const cond =
+            tr.trigger === "atSetpoint"
+              ? "inputs.motorInputs.atSetpoint"
+              : tr.trigger === "stalled"
+                ? "inputs.motorInputs.stalled"
+                : `inputs.motorInputs.averageCurrentAmps >= ${formatDouble(tr.value ?? 25.0)}`;
+          const deb = tr.debounceSec && tr.debounceSec > 0 ? `, ${formatDouble(tr.debounceSec)}` : "";
+          return `\n        .transitionTo(${stateEnum}.${tr.targetState}, () -> ${cond}${deb})`;
+        })
+        .join("");
+      const timeoutChain =
+        state.timeoutAfterSec !== undefined
+          ? `\n        .timeoutAfter(${formatDouble(state.timeoutAfterSec)})`
+          : "";
+      return `    fsm.state(${stateEnum}.${state.name})\n        .onEnter(() -> ${enterCall})${updateChain}${transitionChains}${timeoutChain};`;
     })
     .join("\n");
 
@@ -429,7 +520,7 @@ public class ${className}
         ${requestEnum}.${subsystem.fsm.initialRequest},
         ${constantsClass}.class);
 
-${stateConfigs}
+${securityLine}${stateConfigs}
 
 ${bindLines}
     fsm.validateComplete();${selfTestBlock}

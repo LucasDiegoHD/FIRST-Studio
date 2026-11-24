@@ -128,6 +128,8 @@ public class Robot extends CiprixRobot {
   const ctorParams = subInfos.map((info) => `${info.className} ${info.varName}`).join(", ");
   const ctorAssigns = subInfos.map((info) => `    this.${info.varName} = ${info.varName};`).join("\n");
 
+  const subInfoById = new Map(subInfos.map((info) => [info.sub.id, info]));
+
   const superStates = project.superstructure.states
     .map((stateName) => {
       const actionsForState = project.superstructure.stateActions[stateName] ?? {};
@@ -135,13 +137,37 @@ public class Robot extends CiprixRobot {
         const targetReq = actionsForState[info.sub.id] ?? info.sub.fsm.initialRequest;
         return `${info.requestField} = ${info.requestEnum}.${targetReq};`;
       });
+
+      const localTransitions = (project.superstructure.transitions ?? []).filter(
+        (tr) => tr.fromState === stateName,
+      );
+      const trChains = localTransitions.map((tr) => {
+        if (tr.condition === "afterSeconds") {
+          return `\n        .transitionAfter(${formatDouble(tr.seconds ?? 1.0)}, RobotState.${tr.toState})`;
+        }
+        const ids =
+          tr.condition === "allAtGoal"
+            ? project.subsystems.map((s) => s.id)
+            : (tr.subsystemIds ?? []);
+        const checks = ids
+          .map((id) => subInfoById.get(id))
+          .filter((info): info is NonNullable<typeof info> => Boolean(info))
+          .map((info) => `is${info.className}AtGoal()`);
+        const condExpr = checks.length > 0 ? checks.join(" && ") : "true";
+        return `\n        .transitionTo(RobotState.${tr.toState}, () -> ${condExpr})`;
+      });
+      const chainSuffix = trChains.join("");
+
       if (assignments.length === 0) {
-        return `    generalFsm.state(RobotState.${stateName}).onEnter(() -> {});`;
+        return `    generalFsm.state(RobotState.${stateName}).onEnter(() -> {})${chainSuffix};`;
       }
-      if (assignments.length === 1) {
+      if (assignments.length === 1 && trChains.length === 0) {
         return `    generalFsm.state(RobotState.${stateName}).onEnter(() -> ${assignments[0].replace(/;$/, "")});`;
       }
-      return `    generalFsm\n        .state(RobotState.${stateName})\n        .onEnter(\n            () -> {\n${assignments.map((a) => `              ${a}`).join("\n")}\n            });`;
+      if (assignments.length === 1) {
+        return `    generalFsm\n        .state(RobotState.${stateName})\n        .onEnter(() -> ${assignments[0].replace(/;$/, "")})${chainSuffix};`;
+      }
+      return `    generalFsm\n        .state(RobotState.${stateName})\n        .onEnter(\n            () -> {\n${assignments.map((a) => `              ${a}`).join("\n")}\n            })${chainSuffix};`;
     })
     .join("\n");
 

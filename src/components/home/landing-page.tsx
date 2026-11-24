@@ -47,6 +47,7 @@ export function LandingPage() {
     setLocale,
     loadProject,
     resetToSkeleton,
+    resetToCompetition,
     resetToBlank,
     t,
   } = useProject();
@@ -294,7 +295,7 @@ export function LandingPage() {
           <h2 className="font-mono text-xs uppercase tracking-wider text-slate-400">
             {t("home.templates_title")}
           </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <button
               type="button"
               onClick={() => {
@@ -317,6 +318,34 @@ export function LandingPage() {
                   </div>
                   <p className="mt-1 text-[13px] text-slate-400">
                     {t("home.tpl_skeleton_desc")}
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-1 group-hover:text-white shrink-0" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                resetToCompetition();
+                router.push("/studio");
+              }}
+              className="group flex items-center justify-between rounded-xl border border-[#3b6bb5]/80 bg-[#131c2e] px-5 py-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-[#60a5fa] hover:bg-[#19253d] hover:shadow-[0_0_24px_-8px_rgba(59,130,246,0.45)] cursor-pointer"
+            >
+              <div className="flex items-start gap-3.5">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#60a5fa] bg-[#142c4f] text-white">
+                  <Cog className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-headline text-[16px] font-semibold text-white">Competition</p>
+                    <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[#93c5fd]">
+                      <FileCode2 className="h-3.5 w-3.5" />
+                      24 arquivos
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[13px] text-slate-400">
+                    Shooter + Hood + Indexer · SmartMotion · atGoal Interlocks
                   </p>
                 </div>
               </div>

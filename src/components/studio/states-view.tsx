@@ -28,7 +28,7 @@ import { UnitInput } from "@/components/ui/unit-input";
 import { useProject } from "@/context/project-context";
 import { toUpperSnake } from "@/lib/generator/java-utils";
 import { generateSubsystemMermaid } from "@/lib/generator/mermaid";
-import type { SubsystemAction } from "@/lib/schema/ciprix-project";
+import type { FsmTransition, SubsystemAction } from "@/lib/schema/ciprix-project";
 import { CodeViewer } from "./code-viewer";
 import { SuperStructureTab } from "./superstructure-tab";
 
@@ -44,6 +44,10 @@ function formatActionSummary(action: SubsystemAction): string {
       return `onEnter: ${action.constantName} (${action.value}°)`;
     case "positionRot":
       return `onEnter: ${action.constantName} (${action.value} rot)`;
+    case "smartPositionDeg":
+      return `SmartPos: ${action.constantName} (${action.value}°)`;
+    case "smartPositionRot":
+      return `SmartPos: ${action.constantName} (${action.value} rot)`;
   }
 }
 
@@ -195,7 +199,7 @@ export function StatesView({
 
   const edges = useMemo<Edge[]>(() => {
     if (!activeSub) return [];
-    return activeSub.fsm.bindings.map((b, idx) => {
+    const list: Edge[] = activeSub.fsm.bindings.map((b, idx) => {
       const isFired = b.request === activeRequest;
       return {
         id: `e-bind-${b.request}-${idx}`,
@@ -211,7 +215,51 @@ export function StatesView({
         },
       };
     });
-  }, [activeSub, activeRequest]);
+
+    for (const st of activeSub.fsm.states) {
+      for (const tr of st.transitions ?? []) {
+        const label =
+          tr.trigger === "afterSeconds"
+            ? `after ${tr.value ?? 0.5}s`
+            : tr.trigger === "atSetpoint"
+              ? "atGoal()"
+              : tr.trigger === "stalled"
+                ? "stalled"
+                : `>${tr.value ?? 30}A`;
+        list.push({
+          id: `e-tr-${st.name}-${tr.id}`,
+          source: `state-${st.name}`,
+          target: `state-${tr.targetState}`,
+          label,
+          animated: st.name === activeSimState,
+          labelStyle: { fill: "#67e8f9", fontSize: 10, fontFamily: "monospace" },
+          labelBgStyle: { fill: "#0f1624", fillOpacity: 0.95 },
+          style: {
+            stroke: "#22d3ee",
+            strokeWidth: 1.6,
+            strokeDasharray: "5 3",
+          },
+        });
+      }
+      if (st.timeoutAfterSec && activeSub.fsm.securityState) {
+        list.push({
+          id: `e-to-${st.name}`,
+          source: `state-${st.name}`,
+          target: `state-${activeSub.fsm.securityState}`,
+          label: `timeout ${st.timeoutAfterSec}s`,
+          labelStyle: { fill: "#fda4af", fontSize: 10, fontFamily: "monospace" },
+          labelBgStyle: { fill: "#0f1624", fillOpacity: 0.95 },
+          style: {
+            stroke: "#fb7185",
+            strokeWidth: 1.4,
+            strokeDasharray: "3 3",
+          },
+        });
+      }
+    }
+
+    return list;
+  }, [activeSub, activeRequest, activeSimState]);
 
   const superJavaFile = useMemo(
     () => generatedFiles.find((f) => f.path.endsWith("SuperStructure.java")),
@@ -392,10 +440,10 @@ export function StatesView({
                   const actionMeta =
                     st.onEnter.type === "velocityRpm"
                       ? { unit: "RPM", min: -6000, max: 6000, step: 100, badge: `${Math.round(st.onEnter.value)} RPM` }
-                      : st.onEnter.type === "positionDeg"
-                        ? { unit: "deg", min: -90, max: 180, step: 5, badge: `${st.onEnter.value}°` }
-                        : st.onEnter.type === "positionRot"
-                          ? { unit: "rot", min: 0, max: 20, step: 0.25, badge: `${st.onEnter.value} rot` }
+                      : st.onEnter.type === "positionDeg" || st.onEnter.type === "smartPositionDeg"
+                        ? { unit: "deg", min: -180, max: 360, step: 5, badge: `${st.onEnter.value}°` }
+                        : st.onEnter.type === "positionRot" || st.onEnter.type === "smartPositionRot"
+                          ? { unit: "rot", min: -20, max: 50, step: 0.25, badge: `${st.onEnter.value} rot` }
                           : st.onEnter.type === "percentOutput"
                             ? {
                                 unit: "pct",
@@ -458,6 +506,10 @@ export function StatesView({
                               action = { type: "positionDeg", constantName: `${st.name}_ANGLE`, value: 45 };
                             } else if (nextType === "positionRot") {
                               action = { type: "positionRot", constantName: `${st.name}_POS`, value: 2.5 };
+                            } else if (nextType === "smartPositionDeg") {
+                              action = { type: "smartPositionDeg", constantName: `${st.name}_ANGLE`, value: 45 };
+                            } else if (nextType === "smartPositionRot") {
+                              action = { type: "smartPositionRot", constantName: `${st.name}_POS`, value: 5 };
                             } else {
                               action = { type: "percentOutput", constantName: `${st.name}_OUTPUT`, value: 0.5 };
                             }
@@ -477,6 +529,8 @@ export function StatesView({
                           <option value="velocityRpm">Velocidade (RPM)</option>
                           <option value="positionDeg">Posição (°)</option>
                           <option value="positionRot">Posição (rot)</option>
+                          <option value="smartPositionDeg">SmartPos (°)</option>
+                          <option value="smartPositionRot">SmartPos (rot)</option>
                         </Select>
                         <Button
                           size="icon"
@@ -575,6 +629,209 @@ export function StatesView({
                           </div>
                         </div>
                       )}
+
+                      {/* Transições Locais & Timeout */}
+                      <div className="space-y-2 border-t border-[#22304a]/80 pt-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                            Transições ({(st.transitions ?? []).length}) · Timeout
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              type="number"
+                              step={0.5}
+                              min={0}
+                              placeholder="Timeout (s)"
+                              value={st.timeoutAfterSec ?? ""}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                const raw = e.target.value.trim();
+                                const parsed = raw === "" ? undefined : Math.max(0.1, Number.parseFloat(raw) || 0.1);
+                                updateSubsystem(activeSub.id, (prev) => ({
+                                  ...prev,
+                                  fsm: {
+                                    ...prev.fsm,
+                                    states: prev.fsm.states.map((item, i) =>
+                                      i === idx ? { ...item, timeoutAfterSec: parsed } : item,
+                                    ),
+                                  },
+                                }));
+                              }}
+                              className="h-7 w-20 font-mono text-[11px]"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-[11px]"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const target =
+                                  activeSub.fsm.states.find((s) => s.name !== st.name)?.name ??
+                                  st.name;
+                                const newTr: FsmTransition = {
+                                  id: `tr-${Date.now().toString(36)}`,
+                                  trigger: "atSetpoint",
+                                  targetState: target,
+                                };
+                                updateSubsystem(activeSub.id, (prev) => ({
+                                  ...prev,
+                                  fsm: {
+                                    ...prev.fsm,
+                                    states: prev.fsm.states.map((item, i) =>
+                                      i === idx
+                                        ? {
+                                            ...item,
+                                            transitions: [...(item.transitions ?? []), newTr],
+                                          }
+                                        : item,
+                                    ),
+                                  },
+                                }));
+                              }}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {(st.transitions ?? []).map((tr, trIdx) => (
+                          <div
+                            key={tr.id}
+                            onClick={(e) => e.stopPropagation()}
+                            className="grid grid-cols-12 gap-1.5 items-center"
+                          >
+                            <Select
+                              value={tr.trigger}
+                              className="col-span-5 h-7 font-mono text-[11px]"
+                              onChange={(e) => {
+                                const nextTrigger = e.target.value as FsmTransition["trigger"];
+                                updateSubsystem(activeSub.id, (prev) => ({
+                                  ...prev,
+                                  fsm: {
+                                    ...prev.fsm,
+                                    states: prev.fsm.states.map((item, i) =>
+                                      i === idx
+                                        ? {
+                                            ...item,
+                                            transitions: (item.transitions ?? []).map((tItem, ti) =>
+                                              ti === trIdx
+                                                ? {
+                                                    ...tItem,
+                                                    trigger: nextTrigger,
+                                                    value:
+                                                      nextTrigger === "afterSeconds"
+                                                        ? tItem.value ?? 0.5
+                                                        : nextTrigger === "currentAbove"
+                                                          ? tItem.value ?? 35
+                                                          : undefined,
+                                                  }
+                                                : tItem,
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  },
+                                }));
+                              }}
+                            >
+                              <option value="atSetpoint">atSetpoint()</option>
+                              <option value="afterSeconds">afterSeconds(s)</option>
+                              <option value="stalled">stalled()</option>
+                              <option value="currentAbove">currentAbove(A)</option>
+                            </Select>
+
+                            {(tr.trigger === "afterSeconds" || tr.trigger === "currentAbove") && (
+                              <Input
+                                type="number"
+                                step={tr.trigger === "afterSeconds" ? 0.1 : 1}
+                                min={0.05}
+                                value={tr.value ?? (tr.trigger === "afterSeconds" ? 0.5 : 35)}
+                                className="col-span-2 h-7 font-mono text-[11px]"
+                                onChange={(e) => {
+                                  const val = Math.max(0.05, Number.parseFloat(e.target.value || "0.5") || 0.5);
+                                  updateSubsystem(activeSub.id, (prev) => ({
+                                    ...prev,
+                                    fsm: {
+                                      ...prev.fsm,
+                                      states: prev.fsm.states.map((item, i) =>
+                                        i === idx
+                                          ? {
+                                              ...item,
+                                              transitions: (item.transitions ?? []).map((tItem, ti) =>
+                                                ti === trIdx ? { ...tItem, value: val } : tItem,
+                                              ),
+                                            }
+                                          : item,
+                                      ),
+                                    },
+                                  }));
+                                }}
+                              />
+                            )}
+
+                            <Select
+                              value={tr.targetState}
+                              className={`${
+                                tr.trigger === "afterSeconds" || tr.trigger === "currentAbove"
+                                  ? "col-span-4"
+                                  : "col-span-6"
+                              } h-7 font-mono text-[11px]`}
+                              onChange={(e) =>
+                                updateSubsystem(activeSub.id, (prev) => ({
+                                  ...prev,
+                                  fsm: {
+                                    ...prev.fsm,
+                                    states: prev.fsm.states.map((item, i) =>
+                                      i === idx
+                                        ? {
+                                            ...item,
+                                            transitions: (item.transitions ?? []).map((tItem, ti) =>
+                                              ti === trIdx
+                                                ? { ...tItem, targetState: e.target.value }
+                                                : tItem,
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  },
+                                }))
+                              }
+                            >
+                              {activeSub.fsm.states.map((s) => (
+                                <option key={s.name} value={s.name}>
+                                  → {s.name}
+                                </option>
+                              ))}
+                            </Select>
+
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="col-span-1 h-7 w-7"
+                              onClick={() =>
+                                updateSubsystem(activeSub.id, (prev) => ({
+                                  ...prev,
+                                  fsm: {
+                                    ...prev.fsm,
+                                    states: prev.fsm.states.map((item, i) =>
+                                      i === idx
+                                        ? {
+                                            ...item,
+                                            transitions: (item.transitions ?? []).filter(
+                                              (_, ti) => ti !== trIdx,
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  },
+                                }))
+                              }
+                            >
+                              <Trash2 className="h-3 w-3 text-rose-400" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   );
                 })}
@@ -639,6 +896,33 @@ export function StatesView({
                           ))}
                         </Select>
                       </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-slate-300">
+                        Security State (Timeout Fallback)
+                      </label>
+                      <Select
+                        className="font-mono h-8 text-xs"
+                        value={activeSub.fsm.securityState ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateSubsystem(activeSub.id, (prev) => ({
+                            ...prev,
+                            fsm: {
+                              ...prev.fsm,
+                              securityState: val === "" ? undefined : val,
+                            },
+                          }));
+                        }}
+                      >
+                        <option value="">(Desativado)</option>
+                        {activeSub.fsm.states.map((s) => (
+                          <option key={s.name} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </Select>
                     </div>
 
                     <div className="space-y-2.5 border-t border-[#22304a] pt-3">

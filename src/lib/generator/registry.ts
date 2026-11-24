@@ -12,6 +12,10 @@ export const SUBSYSTEM_GENERATORS: Record<SubsystemConfig["type"], SubsystemGene
   arm: generateSingleMotorSubsystem,
   elevator: generateSingleMotorSubsystem,
   climber: generateSingleMotorSubsystem,
+  turret: generateSingleMotorSubsystem,
+  wrist: generateSingleMotorSubsystem,
+  indexer: generateSingleMotorSubsystem,
+  hood: generateSingleMotorSubsystem,
   generic: generateSingleMotorSubsystem,
 };
 

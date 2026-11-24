@@ -5,7 +5,12 @@ import { useHistoryState } from "@/hooks/useHistoryState";
 import { generateProjectFiles } from "@/lib/generator";
 import type { GeneratedFile } from "@/lib/generator/subsystems/roller";
 import { translate, type Locale, type TranslationKey } from "@/lib/i18n";
-import { createBlankPreset, createNewSubsystem, createSkeletonPreset } from "@/lib/presets/skeleton";
+import {
+  createBlankPreset,
+  createCompetitionPreset,
+  createNewSubsystem,
+  createSkeletonPreset,
+} from "@/lib/presets/skeleton";
 import {
   CiprixProjectSchema,
   type CiprixProject,
@@ -34,6 +39,7 @@ interface ProjectContextValue {
   loadProject: (next: CiprixProject) => void;
   resetToSkeleton: () => void;
   resetToBlank: () => void;
+  resetToCompetition: () => void;
   addSubsystem: (type: SubsystemType) => void;
   removeSubsystem: (id: string) => void;
   reorderSubsystems: (orderedIds: string[]) => void;
@@ -112,6 +118,12 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     const preset = createBlankPreset();
     set(preset);
     setSelectedSubsystemId(null);
+  }, [set]);
+
+  const resetToCompetition = useCallback(() => {
+    const preset = createCompetitionPreset();
+    set(preset);
+    setSelectedSubsystemId(preset.subsystems[0]?.id ?? null);
   }, [set]);
 
   const addSubsystem = useCallback(
@@ -216,6 +228,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     loadProject,
     resetToSkeleton,
     resetToBlank,
+    resetToCompetition,
     addSubsystem,
     removeSubsystem,
     reorderSubsystems,

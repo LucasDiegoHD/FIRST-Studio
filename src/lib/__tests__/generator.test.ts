@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { generateProjectFiles, getRequiredVendordeps } from "../generator";
-import { createBlankPreset, createNewSubsystem, createSkeletonPreset } from "../presets/skeleton";
+import {
+  createBlankPreset,
+  createCompetitionPreset,
+  createNewSubsystem,
+  createSkeletonPreset,
+} from "../presets/skeleton";
 import { CiprixProjectSchema } from "../schema/ciprix-project";
 import { validateProject } from "../validator";
 
@@ -148,5 +153,72 @@ describe("FIRST Studio Ciprix generator", () => {
 
     const climberSim = files.get("src/main/java/frc/robot/subsystems/climber/ClimberIOSim.java")!;
     expect(climberSim).toContain("SimMechanism.elevator(");
+  });
+
+  it("generates Ciprix advanced logics for turret, wrist, indexer, and hood", () => {
+    const project = createBlankPreset();
+    for (const type of ["turret", "wrist", "indexer", "hood"] as const) {
+      const created = createNewSubsystem(type, project.subsystems);
+      project.subsystems.push(created);
+      project.superstructure.stateActions.IDLE[created.id] = created.fsm.initialRequest;
+    }
+
+    expect(() => CiprixProjectSchema.parse(project)).not.toThrow();
+    expect(validateProject(project)).toEqual([]);
+
+    const files = new Map(generateProjectFiles(project).map((f) => [f.path, f.content]));
+
+    const turretConst = files.get("src/main/java/frc/robot/subsystems/turret/TurretConstants.java")!;
+    expect(turretConst).toContain(".withPositionWrap(");
+
+    const wristConst = files.get("src/main/java/frc/robot/subsystems/wrist/WristConstants.java")!;
+    expect(wristConst).toContain(".smartMotion(0, RotationsPerSecond.of(");
+    const wristJava = files.get("src/main/java/frc/robot/subsystems/wrist/Wrist.java")!;
+    expect(wristJava).toContain("runSmartPosition(");
+
+    const indexerConst = files.get("src/main/java/frc/robot/subsystems/indexer/IndexerConstants.java")!;
+    expect(indexerConst).toContain(".withStallReversal(");
+    const indexerJava = files.get("src/main/java/frc/robot/subsystems/indexer/Indexer.java")!;
+    expect(indexerJava).toContain("fsm.securityState(IndexerState.IDLE);");
+    expect(indexerJava).toContain("inputs.motorInputs.averageCurrentAmps >=");
+    expect(indexerJava).toContain(".transitionAfter(0.4, IndexerState.IDLE)");
+
+    const hoodSim = files.get("src/main/java/frc/robot/subsystems/hood/HoodIOSim.java")!;
+    expect(hoodSim).toContain("SimMechanism.arm(");
+  });
+
+  it("generates dual-motor follower code and detects duplicate follower CAN IDs", () => {
+    const project = createSkeletonPreset();
+    project.subsystems[0].motor.follower = { enabled: true, canId: 15, inverted: true };
+    expect(validateProject(project)).toEqual([]);
+
+    const files = new Map(generateProjectFiles(project).map((f) => [f.path, f.content]));
+    const constJava = files.get("src/main/java/frc/robot/subsystems/roller/RollerConstants.java")!;
+    expect(constJava).toContain("FOLLOWER_ID = 15;");
+    expect(constJava).toContain(".withMotorLeader(MOTOR_ID).withFollowerInverted(true)");
+
+    const ioJava = files.get("src/main/java/frc/robot/subsystems/roller/RollerIO.java")!;
+    expect(ioJava).toContain("public MotorIOInputs followerInputs = new MotorIOInputs();");
+
+    const simJava = files.get("src/main/java/frc/robot/subsystems/roller/RollerIOSim.java")!;
+    expect(simJava).toContain("DCMotor.getKrakenX60(2)");
+
+    project.subsystems[0].motor.follower = { enabled: true, canId: 10, inverted: false };
+    const issues = validateProject(project);
+    expect(issues.some((i) => i.id.startsWith("can-dup-follower"))).toBe(true);
+  });
+
+  it("validates competition preset with SuperStructure atGoal interlocks and multi-stage Shooter FSM", () => {
+    const comp = createCompetitionPreset();
+    expect(() => CiprixProjectSchema.parse(comp)).not.toThrow();
+    expect(validateProject(comp)).toEqual([]);
+
+    const files = new Map(generateProjectFiles(comp).map((f) => [f.path, f.content]));
+    const superJava = files.get("src/main/java/frc/robot/subsystems/superstructure/SuperStructure.java")!;
+    expect(superJava).toContain("isShooterAtGoal() && isHoodAtGoal()");
+
+    const shooterJava = files.get("src/main/java/frc/robot/subsystems/shooter/Shooter.java")!;
+    expect(shooterJava).toContain("inputs.motorInputs.atSetpoint, 0.1");
+    expect(shooterJava).toContain(".timeoutAfter(3.0)");
   });
 });

@@ -168,6 +168,10 @@ const BASE_NAMES: Record<SubsystemType, string> = {
   arm: "Arm",
   elevator: "Elevator",
   climber: "Climber",
+  turret: "Turret",
+  wrist: "Wrist",
+  indexer: "Indexer",
+  hood: "Hood",
   generic: "Motor",
 };
 
@@ -255,22 +259,26 @@ export function createNewSubsystem(
       fsm: {
         initialState: "IDLE",
         initialRequest: "STOP",
+        securityState: "IDLE",
         states: [
           { name: "IDLE", onEnter: { type: "stop" } },
           {
-            name: "WARMUP",
-            onEnter: { type: "velocityRpm", constantName: "WARMUP_RPM", value: 2000 },
+            name: "RAMPING",
+            onEnter: { type: "velocityRpm", constantName: "SHOOT_RPM", value: 4500 },
+            transitions: [
+              { id: "tr-ramp-ready", targetState: "READY", trigger: "atSetpoint", debounceSec: 0.1 },
+            ],
+            timeoutAfterSec: 3.0,
           },
           {
-            name: "SHOOTING",
+            name: "READY",
             onEnter: { type: "velocityRpm", constantName: "SHOOT_RPM", value: 4500 },
           },
         ],
-        requests: ["STOP", "WARMUP", "SHOOT"],
+        requests: ["STOP", "SHOOT"],
         bindings: [
           { request: "STOP", entryState: "IDLE", goalState: "IDLE", intermediateStates: [] },
-          { request: "WARMUP", entryState: "WARMUP", goalState: "WARMUP", intermediateStates: [] },
-          { request: "SHOOT", entryState: "SHOOTING", goalState: "SHOOTING", intermediateStates: [] },
+          { request: "SHOOT", entryState: "RAMPING", goalState: "READY", intermediateStates: [] },
         ],
       },
       selfTest: { enabled: true, output: 0.25, minVelocityRps: 10 },
@@ -430,6 +438,209 @@ export function createNewSubsystem(
     };
   }
 
+  if (type === "turret") {
+    return {
+      id,
+      name,
+      type: "turret",
+      motor: {
+        vendor: "talonfx",
+        canId,
+        canBus: "",
+        currentLimitAmps: 35,
+        neutralMode: "brake",
+        inverted: false,
+        gearRatio: 40.0,
+        moiKgM2: 0.04,
+      },
+      closedLoop: {
+        kP: 6.0,
+        kI: 0,
+        kD: 0.15,
+        kS: 0.12,
+        kV: 0.6,
+        kA: 0.01,
+        kG: 0,
+        minLimit: -180,
+        maxLimit: 180,
+        limitUnit: "deg",
+        positionWrap: true,
+      },
+      fsm: {
+        initialState: "HOME",
+        initialRequest: "HOME",
+        states: [
+          { name: "HOME", onEnter: { type: "positionDeg", constantName: "HOME_ANGLE", value: 0 } },
+          { name: "LEFT", onEnter: { type: "positionDeg", constantName: "LEFT_ANGLE", value: -45 } },
+          { name: "RIGHT", onEnter: { type: "positionDeg", constantName: "RIGHT_ANGLE", value: 45 } },
+        ],
+        requests: ["HOME", "LEFT", "RIGHT"],
+        bindings: [
+          { request: "HOME", entryState: "HOME", goalState: "HOME", intermediateStates: [] },
+          { request: "LEFT", entryState: "LEFT", goalState: "LEFT", intermediateStates: [] },
+          { request: "RIGHT", entryState: "RIGHT", goalState: "RIGHT", intermediateStates: [] },
+        ],
+      },
+      selfTest: { enabled: false, output: 0.15, minVelocityRps: 1 },
+    };
+  }
+
+  if (type === "wrist") {
+    return {
+      id,
+      name,
+      type: "wrist",
+      motor: {
+        vendor: "talonfx",
+        canId,
+        canBus: "",
+        currentLimitAmps: 30,
+        neutralMode: "brake",
+        inverted: false,
+        gearRatio: 30.0,
+        moiKgM2: 0.02,
+      },
+      physics: { massKg: 1.8, lengthMeters: 0.25 },
+      closedLoop: {
+        kP: 8.0,
+        kI: 0,
+        kD: 0.2,
+        kS: 0.12,
+        kV: 0.5,
+        kA: 0.01,
+        kG: 0.22,
+        minLimit: -30,
+        maxLimit: 120,
+        limitUnit: "deg",
+        smartMotion: { maxVelRps: 2.0, maxAccelRpss: 6.0, allowedError: 1.5 },
+      },
+      fsm: {
+        initialState: "STOWED",
+        initialRequest: "STOW",
+        states: [
+          { name: "STOWED", onEnter: { type: "smartPositionDeg", constantName: "STOW_ANGLE", value: 0 } },
+          { name: "INTAKE", onEnter: { type: "smartPositionDeg", constantName: "INTAKE_ANGLE", value: 35 } },
+          { name: "SCORE", onEnter: { type: "smartPositionDeg", constantName: "SCORE_ANGLE", value: 100 } },
+        ],
+        requests: ["STOW", "INTAKE", "SCORE"],
+        bindings: [
+          { request: "STOW", entryState: "STOWED", goalState: "STOWED", intermediateStates: [] },
+          { request: "INTAKE", entryState: "INTAKE", goalState: "INTAKE", intermediateStates: [] },
+          { request: "SCORE", entryState: "SCORE", goalState: "SCORE", intermediateStates: [] },
+        ],
+      },
+      selfTest: { enabled: false, output: 0.15, minVelocityRps: 1 },
+    };
+  }
+
+  if (type === "indexer") {
+    return {
+      id,
+      name,
+      type: "indexer",
+      motor: {
+        vendor: "talonfx",
+        canId,
+        canBus: "",
+        currentLimitAmps: 35,
+        neutralMode: "coast",
+        inverted: false,
+        gearRatio: 2.0,
+        moiKgM2: 0.001,
+      },
+      protection: {
+        stallReversalEnabled: true,
+        stallCurrentAmps: 30,
+        stallTimeSec: 0.35,
+        reverseTimeSec: 0.25,
+        reverseOutput: 0.3,
+      },
+      fsm: {
+        initialState: "IDLE",
+        initialRequest: "STOP",
+        securityState: "IDLE",
+        states: [
+          { name: "IDLE", onEnter: { type: "stop" } },
+          {
+            name: "INDEXING",
+            onEnter: { type: "percentOutput", constantName: "INDEX_OUTPUT", value: 0.45 },
+            transitions: [
+              { id: "tr-idx-cur", targetState: "HOLDING", trigger: "currentAbove", value: 24 },
+            ],
+          },
+          { name: "HOLDING", onEnter: { type: "stop" } },
+          {
+            name: "FEEDING",
+            onEnter: { type: "percentOutput", constantName: "FEED_OUTPUT", value: 0.85 },
+          },
+          {
+            name: "UNJAMMING",
+            onEnter: { type: "percentOutput", constantName: "UNJAM_OUTPUT", value: -0.5 },
+            transitions: [
+              { id: "tr-idx-unjam", targetState: "IDLE", trigger: "afterSeconds", value: 0.4 },
+            ],
+          },
+        ],
+        requests: ["STOP", "INDEX", "FEED", "UNJAM"],
+        bindings: [
+          { request: "STOP", entryState: "IDLE", goalState: "IDLE", intermediateStates: [] },
+          { request: "INDEX", entryState: "INDEXING", goalState: "HOLDING", intermediateStates: [] },
+          { request: "FEED", entryState: "FEEDING", goalState: "FEEDING", intermediateStates: [] },
+          { request: "UNJAM", entryState: "UNJAMMING", goalState: "IDLE", intermediateStates: [] },
+        ],
+      },
+      selfTest: { enabled: true, output: 0.3, minVelocityRps: 5 },
+    };
+  }
+
+  if (type === "hood") {
+    return {
+      id,
+      name,
+      type: "hood",
+      motor: {
+        vendor: "talonfx",
+        canId,
+        canBus: "",
+        currentLimitAmps: 20,
+        neutralMode: "brake",
+        inverted: false,
+        gearRatio: 60.0,
+        moiKgM2: 0.008,
+      },
+      physics: { massKg: 0.8, lengthMeters: 0.18 },
+      closedLoop: {
+        kP: 10.0,
+        kI: 0,
+        kD: 0.25,
+        kS: 0.1,
+        kV: 0.4,
+        kA: 0.01,
+        kG: 0.12,
+        minLimit: 10,
+        maxLimit: 65,
+        limitUnit: "deg",
+        smartMotion: { maxVelRps: 1.5, maxAccelRpss: 5.0, allowedError: 1.0 },
+      },
+      fsm: {
+        initialState: "CLOSE",
+        initialRequest: "CLOSE",
+        states: [
+          { name: "CLOSE", onEnter: { type: "smartPositionDeg", constantName: "CLOSE_ANGLE", value: 15 } },
+          { name: "MID", onEnter: { type: "smartPositionDeg", constantName: "MID_ANGLE", value: 35 } },
+          { name: "FAR", onEnter: { type: "smartPositionDeg", constantName: "FAR_ANGLE", value: 55 } },
+        ],
+        requests: ["CLOSE", "MID", "FAR"],
+        bindings: [
+          { request: "CLOSE", entryState: "CLOSE", goalState: "CLOSE", intermediateStates: [] },
+          { request: "MID", entryState: "MID", goalState: "MID", intermediateStates: [] },
+          { request: "FAR", entryState: "FAR", goalState: "FAR", intermediateStates: [] },
+        ],
+      },
+      selfTest: { enabled: false, output: 0.15, minVelocityRps: 1 },
+    };
+  }
+
   return {
     id,
     name,
@@ -461,5 +672,66 @@ export function createNewSubsystem(
       ],
     },
     selfTest: { enabled: true, output: 0.25, minVelocityRps: 3 },
+  };
+}
+
+export function createCompetitionPreset(): CiprixProject {
+  const shooter = createNewSubsystem("shooter", []);
+  const hood = createNewSubsystem("hood", [shooter]);
+  const indexer = createNewSubsystem("indexer", [shooter, hood]);
+
+  return {
+    schemaVersion: 1,
+    project: {
+      name: "competition-shooter",
+      teamNumber: 9047,
+      year: 2026,
+      packageName: "frc.robot",
+      simMode: "SIM",
+      tuningMode: true,
+      controllerDeadband: 0.08,
+      defaultAlliance: "Blue",
+      fieldLengthMeters: 16.541,
+      fieldWidthMeters: 8.069,
+    },
+    subsystems: [shooter, hood, indexer],
+    superstructure: {
+      requests: ["IDLE", "INTAKING", "SHOOT"],
+      states: ["IDLE", "INTAKING", "PREP_SHOOT", "SHOOTING"],
+      initialState: "IDLE",
+      initialRequest: "IDLE",
+      stateActions: {
+        IDLE: { [shooter.id]: "STOP", [hood.id]: "CLOSE", [indexer.id]: "STOP" },
+        INTAKING: { [shooter.id]: "STOP", [hood.id]: "CLOSE", [indexer.id]: "INDEX" },
+        PREP_SHOOT: { [shooter.id]: "SHOOT", [hood.id]: "FAR", [indexer.id]: "STOP" },
+        SHOOTING: { [shooter.id]: "SHOOT", [hood.id]: "FAR", [indexer.id]: "FEED" },
+      },
+      bindings: [
+        { request: "IDLE", entryState: "IDLE" },
+        { request: "INTAKING", entryState: "INTAKING" },
+        { request: "SHOOT", entryState: "PREP_SHOOT" },
+      ],
+      transitions: [
+        {
+          id: "tr-super-prep-shoot",
+          fromState: "PREP_SHOOT",
+          toState: "SHOOTING",
+          condition: "subsystemAtGoal",
+          subsystemIds: [shooter.id, hood.id],
+        },
+      ],
+    },
+    controls: {
+      pilotPriority: [
+        { id: "pilot-shoot", button: "rightTrigger", request: "SHOOT" },
+        { id: "pilot-intake", button: "leftTrigger", request: "INTAKING" },
+      ],
+      copilotOverrides: [
+        { id: "cop-unjam", button: "x", subsystemId: indexer.id, request: "UNJAM" },
+      ],
+    },
+    features: {
+      driveContextStub: false,
+    },
   };
 }

@@ -52,6 +52,7 @@ export function CommandPalette({
     setSelectedFilePath,
     addSubsystem,
     resetToSkeleton,
+    resetToCompetition,
     undo,
     redo,
     t,
@@ -204,6 +205,53 @@ export function CommandPalette({
         },
       },
       {
+        id: "act-add-turret",
+        group: "Ações",
+        label: "+ Turret (Azimuth)",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        run: () => {
+          addSubsystem("turret");
+          setActiveTab("subsystems");
+        },
+      },
+      {
+        id: "act-add-wrist",
+        group: "Ações",
+        label: "+ Wrist (SmartMotion)",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        run: () => {
+          addSubsystem("wrist");
+          setActiveTab("subsystems");
+        },
+      },
+      {
+        id: "act-add-indexer",
+        group: "Ações",
+        label: "+ Indexer (Un-Jam)",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        run: () => {
+          addSubsystem("indexer");
+          setActiveTab("subsystems");
+        },
+      },
+      {
+        id: "act-add-hood",
+        group: "Ações",
+        label: "+ Shooter Hood",
+        icon: <Plus className="h-3.5 w-3.5" />,
+        run: () => {
+          addSubsystem("hood");
+          setActiveTab("subsystems");
+        },
+      },
+      {
+        id: "act-preset-competition",
+        group: "Ações",
+        label: "Preset: Competition (Shooter + Indexer + Hood)",
+        icon: <RotateCcw className="h-3.5 w-3.5" />,
+        run: resetToCompetition,
+      },
+      {
         id: "act-zip",
         group: "Ações",
         label: t("header.download_zip"),
@@ -267,6 +315,7 @@ export function CommandPalette({
     setSelectedFilePath,
     addSubsystem,
     resetToSkeleton,
+    resetToCompetition,
     undo,
     redo,
     setLocale,

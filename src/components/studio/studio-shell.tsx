@@ -62,6 +62,7 @@ export function StudioShell() {
     loadProject,
     resetToSkeleton,
     resetToBlank,
+    resetToCompetition,
     undo,
     redo,
     canUndo,
@@ -497,6 +498,13 @@ export function StudioShell() {
                   >
                     <span>{t("header.preset_skeleton")}</span>
                     <span className="font-mono text-[10px] text-[#93c5fd]">Roller</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={resetToCompetition}
+                    className="flex items-center justify-between px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
+                  >
+                    <span>Competition</span>
+                    <span className="font-mono text-[10px] text-emerald-400">Shooter · Hood</span>
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
                     onSelect={resetToBlank}

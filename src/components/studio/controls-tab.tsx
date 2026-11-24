@@ -23,8 +23,10 @@ function formatReaction(action: SubsystemAction | undefined): { label: string; d
     case "velocityRpm":
       return { label: `${Math.round(action.value)} RPM`, dir: action.value };
     case "positionDeg":
+    case "smartPositionDeg":
       return { label: `${action.value}°`, dir: action.value === 0 ? 0 : 1 };
     case "positionRot":
+    case "smartPositionRot":
       return { label: `${action.value} rot`, dir: action.value === 0 ? 0 : 1 };
   }
 }

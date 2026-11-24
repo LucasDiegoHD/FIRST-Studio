@@ -87,6 +87,22 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
       canBuses.set(busKey, sub.name);
     }
 
+    if (sub.motor.follower?.enabled) {
+      const fBusKey = `${sub.motor.canBus.trim() || "rio"}:${sub.motor.follower.canId}`;
+      const fOwner = canBuses.get(fBusKey);
+      if (fOwner) {
+        issues.push({
+          id: `can-dup-follower-${sub.id}`,
+          severity: "error",
+          tab: "subsystems",
+          targetId: sub.id,
+          message: `CAN ID do follower ${sub.motor.follower.canId} em ${sub.name} duplicado com ${fOwner}.`,
+        });
+      } else {
+        canBuses.set(fBusKey, `${sub.name} (Follower)`);
+      }
+    }
+
     const stateSet = new Set(sub.fsm.states.map((s) => s.name));
     const requestSet = new Set(sub.fsm.requests);
 
@@ -182,6 +198,49 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
     }
 
     for (const st of sub.fsm.states) {
+      for (const tr of st.transitions ?? []) {
+        if (!stateSet.has(tr.targetState)) {
+          issues.push({
+            id: `fsm-tr-target-${sub.id}-${st.name}-${tr.id}`,
+            severity: "error",
+            tab: "fsm",
+            targetId: sub.id,
+            message: `Transição em ${sub.name}.${st.name} aponta para estado inexistente "${tr.targetState}".`,
+          });
+        } else {
+          reachableStates.add(tr.targetState);
+        }
+      }
+      if (st.timeoutAfterSec !== undefined) {
+        if (!sub.fsm.securityState || !stateSet.has(sub.fsm.securityState)) {
+          issues.push({
+            id: `fsm-sec-missing-${sub.id}-${st.name}`,
+            severity: "error",
+            tab: "fsm",
+            targetId: sub.id,
+            message: `${sub.name}.${st.name} usa timeoutAfter, mas securityState não está configurado.`,
+          });
+        } else {
+          reachableStates.add(sub.fsm.securityState);
+        }
+      }
+    }
+
+    if (sub.fsm.securityState) {
+      if (!stateSet.has(sub.fsm.securityState)) {
+        issues.push({
+          id: `fsm-sec-invalid-${sub.id}`,
+          severity: "error",
+          tab: "fsm",
+          targetId: sub.id,
+          message: `securityState "${sub.fsm.securityState}" não existe em ${sub.name}.`,
+        });
+      } else {
+        reachableStates.add(sub.fsm.securityState);
+      }
+    }
+
+    for (const st of sub.fsm.states) {
       if (!reachableStates.has(st.name)) {
         issues.push({
           id: `fsm-unreachable-${sub.id}-${st.name}`,
@@ -234,6 +293,16 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         severity: "warning",
         tab: "superstructure",
         message: `RobotRequest "${req}" não tem estado na SuperStructure.`,
+      });
+    }
+  }
+  for (const tr of project.superstructure.transitions ?? []) {
+    if (!superStates.has(tr.fromState) || !superStates.has(tr.toState)) {
+      issues.push({
+        id: `super-tr-${tr.id}`,
+        severity: "error",
+        tab: "superstructure",
+        message: `Transição da SuperStructure (${tr.fromState} -> ${tr.toState}) aponta para estado inexistente.`,
       });
     }
   }

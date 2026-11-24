@@ -27,6 +27,10 @@ export const SubsystemTypeSchema = z.enum([
   "arm",
   "elevator",
   "climber",
+  "turret",
+  "wrist",
+  "indexer",
+  "hood",
   "generic",
 ]);
 export type SubsystemType = z.infer<typeof SubsystemTypeSchema>;
@@ -55,13 +59,34 @@ export const SubsystemActionSchema = z.discriminatedUnion("type", [
     constantName: z.string().min(1),
     value: z.number().min(-100).max(200),
   }),
+  z.object({
+    type: z.literal("smartPositionDeg"),
+    constantName: z.string().min(1),
+    value: z.number().min(-360).max(360),
+  }),
+  z.object({
+    type: z.literal("smartPositionRot"),
+    constantName: z.string().min(1),
+    value: z.number().min(-100).max(200),
+  }),
 ]);
 export type SubsystemAction = z.infer<typeof SubsystemActionSchema>;
+
+export const FsmTransitionSchema = z.object({
+  id: z.string().min(1),
+  targetState: z.string().min(1),
+  trigger: z.enum(["afterSeconds", "atSetpoint", "stalled", "currentAbove"]),
+  value: z.number().min(0).optional(),
+  debounceSec: z.number().min(0).max(10).optional(),
+});
+export type FsmTransition = z.infer<typeof FsmTransitionSchema>;
 
 export const FsmStateSchema = z.object({
   name: z.string().min(1),
   onEnter: SubsystemActionSchema,
   onUpdate: SubsystemActionSchema.optional(),
+  transitions: z.array(FsmTransitionSchema).optional(),
+  timeoutAfterSec: z.number().positive().optional(),
 });
 export type FsmState = z.infer<typeof FsmStateSchema>;
 
@@ -86,6 +111,13 @@ export const SubsystemSchema = z.object({
     inverted: z.boolean(),
     gearRatio: z.number().positive(),
     moiKgM2: z.number().positive(),
+    follower: z
+      .object({
+        enabled: z.boolean(),
+        canId: z.number().int().min(0).max(62),
+        inverted: z.boolean(),
+      })
+      .optional(),
   }),
   closedLoop: z
     .object({
@@ -99,6 +131,14 @@ export const SubsystemSchema = z.object({
       minLimit: z.number().optional(),
       maxLimit: z.number().optional(),
       limitUnit: z.enum(["deg", "rot"]).optional(),
+      positionWrap: z.boolean().optional(),
+      smartMotion: z
+        .object({
+          maxVelRps: z.number().positive(),
+          maxAccelRpss: z.number().positive(),
+          allowedError: z.number().min(0),
+        })
+        .optional(),
     })
     .optional(),
   physics: z
@@ -106,6 +146,19 @@ export const SubsystemSchema = z.object({
       massKg: z.number().positive().optional(),
       lengthMeters: z.number().positive().optional(),
       drumRadiusMeters: z.number().positive().optional(),
+    })
+    .optional(),
+  protection: z
+    .object({
+      stallReversalEnabled: z.boolean().optional(),
+      stallCurrentAmps: z.number().positive().optional(),
+      stallTimeSec: z.number().positive().optional(),
+      reverseTimeSec: z.number().positive().optional(),
+      reverseOutput: z.number().min(0).max(1).optional(),
+      stallDetectionEnabled: z.boolean().optional(),
+      currentWarningAmps: z.number().min(0).optional(),
+      openLoopRampSec: z.number().min(0).optional(),
+      closedLoopRampSec: z.number().min(0).optional(),
     })
     .optional(),
   fsm: z.object({
@@ -124,6 +177,16 @@ export const SubsystemSchema = z.object({
 });
 export type SubsystemConfig = z.infer<typeof SubsystemSchema>;
 
+export const SuperTransitionSchema = z.object({
+  id: z.string().min(1),
+  fromState: z.string().min(1),
+  toState: z.string().min(1),
+  condition: z.enum(["allAtGoal", "subsystemAtGoal", "afterSeconds"]),
+  subsystemIds: z.array(z.string()).optional(),
+  seconds: z.number().positive().optional(),
+});
+export type SuperTransition = z.infer<typeof SuperTransitionSchema>;
+
 export const SuperStructureSchema = z.object({
   requests: z.array(z.string().min(1)).min(1),
   states: z.array(z.string().min(1)).min(1),
@@ -136,6 +199,7 @@ export const SuperStructureSchema = z.object({
       entryState: z.string().min(1),
     }),
   ),
+  transitions: z.array(SuperTransitionSchema).optional(),
 });
 export type SuperStructureConfig = z.infer<typeof SuperStructureSchema>;
 

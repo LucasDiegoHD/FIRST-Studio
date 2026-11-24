@@ -9,6 +9,23 @@ export function generateSubsystemMermaid(subsystem: SubsystemConfig): string {
     `  [*] --> ${subsystem.fsm.initialState}`,
   ];
 
+  for (const st of subsystem.fsm.states) {
+    for (const tr of st.transitions ?? []) {
+      const label =
+        tr.trigger === "afterSeconds"
+          ? `after ${tr.value ?? 0.5}s`
+          : tr.trigger === "atSetpoint"
+            ? "atSetpoint"
+            : tr.trigger === "stalled"
+              ? "stalled"
+              : `I >= ${tr.value ?? 25}A`;
+      lines.push(`  ${st.name} --> ${tr.targetState} : ${label}`);
+    }
+    if (st.timeoutAfterSec !== undefined && subsystem.fsm.securityState) {
+      lines.push(`  ${st.name} --> ${subsystem.fsm.securityState} : timeout ${st.timeoutAfterSec}s`);
+    }
+  }
+
   if (subsystem.fsm.bindings.length > 0) {
     lines.push('  state "any state" as ANY_STATE');
     for (const binding of subsystem.fsm.bindings) {
@@ -27,6 +44,16 @@ export function generateSuperStructureMermaid(project: CiprixProject): string {
     "stateDiagram-v2",
     `  [*] --> ${project.superstructure.initialState}`,
   ];
+
+  for (const tr of project.superstructure.transitions ?? []) {
+    const label =
+      tr.condition === "afterSeconds"
+        ? `after ${tr.seconds ?? 1}s`
+        : tr.condition === "allAtGoal"
+          ? "allAtGoal()"
+          : "atGoal()";
+    lines.push(`  ${tr.fromState} --> ${tr.toState} : ${label}`);
+  }
 
   if (project.superstructure.bindings.length > 0) {
     lines.push('  state "any state" as ANY_STATE');
