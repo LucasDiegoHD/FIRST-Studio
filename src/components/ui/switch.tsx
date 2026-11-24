@@ -20,17 +20,17 @@ export function Switch({
       aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
-        "relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#264f8a]",
+        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#3b6bb5]",
         checked
-          ? "bg-[#142c4f] border-[#264f8a]"
-          : "bg-[#0a0e16] border-[#1e2636]",
+          ? "bg-[#142c4f] border-[#3b6bb5]"
+          : "bg-[#0c121f] border-[#253552]",
         className,
       )}
     >
       <span
         className={cn(
-          "pointer-events-none block h-3 w-3 rounded-full bg-slate-100 transition-transform",
-          checked ? "translate-x-3.5" : "translate-x-0.5",
+          "pointer-events-none block h-3.5 w-3.5 rounded-full bg-white transition-transform",
+          checked ? "translate-x-4" : "translate-x-0.5",
         )}
       />
     </button>

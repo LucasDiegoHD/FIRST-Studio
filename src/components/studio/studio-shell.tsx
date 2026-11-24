@@ -223,35 +223,35 @@ export function StudioShell() {
   const progressPct = ((stepIndex + 1) / steps.length) * 100;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-black text-[#f3f5f8]">
-      {/* Guided Studio Header (54px) */}
-      <header className="flex h-[54px] shrink-0 items-center justify-between border-b border-[#172030] bg-[#05070b]/95 backdrop-blur-md px-3 gap-2">
-        <div className="flex items-center gap-2 min-w-0">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#0b0f17] text-[#f8fafc]">
+      {/* Guided Studio Header (56px) */}
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#22304a] bg-[#0f1624]/95 backdrop-blur-md px-4 gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
           <Link
             href="/"
-            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-[#9aa5b6] hover:bg-[#0c1424] hover:text-white"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-slate-300 hover:bg-[#19253d] hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t("header.home")}</span>
           </Link>
 
-          <span className="h-4 w-px bg-[#172030]" />
+          <span className="h-4 w-px bg-[#22304a]" />
 
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-slate-100 hover:border-[#1d2738] hover:bg-[#0c1424] cursor-pointer truncate"
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-transparent px-2.5 text-[13px] text-slate-100 hover:border-[#2c3f61] hover:bg-[#131c2e] cursor-pointer truncate"
           >
             <span className="font-semibold truncate">{project.project.name}</span>
-            <span className="font-mono text-[11px] text-[#7cb3ff]">
+            <span className="font-mono text-xs text-[#93c5fd]">
               #{project.project.teamNumber}
             </span>
-            <Pencil className="h-3 w-3 text-[#6b7689]" />
+            <Pencil className="h-3 w-3 text-slate-400" />
           </button>
         </div>
 
         {/* 4-Step Live Stepper with Icons & Counters */}
-        <nav className="flex items-center gap-1 rounded-lg border border-[#1a2538] bg-black p-1 overflow-x-auto">
+        <nav className="flex items-center gap-1 rounded-lg border border-[#22304a] bg-[#0b0f17] p-1 overflow-x-auto">
           {steps.map((st) => {
             const active = currentStep === st.id;
             return (
@@ -261,20 +261,20 @@ export function StudioShell() {
                     type="button"
                     onClick={() => setActiveTab(st.tab)}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition-all cursor-pointer",
+                      "inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-all cursor-pointer",
                       active
-                        ? "bg-[#142c4f] border border-[#3b6bb5] text-white shadow-[0_0_18px_-5px_rgba(37,99,235,0.65)]"
-                        : "border border-transparent text-[#8a94a6] hover:bg-[#091120] hover:text-slate-100",
+                        ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white shadow-[0_0_16px_-5px_rgba(59,130,246,0.55)]"
+                        : "border border-transparent text-slate-400 hover:bg-[#131c2e] hover:text-white",
                     )}
                   >
                     {st.icon}
                     <span>{st.label}</span>
                     <span
                       className={cn(
-                        "rounded px-1.5 py-0.2 font-mono text-[10px]",
+                        "rounded px-1.5 py-0.5 font-mono text-[11px]",
                         active
-                          ? "bg-[#1e3f73] text-[#dbeafe]"
-                          : "bg-[#0a101d] text-[#6b7689]",
+                          ? "bg-[#1e3f73] text-white"
+                          : "bg-[#131c2e] text-slate-400",
                       )}
                     >
                       {st.badge}
@@ -284,7 +284,7 @@ export function StudioShell() {
                 <Tooltip.Portal>
                   <Tooltip.Content
                     sideOffset={6}
-                    className="z-50 rounded border border-[#264f8a] bg-[#060910] px-2 py-1 font-mono text-[10px] text-slate-200 shadow-lg"
+                    className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-[11px] text-slate-100 shadow-lg"
                   >
                     {st.shortcut}
                   </Tooltip.Content>
@@ -299,13 +299,13 @@ export function StudioShell() {
           <Tooltip.Root>
             <Tooltip.Trigger asChild>
               <Button size="icon" variant="ghost" onClick={undo} disabled={!canUndo}>
-                <Undo2 className="h-3.5 w-3.5" />
+                <Undo2 className="h-4 w-4" />
               </Button>
             </Tooltip.Trigger>
             <Tooltip.Portal>
               <Tooltip.Content
                 sideOffset={6}
-                className="z-50 rounded border border-[#264f8a] bg-[#060910] px-2 py-1 font-mono text-[10px] text-slate-200"
+                className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-[11px] text-slate-100"
               >
                 {t("header.undo")}
               </Tooltip.Content>
@@ -315,13 +315,13 @@ export function StudioShell() {
           <Tooltip.Root>
             <Tooltip.Trigger asChild>
               <Button size="icon" variant="ghost" onClick={redo} disabled={!canRedo}>
-                <Redo2 className="h-3.5 w-3.5" />
+                <Redo2 className="h-4 w-4" />
               </Button>
             </Tooltip.Trigger>
             <Tooltip.Portal>
               <Tooltip.Content
                 sideOffset={6}
-                className="z-50 rounded border border-[#264f8a] bg-[#060910] px-2 py-1 font-mono text-[10px] text-slate-200"
+                className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-[11px] text-slate-100"
               >
                 {t("header.redo")}
               </Tooltip.Content>
@@ -329,7 +329,7 @@ export function StudioShell() {
           </Tooltip.Root>
 
           <Button size="icon" variant="ghost" onClick={() => setPaletteOpen(true)} title="Ctrl+K">
-            <Search className="h-3.5 w-3.5" />
+            <Search className="h-4 w-4" />
           </Button>
 
           <Popover.Root>
@@ -345,17 +345,17 @@ export function StudioShell() {
                         : "bg-emerald-400",
                   )}
                 />
-                <span className="font-mono text-[11px]">{issues.length}</span>
+                <span className="font-mono text-xs">{issues.length}</span>
               </Button>
             </Popover.Trigger>
             <Popover.Portal>
               <Popover.Content
                 align="end"
                 sideOffset={6}
-                className="z-50 w-80 rounded-md border border-[#264f8a] bg-[#060910] p-2.5 shadow-2xl"
+                className="z-50 w-80 rounded-lg border border-[#3b6bb5]/70 bg-[#131c2e] p-3 shadow-2xl"
               >
                 {issues.length === 0 ? (
-                  <p className="text-xs text-emerald-300">{t("header.no_issues")}</p>
+                  <p className="text-[13px] text-emerald-300">{t("header.no_issues")}</p>
                 ) : (
                   <ul className="space-y-1 max-h-60 overflow-y-auto">
                     {issues.map((issue) => (
@@ -366,7 +366,7 @@ export function StudioShell() {
                             setActiveTab(issue.tab);
                             if (issue.targetId) setSelectedSubsystemId(issue.targetId);
                           }}
-                          className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[#0c121e] cursor-pointer"
+                          className="w-full rounded px-2.5 py-1.5 text-left text-[13px] hover:bg-[#19253d] cursor-pointer"
                         >
                           <span
                             className={
@@ -387,51 +387,51 @@ export function StudioShell() {
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <Button size="icon" variant="ghost" aria-label="Menu">
-                <MoreHorizontal className="h-3.5 w-3.5" />
+                <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content
                 align="end"
                 sideOffset={6}
-                className="z-50 w-52 rounded-md border border-[#1d2432] bg-[#060910] py-1 shadow-2xl text-xs"
+                className="z-50 w-56 rounded-lg border border-[#2c3f61] bg-[#131c2e] py-1.5 shadow-2xl text-[13px]"
               >
                 <DropdownMenu.Item
                   onSelect={handleSaveJson}
-                  className="flex items-center gap-2 px-3 py-1.5 text-slate-200 outline-none hover:bg-[#0c121e] cursor-pointer"
+                  className="flex items-center gap-2.5 px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
                 >
-                  <Save className="h-3.5 w-3.5 text-[#7c8ba1]" />
+                  <Save className="h-4 w-4 text-slate-400" />
                   {t("header.save_json")}
                 </DropdownMenu.Item>
                 <DropdownMenu.Item
                   onSelect={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 px-3 py-1.5 text-slate-200 outline-none hover:bg-[#0c121e] cursor-pointer"
+                  className="flex items-center gap-2.5 px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
                 >
-                  <FolderOpen className="h-3.5 w-3.5 text-[#7c8ba1]" />
+                  <FolderOpen className="h-4 w-4 text-slate-400" />
                   {t("header.load_json")}
                 </DropdownMenu.Item>
-                <DropdownMenu.Separator className="my-1 h-px bg-[#171c26]" />
+                <DropdownMenu.Separator className="my-1 h-px bg-[#22304a]" />
                 <DropdownMenu.Item
                   onSelect={resetToSkeleton}
-                  className="flex items-center gap-2 px-3 py-1.5 text-slate-200 outline-none hover:bg-[#0c121e] cursor-pointer"
+                  className="flex items-center gap-2.5 px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
                 >
-                  <RotateCcw className="h-3.5 w-3.5 text-[#7c8ba1]" />
+                  <RotateCcw className="h-4 w-4 text-slate-400" />
                   {t("header.preset_skeleton")}
                 </DropdownMenu.Item>
                 <DropdownMenu.Item
                   onSelect={resetToBlank}
-                  className="flex items-center gap-2 px-3 py-1.5 text-slate-200 outline-none hover:bg-[#0c121e] cursor-pointer"
+                  className="flex items-center gap-2.5 px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
                 >
-                  <RotateCcw className="h-3.5 w-3.5 text-[#7c8ba1]" />
+                  <RotateCcw className="h-4 w-4 text-slate-400" />
                   {t("header.preset_blank")}
                 </DropdownMenu.Item>
-                <DropdownMenu.Separator className="my-1 h-px bg-[#171c26]" />
+                <DropdownMenu.Separator className="my-1 h-px bg-[#22304a]" />
                 <DropdownMenu.Item
                   onSelect={() => setLocale(locale === "pt" ? "en" : "pt")}
-                  className="flex items-center justify-between px-3 py-1.5 text-slate-200 outline-none hover:bg-[#0c121e] cursor-pointer"
+                  className="flex items-center justify-between px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
                 >
                   <span>Idioma / Language</span>
-                  <span className="font-mono text-[10px] text-[#7c8ba1]">
+                  <span className="font-mono text-xs text-slate-400">
                     {locale.toUpperCase()}
                   </span>
                 </DropdownMenu.Item>
@@ -462,7 +462,7 @@ export function StudioShell() {
       </header>
 
       {/* Main Step Viewport */}
-      <main className="flex-1 min-h-0 overflow-hidden bg-black">
+      <main className="flex-1 min-h-0 overflow-hidden bg-[#0b0f17]">
         {currentStep === "robot" && (
           <RobotFlowView
             onGoToStates={() => setActiveTab("fsm")}
@@ -481,12 +481,12 @@ export function StudioShell() {
       </main>
 
       {/* Bottom Progress & Status Bar */}
-      <footer className="relative flex h-[32px] shrink-0 items-center justify-between border-t border-[#172030] bg-[#05070b] px-3 font-mono text-[11px] text-[#7c8ba1]">
+      <footer className="relative flex h-9 shrink-0 items-center justify-between border-t border-[#22304a] bg-[#0f1624] px-4 font-mono text-xs text-slate-400">
         <div
-          className="absolute left-0 top-0 h-[2px] bg-[#2563eb] transition-all duration-300"
+          className="absolute left-0 top-0 h-[2px] bg-[#60a5fa] transition-all duration-300"
           style={{ width: `${progressPct}%` }}
         />
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3.5">
           <span>Ciprix 2026.3.0</span>
           <span>
             {generatedFiles.length} {t("status.files")}
@@ -497,9 +497,9 @@ export function StudioShell() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline text-[#556072]">Ctrl+K · Alt+1..4</span>
+          <span className="hidden sm:inline text-slate-500">Ctrl+K · Alt+1..4</span>
           {nextStep && (
-            <Button size="sm" variant="primary" className="h-6 px-2.5 text-[11px]" onClick={() => setActiveTab(nextStep.tab)}>
+            <Button size="sm" variant="secondary" className="h-7 px-3 text-xs" onClick={() => setActiveTab(nextStep.tab)}>
               {t("step.next")}: {nextStep.label}
               <ArrowRight className="h-3 w-3" />
             </Button>
@@ -521,9 +521,9 @@ export function StudioShell() {
       {toastMsg && (
         <div
           className={cn(
-            "fixed bottom-11 right-4 z-50 rounded-md border px-3.5 py-2 text-xs shadow-xl",
+            "fixed bottom-12 right-4 z-50 rounded-lg border px-4 py-2.5 text-[13px] shadow-xl",
             toastMsg.tone === "ok"
-              ? "border-[#3b6bb5] bg-[#0c1b33] text-white"
+              ? "border-[#3b6bb5] bg-[#131c2e] text-white"
               : "border-rose-700/70 bg-rose-950/90 text-rose-200",
           )}
         >

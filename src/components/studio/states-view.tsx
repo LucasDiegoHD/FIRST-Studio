@@ -17,7 +17,7 @@ import {
   type OnNodeDrag,
   type OnNodesChange,
 } from "@xyflow/react";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Code2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -44,7 +44,7 @@ type AnyStateNodeData = {
 
 function AnyStateFlowNode({ data }: NodeProps<Node<AnyStateNodeData>>) {
   return (
-    <div className="rounded-md border border-[#264f8a] bg-[#081222] px-3.5 py-2 font-mono text-[11px] font-semibold text-[#93c5fd] shadow-[0_0_20px_-8px_rgba(37,99,235,0.6)]">
+    <div className="rounded-lg border border-[#3b6bb5] bg-[#131c2e] px-4 py-2.5 font-mono text-xs font-semibold text-[#93c5fd] shadow-lg">
       {data.label}
       <Handle type="source" position={Position.Right} />
     </div>
@@ -55,24 +55,24 @@ function FsmStateFlowNode({ data }: NodeProps<Node<FsmStateNodeData>>) {
   return (
     <div
       onClick={() => data.onSelect(data.label)}
-      className={`w-[215px] rounded-md border p-3 text-left transition-all cursor-pointer ${
+      className={`w-[225px] rounded-lg border p-3.5 text-left transition-all cursor-pointer ${
         data.isActive
-          ? "border-[#3b82f6] bg-[#142c4f]/80 shadow-[0_0_24px_-6px_rgba(59,130,246,0.7)]"
+          ? "border-[#60a5fa] bg-[#142c4f] shadow-[0_0_24px_-6px_rgba(59,130,246,0.65)]"
           : data.isSelected
-            ? "border-[#264f8a] bg-[#0b182d]"
-            : "border-[#1b2434] bg-[#060910] hover:border-[#2e4266]"
+            ? "border-[#3b6bb5] bg-[#19253d]"
+            : "border-[#253552] bg-[#131c2e] hover:border-[#3b6bb5]"
       }`}
     >
       <Handle type="target" position={Position.Left} />
       <div className="flex items-center justify-between">
-        <span className="font-mono text-xs font-semibold text-white">{data.label}</span>
+        <span className="font-mono text-[13px] font-semibold text-white">{data.label}</span>
         {data.isInitial && (
-          <span className="rounded bg-[#142c4f] px-1.5 py-0.5 font-mono text-[9px] uppercase text-[#93c5fd]">
+          <span className="rounded bg-[#142c4f] border border-[#3b6bb5]/70 px-1.5 py-0.5 font-mono text-[10px] uppercase text-[#93c5fd]">
             init
           </span>
         )}
       </div>
-      <p className="mt-1.5 truncate font-mono text-[10px] text-[#8a94a6]">{data.actionLabel}</p>
+      <p className="mt-1.5 truncate font-mono text-[11px] text-slate-300">{data.actionLabel}</p>
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -97,6 +97,8 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
   const [selectedStateName, setSelectedStateName] = useState<string | null>(null);
   const [simRequest, setSimRequest] = useState<string | null>(null);
   const [showMermaid, setShowMermaid] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showSuperJava, setShowSuperJava] = useState(false);
   const posRef = useRef<Record<string, { x: number; y: number }>>({});
 
   useEffect(() => {
@@ -182,11 +184,11 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
         target: `state-${b.entryState}`,
         label: b.request,
         animated: isFired,
-        labelStyle: { fill: isFired ? "#ffffff" : "#8a94a6", fontSize: 10, fontFamily: "monospace" },
-        labelBgStyle: { fill: isFired ? "#142c4f" : "#05070b", fillOpacity: 0.95 },
+        labelStyle: { fill: isFired ? "#ffffff" : "#94a3b8", fontSize: 11, fontFamily: "monospace" },
+        labelBgStyle: { fill: isFired ? "#142c4f" : "#0f1624", fillOpacity: 0.95 },
         style: {
-          stroke: isFired ? "#3b82f6" : "#1e3150",
-          strokeWidth: isFired ? 2.2 : 1.3,
+          stroke: isFired ? "#60a5fa" : "#2c3f61",
+          strokeWidth: isFired ? 2.2 : 1.4,
         },
       };
     });
@@ -198,10 +200,10 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
   );
 
   return (
-    <div className="flex h-full flex-col bg-black">
+    <div className="flex h-full flex-col bg-[#0b0f17]">
       {/* Selector Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#172030] bg-[#05070b] px-4 py-2 shrink-0">
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#22304a] bg-[#0f1624] px-4 py-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           {project.subsystems.map((sub) => (
             <button
               key={sub.id}
@@ -210,10 +212,10 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                 setSelectedSubsystemId(sub.id);
                 setTarget("subsystem");
               }}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
+              className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-all cursor-pointer ${
                 target === "subsystem" && activeSub?.id === sub.id
-                  ? "bg-[#142c4f] border border-[#3b6bb5] text-white"
-                  : "border border-[#1a2232] bg-black text-[#8a94a6] hover:text-white"
+                  ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white"
+                  : "border border-[#253552] bg-[#131c2e] text-slate-300 hover:text-white"
               }`}
             >
               {sub.name}
@@ -222,24 +224,26 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
           <button
             type="button"
             onClick={() => setTarget("superstructure")}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
+            className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-all cursor-pointer ${
               target === "superstructure"
-                ? "bg-[#142c4f] border border-[#3b6bb5] text-white"
-                : "border border-[#1a2232] bg-black text-[#8a94a6] hover:text-white"
+                ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white"
+                : "border border-[#253552] bg-[#131c2e] text-slate-300 hover:text-white"
             }`}
           >
             SuperStructure
           </button>
         </div>
 
-        {target === "subsystem" && activeSub && (
-          <button
-            type="button"
-            onClick={() => setShowMermaid((v) => !v)}
-            className="font-mono text-[11px] text-[#7cb3ff] hover:text-white cursor-pointer"
+        {target === "superstructure" && superJavaFile && (
+          <Button
+            size="sm"
+            variant={showSuperJava ? "secondary" : "outline"}
+            onClick={() => setShowSuperJava((v) => !v)}
+            className="h-8 px-3 text-xs"
           >
-            {showMermaid ? t("fsm.diagram_preview") : "toMermaid()"}
-          </button>
+            <Code2 className="h-3.5 w-3.5" />
+            {showSuperJava ? "Ocultar SuperStructure.java" : "Ver SuperStructure.java"}
+          </Button>
         )}
       </div>
 
@@ -248,8 +252,8 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
           <div className="flex-1 min-w-0 overflow-hidden">
             <SuperStructureTab />
           </div>
-          {superJavaFile && (
-            <aside className="hidden lg:flex w-[390px] shrink-0 border-l border-[#172030]">
+          {showSuperJava && superJavaFile && (
+            <aside className="hidden lg:flex w-[400px] shrink-0 border-l border-[#22304a]">
               <CodeViewer
                 filePath={superJavaFile.path}
                 content={superJavaFile.content}
@@ -259,7 +263,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
           )}
         </div>
       ) : !activeSub ? (
-        <div className="flex flex-1 items-center justify-center p-8 text-xs text-[#6b7689]">
+        <div className="flex flex-1 items-center justify-center p-8 text-[13px] text-slate-400">
           {t("fsm.no_subsystems")}
         </div>
       ) : (
@@ -267,8 +271,14 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
           {/* Left Interactive FSM Graph or Mermaid */}
           <div className="relative flex-1 min-w-0 h-full">
             {showMermaid ? (
-              <div className="h-full overflow-auto p-6">
-                <pre className="rounded border border-[#172030] bg-[#030508] p-4 font-mono text-xs text-slate-200">
+              <div className="h-full overflow-auto p-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs text-slate-300">toMermaid()</span>
+                  <Button size="sm" variant="outline" onClick={() => setShowMermaid(false)}>
+                    {t("fsm.diagram_preview")}
+                  </Button>
+                </div>
+                <pre className="rounded-lg border border-[#22304a] bg-[#131c2e] p-4 font-mono text-xs text-slate-200">
                   {generateSubsystemMermaid(activeSub)}
                 </pre>
               </div>
@@ -284,14 +294,14 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
               >
                 <Background
                   variant={BackgroundVariant.Dots}
-                  gap={22}
+                  gap={24}
                   size={1}
-                  color="rgba(255,255,255,0.09)"
+                  color="rgba(148,163,184,0.14)"
                 />
                 <Controls showInteractive={false} />
                 <Panel position="top-left">
-                  <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-[#264f8a]/70 bg-[#050811]/95 px-2.5 py-1.5 shadow-lg">
-                    <span className="font-mono text-[10px] uppercase text-[#7cb3ff] mr-1">
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-[#2c3f61] bg-[#0f1624]/95 px-3 py-2 shadow-lg">
+                    <span className="font-mono text-[11px] uppercase text-[#93c5fd] mr-1">
                       Disparar:
                     </span>
                     {activeSub.fsm.requests.map((req) => (
@@ -299,10 +309,10 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                         key={req}
                         type="button"
                         onClick={() => setSimRequest(req)}
-                        className={`rounded px-2 py-0.5 font-mono text-[11px] transition-all cursor-pointer ${
+                        className={`rounded-md px-2.5 py-1 font-mono text-xs transition-all cursor-pointer ${
                           activeRequest === req
-                            ? "bg-[#142c4f] border border-[#3b82f6] text-white"
-                            : "border border-[#1a2232] bg-black text-[#8a94a6] hover:text-white"
+                            ? "bg-[#142c4f] border border-[#60a5fa] text-white"
+                            : "border border-[#253552] bg-[#0b0f17] text-slate-300 hover:text-white"
                         }`}
                       >
                         {req}
@@ -314,57 +324,16 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
             )}
           </div>
 
-          {/* Right State & Bindings Editor */}
-          <aside className="flex h-full w-[380px] shrink-0 flex-col overflow-y-auto border-l border-[#172030] bg-[#05070b] divide-y divide-[#172030] text-xs">
-            <div className="grid grid-cols-2 gap-2.5 p-4">
-              <div className="space-y-1">
-                <label className="text-[11px] text-[#8a94a6]">{t("fsm.initial_state")}</label>
-                <Select
-                  className="font-mono"
-                  value={activeSub.fsm.initialState}
-                  onChange={(e) =>
-                    updateSubsystem(activeSub.id, (prev) => ({
-                      ...prev,
-                      fsm: { ...prev.fsm, initialState: e.target.value },
-                    }))
-                  }
-                >
-                  {activeSub.fsm.states.map((s) => (
-                    <option key={s.name} value={s.name}>
-                      {s.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] text-[#8a94a6]">{t("fsm.initial_request")}</label>
-                <Select
-                  className="font-mono"
-                  value={activeSub.fsm.initialRequest}
-                  onChange={(e) =>
-                    updateSubsystem(activeSub.id, (prev) => ({
-                      ...prev,
-                      fsm: { ...prev.fsm, initialRequest: e.target.value },
-                    }))
-                  }
-                >
-                  {activeSub.fsm.requests.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2.5 p-4">
+          {/* Right Essential States & Collapsed Advanced Bindings Editor */}
+          <aside className="flex h-full w-[380px] shrink-0 flex-col overflow-y-auto border-l border-[#22304a] bg-[#0f1624] divide-y divide-[#22304a] text-[13px]">
+            <div className="space-y-3 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-[#8a94a6]">
+                <span className="text-xs font-semibold text-slate-200">
                   {t("fsm.states_title")}
                 </span>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => {
                     const stateName = `STATE_${activeSub.fsm.states.length + 1}`;
                     updateSubsystem(activeSub.id, (prev) => ({
@@ -377,7 +346,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                     setSelectedStateName(stateName);
                   }}
                 >
-                  <Plus className="h-3 w-3" />
+                  <Plus className="h-3.5 w-3.5" />
                   {t("fsm.add_state")}
                 </Button>
               </div>
@@ -386,16 +355,16 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                 <div
                   key={`${st.name}-${idx}`}
                   onClick={() => setSelectedStateName(st.name)}
-                  className={`space-y-2 rounded-md border p-2.5 transition-colors ${
+                  className={`space-y-2.5 rounded-lg border p-3 transition-colors ${
                     activeStateObj?.name === st.name
-                      ? "border-[#3b6bb5] bg-[#0a1526]"
-                      : "border-[#172030] bg-[#070a10]"
+                      ? "border-[#60a5fa] bg-[#19253d]"
+                      : "border-[#22304a] bg-[#131c2e]"
                   }`}
                 >
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <Input
                       value={st.name}
-                      className="font-mono h-7"
+                      className="font-mono h-8 text-xs"
                       onChange={(e) => {
                         const nextName = toUpperSnake(e.target.value);
                         const oldName = st.name;
@@ -420,7 +389,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                     />
                     <Select
                       value={st.onEnter.type}
-                      className="w-32 h-7"
+                      className="w-32 h-8 text-xs"
                       onChange={(e) => {
                         const action: SubsystemAction =
                           e.target.value === "stop"
@@ -468,7 +437,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                       <div className="grid grid-cols-2 gap-2">
                         <Input
                           value={st.onEnter.constantName}
-                          className="font-mono h-7"
+                          className="font-mono h-8 text-xs"
                           onChange={(e) => {
                             const nextConst = toUpperSnake(e.target.value);
                             updateSubsystem(activeSub.id, (prev) => ({
@@ -493,7 +462,7 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                           step={0.05}
                           min={-1}
                           max={1}
-                          className="h-7"
+                          className="h-8 text-xs"
                           value={st.onEnter.value}
                           onChange={(e) => {
                             const val = Math.min(
@@ -514,8 +483,8 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
                           }}
                         />
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-14 font-mono text-[10px] text-[#7cb3ff]">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-16 font-mono text-[11px] text-[#93c5fd]">
                           {st.onEnter.value >= 0 ? "FWD" : "REV"}{" "}
                           {Math.round(st.onEnter.value * 100)}%
                         </span>
@@ -548,124 +517,200 @@ export function StatesView({ initialTarget = "subsystem" }: { initialTarget?: "s
               ))}
             </div>
 
-            <div className="space-y-2 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-[#8a94a6]">
-                  {t("fsm.bindings_title")}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    const reqName = `REQUEST_${activeSub.fsm.requests.length + 1}`;
-                    const fallback = activeSub.fsm.states[0]?.name ?? activeSub.fsm.initialState;
-                    updateSubsystem(activeSub.id, (prev) => ({
-                      ...prev,
-                      fsm: {
-                        ...prev.fsm,
-                        requests: [...prev.fsm.requests, reqName],
-                        bindings: [
-                          ...prev.fsm.bindings,
-                          {
-                            request: reqName,
-                            entryState: fallback,
-                            goalState: fallback,
-                            intermediateStates: [],
-                          },
-                        ],
-                      },
-                    }));
-                  }}
-                >
-                  <Plus className="h-3 w-3" />
-                  {t("fsm.add_binding")}
-                </Button>
-              </div>
-
-              {activeSub.fsm.bindings.map((binding, idx) => (
-                <div key={`${binding.request}-${idx}`} className="grid grid-cols-12 gap-1.5 items-center">
-                  <Input
-                    value={binding.request}
-                    className="col-span-4 font-mono h-7"
-                    onChange={(e) => {
-                      const nextReq = toUpperSnake(e.target.value);
-                      const oldReq = binding.request;
-                      updateSubsystem(activeSub.id, (prev) => ({
-                        ...prev,
-                        fsm: {
-                          ...prev.fsm,
-                          initialRequest:
-                            prev.fsm.initialRequest === oldReq ? nextReq : prev.fsm.initialRequest,
-                          requests: prev.fsm.requests.map((r) => (r === oldReq ? nextReq : r)),
-                          bindings: prev.fsm.bindings.map((b, i) =>
-                            i === idx ? { ...b, request: nextReq } : b,
-                          ),
-                        },
-                      }));
-                    }}
+            {/* Collapsed-by-default Advanced: initialState, initialRequest, bindRequest, toMermaid() */}
+            <div className="p-4">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="flex w-full items-center justify-between rounded-md border border-[#22304a] bg-[#131c2e] px-3 py-2 text-left text-xs font-medium text-slate-200 hover:border-[#3b6bb5] cursor-pointer"
+              >
+                <span>Avançado</span>
+                <span className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
+                  {activeSub.fsm.initialState} · {activeSub.fsm.bindings.length} bindings
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition-transform ${
+                      showAdvanced ? "rotate-180" : ""
+                    }`}
                   />
-                  <Select
-                    value={binding.entryState}
-                    className="col-span-3 font-mono h-7"
-                    onChange={(e) =>
-                      updateSubsystem(activeSub.id, (prev) => ({
-                        ...prev,
-                        fsm: {
-                          ...prev.fsm,
-                          bindings: prev.fsm.bindings.map((b, i) =>
-                            i === idx ? { ...b, entryState: e.target.value } : b,
-                          ),
-                        },
-                      }))
-                    }
-                  >
-                    {activeSub.fsm.states.map((s) => (
-                      <option key={s.name} value={s.name}>
-                        {s.name}
-                      </option>
+                </span>
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-3 space-y-4 pt-1">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-slate-300">{t("fsm.initial_state")}</label>
+                      <Select
+                        className="font-mono h-8 text-xs"
+                        value={activeSub.fsm.initialState}
+                        onChange={(e) =>
+                          updateSubsystem(activeSub.id, (prev) => ({
+                            ...prev,
+                            fsm: { ...prev.fsm, initialState: e.target.value },
+                          }))
+                        }
+                      >
+                        {activeSub.fsm.states.map((s) => (
+                          <option key={s.name} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-slate-300">{t("fsm.initial_request")}</label>
+                      <Select
+                        className="font-mono h-8 text-xs"
+                        value={activeSub.fsm.initialRequest}
+                        onChange={(e) =>
+                          updateSubsystem(activeSub.id, (prev) => ({
+                            ...prev,
+                            fsm: { ...prev.fsm, initialRequest: e.target.value },
+                          }))
+                        }
+                      >
+                        {activeSub.fsm.requests.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5 border-t border-[#22304a] pt-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-300">
+                        {t("fsm.bindings_title")}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          const reqName = `REQUEST_${activeSub.fsm.requests.length + 1}`;
+                          const fallback =
+                            activeSub.fsm.states[0]?.name ?? activeSub.fsm.initialState;
+                          updateSubsystem(activeSub.id, (prev) => ({
+                            ...prev,
+                            fsm: {
+                              ...prev.fsm,
+                              requests: [...prev.fsm.requests, reqName],
+                              bindings: [
+                                ...prev.fsm.bindings,
+                                {
+                                  request: reqName,
+                                  entryState: fallback,
+                                  goalState: fallback,
+                                  intermediateStates: [],
+                                },
+                              ],
+                            },
+                          }));
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {t("fsm.add_binding")}
+                      </Button>
+                    </div>
+
+                    {activeSub.fsm.bindings.map((binding, idx) => (
+                      <div key={`${binding.request}-${idx}`} className="grid grid-cols-12 gap-1.5 items-center">
+                        <Input
+                          value={binding.request}
+                          className="col-span-4 font-mono h-8 text-xs"
+                          onChange={(e) => {
+                            const nextReq = toUpperSnake(e.target.value);
+                            const oldReq = binding.request;
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                initialRequest:
+                                  prev.fsm.initialRequest === oldReq ? nextReq : prev.fsm.initialRequest,
+                                requests: prev.fsm.requests.map((r) => (r === oldReq ? nextReq : r)),
+                                bindings: prev.fsm.bindings.map((b, i) =>
+                                  i === idx ? { ...b, request: nextReq } : b,
+                                ),
+                              },
+                            }));
+                          }}
+                        />
+                        <Select
+                          value={binding.entryState}
+                          className="col-span-3 font-mono h-8 text-xs"
+                          onChange={(e) =>
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                bindings: prev.fsm.bindings.map((b, i) =>
+                                  i === idx ? { ...b, entryState: e.target.value } : b,
+                                ),
+                              },
+                            }))
+                          }
+                        >
+                          {activeSub.fsm.states.map((s) => (
+                            <option key={s.name} value={s.name}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </Select>
+                        <Select
+                          value={binding.goalState}
+                          className="col-span-4 font-mono h-8 text-xs"
+                          onChange={(e) =>
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                bindings: prev.fsm.bindings.map((b, i) =>
+                                  i === idx ? { ...b, goalState: e.target.value } : b,
+                                ),
+                              },
+                            }))
+                          }
+                        >
+                          {activeSub.fsm.states.map((s) => (
+                            <option key={s.name} value={s.name}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </Select>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="col-span-1"
+                          disabled={activeSub.fsm.bindings.length <= 1}
+                          onClick={() =>
+                            updateSubsystem(activeSub.id, (prev) => ({
+                              ...prev,
+                              fsm: {
+                                ...prev.fsm,
+                                bindings: prev.fsm.bindings.filter((_, i) => i !== idx),
+                                requests: prev.fsm.requests.filter((r) => r !== binding.request),
+                              },
+                            }))
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                        </Button>
+                      </div>
                     ))}
-                  </Select>
-                  <Select
-                    value={binding.goalState}
-                    className="col-span-4 font-mono h-7"
-                    onChange={(e) =>
-                      updateSubsystem(activeSub.id, (prev) => ({
-                        ...prev,
-                        fsm: {
-                          ...prev.fsm,
-                          bindings: prev.fsm.bindings.map((b, i) =>
-                            i === idx ? { ...b, goalState: e.target.value } : b,
-                          ),
-                        },
-                      }))
-                    }
-                  >
-                    {activeSub.fsm.states.map((s) => (
-                      <option key={s.name} value={s.name}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </Select>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="col-span-1"
-                    disabled={activeSub.fsm.bindings.length <= 1}
-                    onClick={() =>
-                      updateSubsystem(activeSub.id, (prev) => ({
-                        ...prev,
-                        fsm: {
-                          ...prev.fsm,
-                          bindings: prev.fsm.bindings.filter((_, i) => i !== idx),
-                          requests: prev.fsm.requests.filter((r) => r !== binding.request),
-                        },
-                      }))
-                    }
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-rose-400" />
-                  </Button>
+                  </div>
+
+                  <div className="border-t border-[#22304a] pt-3">
+                    <Button
+                      size="sm"
+                      variant={showMermaid ? "secondary" : "outline"}
+                      className="w-full font-mono text-xs"
+                      onClick={() => setShowMermaid((v) => !v)}
+                    >
+                      {showMermaid ? t("fsm.diagram_preview") : "toMermaid()"}
+                    </Button>
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           </aside>
         </div>

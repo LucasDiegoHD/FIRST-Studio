@@ -259,11 +259,11 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/75 pt-[12vh] px-4"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-[#0b0f17]/80 pt-[12vh] px-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-lg border border-[#264f8a] bg-[#060910] shadow-2xl"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-[#2c3f61] bg-[#131c2e] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
@@ -281,8 +281,8 @@ export function CommandPalette({
           }
         }}
       >
-        <div className="flex items-center gap-2 border-b border-[#171c26] px-3 py-2.5">
-          <Search className="h-3.5 w-3.5 text-[#6b7689]" />
+        <div className="flex items-center gap-2.5 border-b border-[#22304a] px-4 py-3">
+          <Search className="h-4 w-4 text-slate-400" />
           <input
             ref={inputRef}
             value={query}
@@ -291,16 +291,16 @@ export function CommandPalette({
               setCursor(0);
             }}
             placeholder={t("cmd.placeholder")}
-            className="w-full bg-transparent text-xs text-slate-100 placeholder:text-[#556072] focus:outline-none"
+            className="w-full bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
           />
-          <span className="rounded border border-[#1d2432] px-1.5 py-0.5 font-mono text-[10px] text-[#6b7689]">
+          <span className="rounded border border-[#253552] px-1.5 py-0.5 font-mono text-[11px] text-slate-400">
             ESC
           </span>
         </div>
 
-        <div className="max-h-80 overflow-y-auto py-1">
+        <div className="max-h-80 overflow-y-auto py-1.5">
           {filtered.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-[#6b7689]">{t("cmd.no_results")}</p>
+            <p className="px-4 py-6 text-center text-[13px] text-slate-400">{t("cmd.no_results")}</p>
           ) : (
             filtered.map((item, idx) => (
               <button
@@ -308,19 +308,19 @@ export function CommandPalette({
                 type="button"
                 onMouseEnter={() => setCursor(idx)}
                 onClick={() => execute(item)}
-                className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors cursor-pointer ${
                   idx === activeIdx
-                    ? "bg-[#142c4f]/70 text-white"
-                    : "text-slate-300 hover:bg-[#0c121e]"
+                    ? "bg-[#142c4f] text-white"
+                    : "text-slate-200 hover:bg-[#19253d]"
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-[#7c8ba1] shrink-0">{item.icon}</span>
+                  <span className="text-slate-400 shrink-0">{item.icon}</span>
                   <span className="truncate">{item.label}</span>
-                  <span className="text-[10px] text-[#556072] shrink-0">{item.group}</span>
+                  <span className="text-[11px] text-slate-400 shrink-0">{item.group}</span>
                 </div>
                 {item.hint && (
-                  <span className="truncate max-w-[180px] font-mono text-[10px] text-[#7c8ba1]">
+                  <span className="truncate max-w-[180px] font-mono text-[11px] text-slate-400">
                     {item.hint}
                   </span>
                 )}

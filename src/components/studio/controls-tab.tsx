@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Cog, Gamepad2, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Code2, Cog, Gamepad2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
@@ -32,6 +32,7 @@ export function ControlsTab() {
   const [port, setPort] = useState<"pilot" | "copilot">("pilot");
   const [selectedButton, setSelectedButton] = useState<XboxButton>("rightBumper");
   const [hoveredButton, setHoveredButton] = useState<XboxButton | null>(null);
+  const [showJava, setShowJava] = useState(false);
 
   const mappedButtons = useMemo(() => {
     const map = new Map<XboxButton, MappedButtonInfo>();
@@ -186,51 +187,51 @@ export function ControlsTab() {
   );
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 divide-y divide-[#172030] bg-black lg:grid-cols-12 lg:divide-y-0 lg:divide-x">
+    <div className="grid h-full min-h-0 grid-cols-1 divide-y divide-[#22304a] bg-[#0b0f17] lg:grid-cols-12 lg:divide-y-0 lg:divide-x">
       {/* Left Interactive Stage (Xbox Series X + Quick Bind + Live Motor Feedback) */}
-      <div className="bg-studio-glow relative flex flex-col justify-between overflow-y-auto p-5 lg:col-span-7">
+      <div className="bg-studio-glow relative flex flex-col justify-between overflow-y-auto p-6 lg:col-span-7">
         {/* Top Port Switcher */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 rounded-lg border border-[#1a2538] bg-[#05070b] p-1">
+          <div className="flex items-center gap-1.5 rounded-lg border border-[#22304a] bg-[#0f1624] p-1">
             <button
               type="button"
               onClick={() => setPort("pilot")}
-              className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium cursor-pointer transition-all ${
+              className={`inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[13px] font-medium cursor-pointer transition-all ${
                 port === "pilot"
-                  ? "bg-[#142c4f] border border-[#3b6bb5] text-white shadow-[0_0_16px_-4px_rgba(37,99,235,0.6)]"
-                  : "border border-transparent text-[#8a94a6] hover:text-white"
+                  ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white shadow-[0_0_16px_-4px_rgba(59,130,246,0.55)]"
+                  : "border border-transparent text-slate-400 hover:text-white"
               }`}
             >
-              <Gamepad2 className="h-3.5 w-3.5" />
+              <Gamepad2 className="h-4 w-4" />
               <span>{t("controls.pilot_title")}</span>
-              <span className="rounded bg-black/50 px-1.5 py-0.2 font-mono text-[10px]">
+              <span className="rounded bg-[#0b0f17] px-1.5 py-0.5 font-mono text-[11px]">
                 {project.controls.pilotPriority.length}
               </span>
             </button>
             <button
               type="button"
               onClick={() => setPort("copilot")}
-              className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium cursor-pointer transition-all ${
+              className={`inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[13px] font-medium cursor-pointer transition-all ${
                 port === "copilot"
-                  ? "bg-[#142c4f] border border-[#3b6bb5] text-white shadow-[0_0_16px_-4px_rgba(37,99,235,0.6)]"
-                  : "border border-transparent text-[#8a94a6] hover:text-white"
+                  ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white shadow-[0_0_16px_-4px_rgba(59,130,246,0.55)]"
+                  : "border border-transparent text-slate-400 hover:text-white"
               }`}
             >
-              <Gamepad2 className="h-3.5 w-3.5" />
+              <Gamepad2 className="h-4 w-4" />
               <span>{t("controls.copilot_title")}</span>
-              <span className="rounded bg-black/50 px-1.5 py-0.2 font-mono text-[10px]">
+              <span className="rounded bg-[#0b0f17] px-1.5 py-0.5 font-mono text-[11px]">
                 {project.controls.copilotOverrides.length}
               </span>
             </button>
           </div>
 
-          <p className="font-mono text-[11px] text-[#7c8ba1]">
+          <p className="font-mono text-xs text-slate-400">
             {port === "pilot" ? "SuperStructureCommands" : "@AutoCommandFactory"}
           </p>
         </div>
 
         {/* Center Xbox Series X SVG */}
-        <div className="my-auto flex items-center justify-center py-3">
+        <div className="my-auto flex items-center justify-center py-4">
           <XboxControllerSvg
             mappedButtons={mappedButtons}
             selectedButton={selectedButton}
@@ -241,37 +242,37 @@ export function ControlsTab() {
         </div>
 
         {/* Bottom Interactive Quick-Bind + Live Reaction Dock */}
-        <div className="rounded-lg border border-[#264f8a]/75 bg-[#050811]/95 p-3.5 space-y-3 shadow-[0_0_24px_-10px_rgba(37,99,235,0.5)]">
+        <div className="rounded-xl border border-[#2c3f61] bg-[#131c2e]/95 p-4 space-y-3 shadow-xl">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="rounded border border-[#3b6bb5] bg-[#142c4f] px-2 py-0.5 font-mono text-xs font-semibold text-white">
+            <div className="flex items-center gap-2.5">
+              <span className="rounded-md border border-[#3b6bb5] bg-[#142c4f] px-2.5 py-0.5 font-mono text-xs font-semibold text-white">
                 {selectedBtnMeta?.label ?? selectedButton}
               </span>
-              <span className="text-xs text-[#9aa5b6]">{selectedBtnMeta?.fullName}</span>
+              <span className="text-[13px] text-slate-300">{selectedBtnMeta?.fullName}</span>
             </div>
 
             {liveReaction ? (
-              <div className="flex items-center gap-2 rounded border border-[#1d345c] bg-black px-2.5 py-1 font-mono text-[11px] text-[#93c5fd]">
+              <div className="flex items-center gap-2 rounded-md border border-[#2c3f61] bg-[#0b0f17] px-3 py-1 font-mono text-xs text-[#93c5fd]">
                 <Cog
                   className={`h-3.5 w-3.5 ${
                     liveReaction.pct > 0
                       ? "text-[#60a5fa] animate-motor-cw"
                       : liveReaction.pct < 0
                         ? "text-[#60a5fa] animate-motor-ccw"
-                        : "text-[#475266]"
+                        : "text-slate-500"
                   }`}
                 />
                 <span>{liveReaction.summary}</span>
               </div>
             ) : (
-              <span className="font-mono text-[11px] text-[#556072]">
+              <span className="text-xs text-slate-400">
                 Clique num comando abaixo para vincular
               </span>
             )}
           </div>
 
           {/* 1-Click Action Chips */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
             {port === "pilot"
               ? project.superstructure.requests.map((req) => {
                   const active = currentPilotRule?.request === req;
@@ -280,10 +281,10 @@ export function ControlsTab() {
                       key={req}
                       type="button"
                       onClick={() => quickBindPilot(req)}
-                      className={`rounded-md border px-2.5 py-1 font-mono text-[11px] transition-all cursor-pointer ${
+                      className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-all cursor-pointer ${
                         active
-                          ? "border-[#3b82f6] bg-[#142c4f] text-white"
-                          : "border-[#1c2536] bg-black text-[#9aa5b6] hover:border-[#264f8a] hover:text-white"
+                          ? "border-[#60a5fa] bg-[#142c4f] text-white"
+                          : "border-[#253552] bg-[#0b0f17] text-slate-300 hover:border-[#3b6bb5] hover:text-white"
                       }`}
                     >
                       {active ? "✓ " : "+ "}
@@ -300,10 +301,10 @@ export function ControlsTab() {
                       key={`${choice.subsystemId}-${choice.request}`}
                       type="button"
                       onClick={() => quickBindCopilot(choice.subsystemId, choice.request)}
-                      className={`rounded-md border px-2.5 py-1 font-mono text-[11px] transition-all cursor-pointer ${
+                      className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-all cursor-pointer ${
                         active
-                          ? "border-[#3b82f6] bg-[#142c4f] text-white"
-                          : "border-[#1c2536] bg-black text-[#9aa5b6] hover:border-[#264f8a] hover:text-white"
+                          ? "border-[#60a5fa] bg-[#142c4f] text-white"
+                          : "border-[#253552] bg-[#0b0f17] text-slate-300 hover:border-[#3b6bb5] hover:text-white"
                       }`}
                     >
                       {active ? "✓ " : "+ "}
@@ -315,44 +316,55 @@ export function ControlsTab() {
         </div>
       </div>
 
-      {/* Right Column: Priority / Override List + Live Java Preview */}
-      <div className="flex h-full min-h-0 flex-col bg-[#05070b] lg:col-span-5">
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-wider text-[#7c8ba1]">
+      {/* Right Column: Priority / Override List + On-Demand Java Preview */}
+      <div className="flex h-full min-h-0 flex-col bg-[#0f1624] lg:col-span-5">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[13px] font-semibold text-white">
               {port === "pilot" ? t("controls.pilot_title") : t("controls.copilot_title")}
             </span>
-            <span className="font-mono text-[10px] text-[#556072]">
-              {port === "pilot" ? "ordem = prioridade" : "whileTrue()"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-slate-400">
+                {port === "pilot" ? "prioridade" : "whileTrue()"}
+              </span>
+              <Button
+                size="sm"
+                variant={showJava ? "secondary" : "outline"}
+                onClick={() => setShowJava((v) => !v)}
+                className="h-7 px-2.5 text-xs"
+              >
+                <Code2 className="h-3.5 w-3.5" />
+                {showJava ? "Ocultar Java" : "Ver Java"}
+              </Button>
+            </div>
           </div>
 
           {port === "pilot" ? (
             project.controls.pilotPriority.length === 0 ? (
-              <p className="rounded border border-dashed border-[#1d2738] p-5 text-center text-xs text-[#6b7689]">
+              <p className="rounded-lg border border-dashed border-[#253552] bg-[#131c2e]/50 p-6 text-center text-[13px] text-slate-400">
                 Selecione um botão no controle e clique num request para mapear.
               </p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {project.controls.pilotPriority.map((rule, idx) => (
                   <div
                     key={rule.id}
                     onClick={() => setSelectedButton(rule.button)}
                     onMouseEnter={() => setHoveredButton(rule.button)}
                     onMouseLeave={() => setHoveredButton(null)}
-                    className={`flex items-center gap-2 rounded-md border px-3 py-2 transition-all cursor-pointer ${
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
                       selectedButton === rule.button
-                        ? "border-[#3b6bb5] bg-[#142c4f]/45"
+                        ? "border-[#60a5fa] bg-[#19253d]"
                         : hoveredButton === rule.button
-                          ? "border-[#264f8a] bg-[#0b1629]"
-                          : "border-[#172030] bg-black hover:border-[#264f8a]"
+                          ? "border-[#3b6bb5] bg-[#152036]"
+                          : "border-[#22304a] bg-[#131c2e] hover:border-[#3b6bb5]"
                     }`}
                   >
-                    <span className="rounded bg-[#0d1729] px-1.5 py-0.5 font-mono text-[10px] text-[#7cb3ff]">
+                    <span className="rounded bg-[#142c4f] px-2 py-0.5 font-mono text-[11px] text-[#93c5fd]">
                       #{idx + 1}
                     </span>
                     <Select
-                      className="w-24 h-7 font-mono"
+                      className="w-24 h-8 font-mono text-xs"
                       value={rule.button}
                       onChange={(e) =>
                         updateProject((prev) => ({
@@ -374,9 +386,9 @@ export function ControlsTab() {
                         </option>
                       ))}
                     </Select>
-                    <span className="font-mono text-xs text-[#556072]">→</span>
+                    <span className="font-mono text-xs text-slate-500">→</span>
                     <Select
-                      className="flex-1 font-mono h-7"
+                      className="flex-1 font-mono h-8 text-xs"
                       value={rule.request}
                       onChange={(e) =>
                         updateProject((prev) => ({
@@ -439,11 +451,11 @@ export function ControlsTab() {
               </div>
             )
           ) : project.controls.copilotOverrides.length === 0 ? (
-            <p className="rounded border border-dashed border-[#1d2738] p-5 text-center text-xs text-[#6b7689]">
+            <p className="rounded-lg border border-dashed border-[#253552] bg-[#131c2e]/50 p-6 text-center text-[13px] text-slate-400">
               Selecione um botão no controle e clique num comando de subsistema para mapear.
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {project.controls.copilotOverrides.map((ov) => {
                 const sub = project.subsystems.find((s) => s.id === ov.subsystemId);
                 const subClass = sub ? toPascalCase(sub.name) : "Subsystem";
@@ -454,17 +466,17 @@ export function ControlsTab() {
                     onClick={() => setSelectedButton(ov.button)}
                     onMouseEnter={() => setHoveredButton(ov.button)}
                     onMouseLeave={() => setHoveredButton(null)}
-                    className={`space-y-1.5 rounded-md border px-3 py-2 transition-all cursor-pointer ${
+                    className={`space-y-1.5 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
                       selectedButton === ov.button
-                        ? "border-[#3b6bb5] bg-[#142c4f]/45"
+                        ? "border-[#60a5fa] bg-[#19253d]"
                         : hoveredButton === ov.button
-                          ? "border-[#264f8a] bg-[#0b1629]"
-                          : "border-[#172030] bg-black hover:border-[#264f8a]"
+                          ? "border-[#3b6bb5] bg-[#152036]"
+                          : "border-[#22304a] bg-[#131c2e] hover:border-[#3b6bb5]"
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <Select
-                        className="w-24 h-7 font-mono"
+                        className="w-24 h-8 font-mono text-xs"
                         value={ov.button}
                         onChange={(e) =>
                           updateProject((prev) => ({
@@ -487,7 +499,7 @@ export function ControlsTab() {
                         ))}
                       </Select>
                       <Select
-                        className="flex-1 h-7"
+                        className="flex-1 h-8 text-xs"
                         value={ov.subsystemId}
                         onChange={(e) => {
                           const nextSub = project.subsystems.find((s) => s.id === e.target.value);
@@ -515,7 +527,7 @@ export function ControlsTab() {
                         ))}
                       </Select>
                       <Select
-                        className="flex-1 font-mono h-7"
+                        className="flex-1 font-mono h-8 text-xs"
                         value={ov.request}
                         onChange={(e) =>
                           updateProject((prev) => ({
@@ -554,7 +566,7 @@ export function ControlsTab() {
                         <Trash2 className="h-3.5 w-3.5 text-rose-400" />
                       </Button>
                     </div>
-                    <p className="font-mono text-[10px] text-[#6b7689]">{cmdSig}</p>
+                    <p className="font-mono text-[11px] text-slate-400">{cmdSig}</p>
                   </div>
                 );
               })}
@@ -562,9 +574,9 @@ export function ControlsTab() {
           )}
         </div>
 
-        {/* Bottom Live Java Preview */}
-        {previewFile && (
-          <div className="h-[44%] min-h-[200px] border-t border-[#172030] flex flex-col">
+        {/* Bottom On-Demand Java Preview */}
+        {showJava && previewFile && (
+          <div className="h-[44%] min-h-[200px] border-t border-[#22304a] flex flex-col">
             <CodeViewer
               filePath={previewFile.path}
               content={previewFile.content}

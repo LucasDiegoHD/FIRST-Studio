@@ -7,60 +7,60 @@
 
 :root {
   color-scheme: dark;
-  --bg-void: #000000;
-  --bg-panel: #05070b;
-  --bg-surface: #080c14;
-  --bg-elevated: #0c121e;
+  --bg-void: #0b0f17;
+  --bg-panel: #0f1624;
+  --bg-surface: #131c2e;
+  --bg-elevated: #19253d;
   --accent: #142c4f;
-  --accent-hover: #1c3c6b;
-  --accent-border: #264f8a;
-  --accent-tint: rgba(20, 44, 79, 0.3);
-  --border-hairline: #171c26;
+  --accent-hover: #1a3a68;
+  --accent-border: #3b6bb5;
+  --accent-tint: rgba(20, 44, 79, 0.38);
+  --border-hairline: #22304a;
 }
 
 html,
 body {
   background-color: var(--bg-void);
-  color: #f3f5f8;
+  color: #f8fafc;
   min-height: 100%;
   overflow-x: clip;
 }
 
 .bg-dot-matrix {
-  background-color: #000000;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 22px 22px;
+  background-color: #0b0f17;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 .bg-studio-glow {
-  background-color: #000000;
+  background-color: #0b0f17;
   background-image: radial-gradient(
-    ellipse 65% 45% at 50% 0%,
-    rgba(20, 44, 79, 0.58),
+    ellipse 70% 50% at 50% 0%,
+    rgba(20, 44, 79, 0.72),
     transparent 72%
   );
 }
 
 .glow-accent {
   box-shadow:
-    0 0 24px -6px rgba(37, 99, 235, 0.55),
-    inset 0 1px 0 rgba(147, 197, 253, 0.16);
+    0 0 24px -6px rgba(59, 107, 181, 0.55),
+    inset 0 1px 0 rgba(147, 197, 253, 0.18);
 }
 
-/* React Flow dark theme overrides (#000000 + #142c4f) */
+/* React Flow dark theme overrides (Graphite #0b0f17 + #142c4f) */
 .react-flow {
-  --xy-background-color: #000000;
-  --xy-node-border-radius: 6px;
-  --xy-controls-button-background-color: #05070b;
-  --xy-controls-button-background-color-hover: #0c121e;
-  --xy-controls-button-color: #9aa5b6;
-  --xy-controls-button-border-color: #171c26;
-  --xy-attribution-background-color: rgba(5, 7, 11, 0.7);
+  --xy-background-color: #0b0f17;
+  --xy-node-border-radius: 8px;
+  --xy-controls-button-background-color: #131c2e;
+  --xy-controls-button-background-color-hover: #19253d;
+  --xy-controls-button-color: #cbd5e1;
+  --xy-controls-button-border-color: #253552;
+  --xy-attribution-background-color: rgba(15, 22, 36, 0.8);
 }
 
 .react-flow__controls {
-  border: 1px solid #171c26;
-  box-shadow: none !important;
+  border: 1px solid #253552;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6) !important;
 }
 
 .react-flow__handle {
@@ -151,14 +151,14 @@ input[type="range"]::-moz-range-thumb {
 }
 
 ::-webkit-scrollbar-track {
-  background: #000000;
+  background: #0b0f17;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1b2230;
+  background: #253552;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2b384e;
+  background: #3b6bb5;
 }

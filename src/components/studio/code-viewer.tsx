@@ -9,7 +9,7 @@ import { useProject } from "@/context/project-context";
 const studioCodeTheme: PrismTheme = {
   plain: {
     color: "#e2e8f0",
-    backgroundColor: "#030508",
+    backgroundColor: "#090e18",
   },
   styles: [
     { types: ["comment", "prolog", "doctype", "cdata"], style: { color: "#565f89" } },
@@ -55,12 +55,12 @@ export function CodeViewer({
   const language = resolveLanguage(filePath);
 
   return (
-    <div className={`flex flex-col min-h-0 bg-[#030508] ${className}`}>
+    <div className={`flex flex-col min-h-0 bg-[#090e18] ${className}`}>
       {!hideHeader && (
-        <div className="flex items-center justify-between border-b border-[#171c26] bg-[#05070b] px-3 py-1.5 shrink-0">
-          <span className="truncate font-mono text-[11px] text-[#8a94a6]">{filePath}</span>
-          <Button size="sm" variant="ghost" onClick={handleCopy} className="h-6 px-2 text-[11px]">
-            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+        <div className="flex items-center justify-between border-b border-[#22304a] bg-[#0f1624] px-3 py-2 shrink-0">
+          <span className="truncate font-mono text-xs text-slate-300">{filePath}</span>
+          <Button size="sm" variant="ghost" onClick={handleCopy} className="h-7 px-2.5 text-xs">
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? t("code.copied") : t("code.copy")}
           </Button>
         </div>
@@ -68,7 +68,7 @@ export function CodeViewer({
       <div className="flex-1 overflow-auto">
         <Highlight theme={studioCodeTheme} code={content.trimEnd()} language={language}>
           {({ tokens, getLineProps, getTokenProps }) => (
-            <pre className="p-3 font-mono text-[12px] leading-[1.6] bg-[#030508]">
+            <pre className="p-3 font-mono text-[12px] leading-[1.6] bg-[#090e18]">
               {tokens.map((line, i) => (
                 <div key={i} {...getLineProps({ line })} className="table-row">
                   <span className="table-cell w-8 select-none pr-3 text-right text-[#475266]">

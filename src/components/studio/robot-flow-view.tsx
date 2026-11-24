@@ -17,7 +17,7 @@ import {
   type OnNodeDrag,
   type OnNodesChange,
 } from "@xyflow/react";
-import { ArrowRight, Cog, Gamepad2, Layers, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { ArrowRight, ChevronDown, Cog, Gamepad2, Layers, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -54,33 +54,33 @@ type SubsystemNodeData = {
 
 function XboxFlowNode({ data }: NodeProps<Node<XboxNodeData>>) {
   return (
-    <div className="w-[220px] overflow-hidden rounded-md border border-[#1d2b44] bg-[#05080f] text-left shadow-[0_0_24px_-10px_rgba(20,44,79,0.8)]">
-      <div className="flex items-center justify-between border-b border-[#172030] bg-[#142c4f]/45 px-3 py-1.5">
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-white">
+    <div className="w-[230px] overflow-hidden rounded-lg border border-[#2c3f61] bg-[#131c2e] text-left shadow-lg">
+      <div className="flex items-center justify-between border-b border-[#22304a] bg-[#142c4f]/75 px-3 py-2">
+        <span className="flex items-center gap-1.5 text-[13px] font-semibold text-white">
           <Gamepad2 className="h-3.5 w-3.5 text-[#93c5fd]" />
           Xbox 0 / 1
         </span>
         <button
           type="button"
           onClick={data.onOpenControls}
-          className="font-mono text-[10px] text-[#93c5fd] hover:text-white cursor-pointer"
+          className="font-mono text-[11px] text-[#93c5fd] hover:text-white cursor-pointer"
         >
           editar
         </button>
       </div>
-      <div className="p-2.5 flex flex-wrap gap-1.5">
+      <div className="p-3 flex flex-wrap gap-1.5">
         {data.buttons.length === 0 ? (
-          <span className="font-mono text-[10px] text-[#556072]">sem botões</span>
+          <span className="font-mono text-[11px] text-slate-400">sem botões</span>
         ) : (
           data.buttons.map((b) => (
             <button
               key={b.label + b.request}
               type="button"
               onClick={() => data.onSimulate(b.request)}
-              className={`rounded border px-2 py-0.5 font-mono text-[10px] transition-all cursor-pointer ${
+              className={`rounded border px-2 py-0.5 font-mono text-[11px] transition-all cursor-pointer ${
                 data.simRequest === b.request
-                  ? "border-[#3b82f6] bg-[#142c4f] text-white shadow-[0_0_12px_-3px_rgba(59,130,246,0.7)]"
-                  : "border-[#1c2536] bg-black text-[#8a94a6] hover:text-white"
+                  ? "border-[#60a5fa] bg-[#142c4f] text-white shadow-[0_0_12px_-3px_rgba(59,130,246,0.65)]"
+                  : "border-[#253552] bg-[#0b0f17] text-slate-300 hover:text-white"
               }`}
             >
               {b.label} → {b.request}
@@ -95,35 +95,35 @@ function XboxFlowNode({ data }: NodeProps<Node<XboxNodeData>>) {
 
 function SuperNode({ data }: NodeProps<Node<SuperNodeData>>) {
   return (
-    <div className="w-[235px] overflow-hidden rounded-md border border-[#264f8a] bg-[#060c18] text-left shadow-[0_0_26px_-10px_rgba(37,99,235,0.55)]">
+    <div className="w-[245px] overflow-hidden rounded-lg border border-[#3b6bb5] bg-[#131c2e] text-left shadow-lg">
       <Handle type="target" position={Position.Left} />
-      <div className="flex items-center justify-between border-b border-[#1c2f4f] bg-[#142c4f]/65 px-3 py-1.5">
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-white">
+      <div className="flex items-center justify-between border-b border-[#22304a] bg-[#142c4f]/90 px-3 py-2">
+        <span className="flex items-center gap-1.5 text-[13px] font-semibold text-white">
           <Layers className="h-3.5 w-3.5 text-[#93c5fd]" />
           SuperStructure
         </span>
         <button
           type="button"
           onClick={data.onOpenStates}
-          className="font-mono text-[10px] text-[#93c5fd] hover:text-white cursor-pointer"
+          className="font-mono text-[11px] text-[#93c5fd] hover:text-white cursor-pointer"
         >
           matriz
         </button>
       </div>
-      <div className="p-2.5 space-y-2">
-        <div className="font-mono text-[10px] text-[#7cb3ff]">
+      <div className="p-3 space-y-2">
+        <div className="font-mono text-[11px] text-[#93c5fd]">
           State: <strong className="text-white">{data.activeRobotState}</strong>
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {data.requests.map((req) => (
             <button
               key={req}
               type="button"
               onClick={() => data.onSimulate(req)}
-              className={`rounded border px-2 py-0.5 font-mono text-[10px] transition-all cursor-pointer ${
+              className={`rounded border px-2 py-0.5 font-mono text-[11px] transition-all cursor-pointer ${
                 data.simRequest === req
-                  ? "border-[#3b82f6] bg-[#142c4f] text-white"
-                  : "border-[#1c2536] bg-black text-[#8a94a6] hover:text-white"
+                  ? "border-[#60a5fa] bg-[#142c4f] text-white"
+                  : "border-[#253552] bg-[#0b0f17] text-slate-300 hover:text-white"
               }`}
             >
               {req}
@@ -149,16 +149,16 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
   return (
     <div
       onClick={() => onSelect(subsystem.id)}
-      className={`w-[265px] overflow-hidden rounded-md border text-left transition-all cursor-pointer ${
+      className={`w-[270px] overflow-hidden rounded-lg border text-left transition-all cursor-pointer ${
         selected
-          ? "border-[#3b82f6] bg-[#09172b] shadow-[0_0_24px_-6px_rgba(59,130,246,0.6)]"
+          ? "border-[#60a5fa] bg-[#19253d] shadow-[0_0_24px_-6px_rgba(59,130,246,0.55)]"
           : outputPct !== 0
-            ? "border-[#264f8a] bg-[#071121] shadow-[0_0_20px_-8px_rgba(37,99,235,0.45)]"
-            : "border-[#1b2434] bg-[#060910] hover:border-[#2e4266]"
+            ? "border-[#3b6bb5] bg-[#152036] shadow-lg"
+            : "border-[#253552] bg-[#131c2e] hover:border-[#3b6bb5]"
       }`}
     >
       <Handle type="target" position={Position.Left} />
-      <div className="flex items-center justify-between border-b border-[#172030] bg-[#142c4f]/45 px-3 py-1.5">
+      <div className="flex items-center justify-between border-b border-[#22304a] bg-[#142c4f]/75 px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
           <Cog
             className={`h-3.5 w-3.5 shrink-0 ${
@@ -166,13 +166,13 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
                 ? "text-[#93c5fd] animate-motor-cw"
                 : outputPct < 0
                   ? "text-[#93c5fd] animate-motor-ccw"
-                  : "text-[#6b7689]"
+                  : "text-slate-400"
             }`}
           />
-          <span className="truncate text-xs font-semibold text-white">{subsystem.name}</span>
+          <span className="truncate text-[13px] font-semibold text-white">{subsystem.name}</span>
         </div>
         <span
-          className={`font-mono text-[10px] ${
+          className={`font-mono text-[11px] ${
             errorCount > 0 ? "text-rose-400" : "text-[#93c5fd]"
           }`}
         >
@@ -180,25 +180,25 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
         </span>
       </div>
 
-      <div className="p-2.5 space-y-2">
-        <div className="flex items-center justify-between font-mono text-[10px]">
-          <span className="text-[#8a94a6]">
-            {vendor} · {subsystem.motor.currentLimitAmps}A · {subsystem.motor.neutralMode}
+      <div className="p-3 space-y-2">
+        <div className="flex items-center justify-between font-mono text-[11px]">
+          <span className="text-slate-300">
+            {vendor} · {subsystem.motor.currentLimitAmps}A
           </span>
-          <span className={outputPct !== 0 ? "text-[#93c5fd] font-semibold" : "text-[#6b7689]"}>
+          <span className={outputPct !== 0 ? "text-[#93c5fd] font-semibold" : "text-slate-400"}>
             {outputPct > 0 ? `+${Math.round(outputPct * 100)}%` : `${Math.round(outputPct * 100)}%`}
           </span>
         </div>
 
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-black border border-[#171c26]">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#0b0f17] border border-[#22304a]">
           <div
-            className="h-full bg-[#3b82f6] transition-all duration-300"
+            className="h-full bg-[#60a5fa] transition-all duration-300"
             style={{ width: `${Math.abs(outputPct) * 100}%` }}
           />
         </div>
 
-        <div className="font-mono text-[10px] text-[#7c8ba1]">
-          {activeRequest} → <span className="text-slate-200">{activeStateName}</span>
+        <div className="font-mono text-[11px] text-slate-400">
+          {activeRequest} → <span className="text-slate-100">{activeStateName}</span>
         </div>
       </div>
     </div>
@@ -237,6 +237,7 @@ export function RobotFlowView({
   const [simRequest, setSimRequest] = useState<string>(project.superstructure.initialRequest);
   const [autoSim, setAutoSim] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<"hardware" | "java">("hardware");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedJavaIdx, setSelectedJavaIdx] = useState(0);
   const positionsRef = useRef<Record<string, { x: number; y: number }>>({});
 
@@ -403,7 +404,7 @@ export function RobotFlowView({
   ];
 
   return (
-    <div className="flex h-full min-h-0 bg-black">
+    <div className="flex h-full min-h-0 bg-[#0b0f17]">
       {/* React Flow Canvas */}
       <div className="relative flex-1 min-w-0 h-full">
         <ReactFlow
@@ -417,21 +418,21 @@ export function RobotFlowView({
           minZoom={0.4}
           maxZoom={1.6}
         >
-          <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="rgba(255,255,255,0.09)" />
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="rgba(148,163,184,0.14)" />
           <Controls showInteractive={false} />
 
           <Panel position="top-left">
-            <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-[#264f8a]/70 bg-[#050811]/95 px-2.5 py-1.5 shadow-lg">
-              <span className="font-mono text-[10px] uppercase text-[#7cb3ff] mr-1">Simular:</span>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-[#2c3f61] bg-[#0f1624]/95 px-3 py-2 shadow-lg">
+              <span className="font-mono text-[11px] uppercase text-[#93c5fd] mr-1">Simular:</span>
               {project.superstructure.requests.map((req) => (
                 <button
                   key={req}
                   type="button"
                   onClick={() => handleManualSim(req)}
-                  className={`rounded px-2 py-0.5 font-mono text-[11px] transition-all cursor-pointer ${
+                  className={`rounded-md px-2.5 py-1 font-mono text-xs transition-all cursor-pointer ${
                     activeSimRequest === req
-                      ? "bg-[#142c4f] border border-[#3b82f6] text-white"
-                      : "border border-[#1a2232] bg-black text-[#8a94a6] hover:text-white"
+                      ? "bg-[#142c4f] border border-[#60a5fa] text-white"
+                      : "border border-[#253552] bg-[#0b0f17] text-slate-300 hover:text-white"
                   }`}
                 >
                   {req}
@@ -440,10 +441,10 @@ export function RobotFlowView({
               <button
                 type="button"
                 onClick={() => setAutoSim((v) => !v)}
-                className={`ml-1 rounded border px-2 py-0.5 font-mono text-[10px] cursor-pointer ${
+                className={`ml-1 rounded-md border px-2.5 py-1 font-mono text-[11px] cursor-pointer ${
                   autoSim
-                    ? "border-[#3b82f6] bg-[#142c4f] text-white"
-                    : "border-[#1d2738] bg-black text-[#6b7689] hover:text-white"
+                    ? "border-[#60a5fa] bg-[#142c4f] text-white"
+                    : "border-[#253552] bg-[#0b0f17] text-slate-400 hover:text-white"
                 }`}
               >
                 {autoSim ? "AUTO ON" : "AUTO"}
@@ -452,21 +453,21 @@ export function RobotFlowView({
           </Panel>
 
           <Panel position="bottom-center">
-            <div className="flex items-center gap-1 rounded-md border border-[#1d2738] bg-[#05070b]/95 px-2 py-1 shadow-xl">
+            <div className="flex items-center gap-1.5 rounded-lg border border-[#2c3f61] bg-[#0f1624]/95 px-2.5 py-1.5 shadow-xl">
               <Button size="sm" variant="primary" onClick={() => addSubsystem("roller")}>
-                <Plus className="h-3 w-3" />
+                <Plus className="h-3.5 w-3.5" />
                 {t("subsystems.roller")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => addSubsystem("generic")}>
-                <Plus className="h-3 w-3" />
+                <Plus className="h-3.5 w-3.5" />
                 {t("subsystems.generic")}
               </Button>
-              <span className="mx-1 h-4 w-px bg-[#172030]" />
+              <span className="mx-1 h-4 w-px bg-[#22304a]" />
               <Button size="icon" variant="ghost" onClick={undo} disabled={!canUndo}>
-                <Undo2 className="h-3.5 w-3.5" />
+                <Undo2 className="h-4 w-4" />
               </Button>
               <Button size="icon" variant="ghost" onClick={redo} disabled={!canRedo}>
-                <Redo2 className="h-3.5 w-3.5" />
+                <Redo2 className="h-4 w-4" />
               </Button>
             </div>
           </Panel>
@@ -474,10 +475,10 @@ export function RobotFlowView({
       </div>
 
       {/* Right Hardware / Live Java Inspector */}
-      <aside className="flex h-full w-[380px] shrink-0 flex-col border-l border-[#172030] bg-[#05070b]">
+      <aside className="flex h-full w-[380px] shrink-0 flex-col border-l border-[#22304a] bg-[#0f1624]">
         {!selected ? (
           <div className="flex flex-1 flex-col items-center justify-center p-6 text-center gap-3">
-            <p className="text-xs text-[#7c8ba1]">{t("subsystems.select_prompt")}</p>
+            <p className="text-[13px] text-slate-400">{t("subsystems.select_prompt")}</p>
             <Button size="sm" variant="primary" onClick={() => addSubsystem("roller")}>
               <Plus className="h-3.5 w-3.5" />
               {t("subsystems.roller")}
@@ -485,14 +486,14 @@ export function RobotFlowView({
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between border-b border-[#172030] px-3.5 py-2.5">
-              <span className="truncate text-xs font-semibold text-white">{selected.name}</span>
-              <div className="flex rounded-md border border-[#1a2538] bg-black p-0.5">
+            <div className="flex items-center justify-between border-b border-[#22304a] px-4 py-3">
+              <span className="truncate text-sm font-semibold text-white">{selected.name}</span>
+              <div className="flex rounded-md border border-[#22304a] bg-[#0b0f17] p-0.5">
                 <button
                   type="button"
                   onClick={() => setInspectorTab("hardware")}
-                  className={`rounded px-2.5 py-0.5 text-[11px] font-medium cursor-pointer ${
-                    inspectorTab === "hardware" ? "bg-[#142c4f] text-white" : "text-[#7c8ba1]"
+                  className={`rounded px-3 py-1 text-xs font-medium cursor-pointer ${
+                    inspectorTab === "hardware" ? "bg-[#142c4f] text-white" : "text-slate-400 hover:text-white"
                   }`}
                 >
                   {t("inspector.hardware")}
@@ -500,8 +501,8 @@ export function RobotFlowView({
                 <button
                   type="button"
                   onClick={() => setInspectorTab("java")}
-                  className={`rounded px-2.5 py-0.5 text-[11px] font-medium cursor-pointer ${
-                    inspectorTab === "java" ? "bg-[#142c4f] text-white" : "text-[#7c8ba1]"
+                  className={`rounded px-3 py-1 text-xs font-medium cursor-pointer ${
+                    inspectorTab === "java" ? "bg-[#142c4f] text-white" : "text-slate-400 hover:text-white"
                   }`}
                 >
                   {t("inspector.java")}
@@ -510,11 +511,12 @@ export function RobotFlowView({
             </div>
 
             {inspectorTab === "hardware" ? (
-              <div className="flex-1 overflow-y-auto divide-y divide-[#172030] text-xs">
-                <div className="space-y-3 p-4">
-                  <div className="grid grid-cols-12 gap-2">
-                    <div className="col-span-7 space-y-1">
-                      <label className="text-[11px] text-[#8a94a6]">{t("subsystems.name")}</label>
+              <div className="flex-1 overflow-y-auto divide-y divide-[#22304a] text-[13px]">
+                {/* Essential Configuration */}
+                <div className="space-y-4 p-4">
+                  <div className="grid grid-cols-12 gap-2.5">
+                    <div className="col-span-7 space-y-1.5">
+                      <label className="text-xs text-slate-300">{t("subsystems.name")}</label>
                       <Input
                         value={selected.name}
                         className="font-mono"
@@ -526,8 +528,8 @@ export function RobotFlowView({
                         }
                       />
                     </div>
-                    <div className="col-span-5 space-y-1">
-                      <label className="text-[11px] text-[#8a94a6]">{t("subsystems.can_id")}</label>
+                    <div className="col-span-5 space-y-1.5">
+                      <label className="text-xs text-slate-300">{t("subsystems.can_id")}</label>
                       <UnitInput
                         unit="ID"
                         type="number"
@@ -551,9 +553,9 @@ export function RobotFlowView({
                   </div>
 
                   {/* Vendor Tactile Chips */}
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-[#8a94a6]">{t("subsystems.vendor")}</label>
-                    <div className="grid grid-cols-3 gap-1.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-slate-300">{t("subsystems.vendor")}</label>
+                    <div className="grid grid-cols-3 gap-2">
                       {vendors.map((v) => (
                         <button
                           key={v.id}
@@ -564,10 +566,10 @@ export function RobotFlowView({
                               motor: { ...prev.motor, vendor: v.id },
                             }))
                           }
-                          className={`rounded-md border py-1.5 text-[11px] font-medium transition-all cursor-pointer ${
+                          className={`rounded-md border py-2 text-xs font-medium transition-all cursor-pointer ${
                             selected.motor.vendor === v.id
-                              ? "border-[#3b6bb5] bg-[#142c4f] text-white"
-                              : "border-[#1b2230] bg-black text-[#8a94a6] hover:text-white"
+                              ? "border-[#60a5fa] bg-[#142c4f] text-white"
+                              : "border-[#253552] bg-[#131c2e] text-slate-300 hover:text-white"
                           }`}
                         >
                           {v.label}
@@ -576,29 +578,10 @@ export function RobotFlowView({
                     </div>
                   </div>
 
-                  {selected.motor.vendor === "talonfx" && (
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-[#8a94a6]">{t("subsystems.can_bus")}</label>
-                      <Input
-                        value={selected.motor.canBus}
-                        placeholder="rio"
-                        className="font-mono"
-                        onChange={(e) =>
-                          updateSubsystem(selected.id, (prev) => ({
-                            ...prev,
-                            motor: { ...prev.motor, canBus: e.target.value },
-                          }))
-                        }
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3 p-4">
                   {/* Current Limit Slider + UnitInput */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-[11px] text-[#8a94a6]">
+                      <label className="text-xs text-slate-300">
                         {t("subsystems.current_limit")}
                       </label>
                       <div className="w-24">
@@ -607,7 +590,7 @@ export function RobotFlowView({
                           type="number"
                           min={1}
                           max={120}
-                          className="h-7"
+                          className="h-8"
                           value={selected.motor.currentLimitAmps}
                           onChange={(e) =>
                             updateSubsystem(selected.id, (prev) => ({
@@ -642,151 +625,190 @@ export function RobotFlowView({
                       className="w-full"
                     />
                   </div>
-
-                  {/* Neutral Mode Segmented Toggle */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-200">{t("subsystems.neutral_mode")}</span>
-                    <div className="flex rounded-md border border-[#1b2230] bg-black p-0.5">
-                      {(["coast", "brake"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() =>
-                            updateSubsystem(selected.id, (prev) => ({
-                              ...prev,
-                              motor: { ...prev.motor, neutralMode: mode },
-                            }))
-                          }
-                          className={`rounded px-2.5 py-0.5 text-[11px] capitalize cursor-pointer ${
-                            selected.motor.neutralMode === mode
-                              ? "bg-[#142c4f] text-white"
-                              : "text-[#7c8ba1]"
-                          }`}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between py-1">
-                    <span className="text-xs text-slate-200">{t("subsystems.inverted")}</span>
-                    <Switch
-                      checked={selected.motor.inverted}
-                      onCheckedChange={(checked) =>
-                        updateSubsystem(selected.id, (prev) => ({
-                          ...prev,
-                          motor: { ...prev.motor, inverted: checked },
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-[#8a94a6]">{t("subsystems.gear_ratio")}</label>
-                      <UnitInput
-                        unit=":1"
-                        type="number"
-                        step={0.1}
-                        min={0.1}
-                        value={selected.motor.gearRatio}
-                        onChange={(e) =>
-                          updateSubsystem(selected.id, (prev) => ({
-                            ...prev,
-                            motor: {
-                              ...prev.motor,
-                              gearRatio: Math.max(0.1, Number.parseFloat(e.target.value || "1") || 1),
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-[#8a94a6]">{t("subsystems.moi")}</label>
-                      <UnitInput
-                        unit="kg·m²"
-                        type="number"
-                        step={0.0005}
-                        min={0.0001}
-                        value={selected.motor.moiKgM2}
-                        onChange={(e) =>
-                          updateSubsystem(selected.id, (prev) => ({
-                            ...prev,
-                            motor: {
-                              ...prev.motor,
-                              moiKgM2: Math.max(
-                                0.0001,
-                                Number.parseFloat(e.target.value || "0.001") || 0.001,
-                              ),
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
                 </div>
 
-                <div className="space-y-3 p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-200">{t("subsystems.selftest_enable")}</span>
-                    <Switch
-                      checked={selected.selfTest.enabled}
-                      onCheckedChange={(checked) =>
-                        updateSubsystem(selected.id, (prev) => ({
-                          ...prev,
-                          selfTest: { ...prev.selfTest, enabled: checked },
-                        }))
-                      }
-                    />
-                  </div>
-                  {selected.selfTest.enabled && (
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <UnitInput
-                        unit="%"
-                        type="number"
-                        step={0.05}
-                        min={-1}
-                        max={1}
-                        value={selected.selfTest.output}
-                        onChange={(e) =>
-                          updateSubsystem(selected.id, (prev) => ({
-                            ...prev,
-                            selfTest: {
-                              ...prev.selfTest,
-                              output: Math.min(
-                                1,
-                                Math.max(-1, Number.parseFloat(e.target.value || "0.3") || 0.3),
-                              ),
-                            },
-                          }))
-                        }
+                {/* Collapsed-by-default Advanced Hardware & Self-Test */}
+                <div className="p-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced((v) => !v)}
+                    className="flex w-full items-center justify-between rounded-md border border-[#22304a] bg-[#131c2e] px-3 py-2 text-left text-xs font-medium text-slate-200 hover:border-[#3b6bb5] cursor-pointer"
+                  >
+                    <span>Avançado</span>
+                    <span className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
+                      {selected.motor.neutralMode} · {selected.motor.gearRatio}:1
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform ${
+                          showAdvanced ? "rotate-180" : ""
+                        }`}
                       />
-                      <UnitInput
-                        unit="RPS"
-                        type="number"
-                        step={0.5}
-                        min={0}
-                        value={selected.selfTest.minVelocityRps}
-                        onChange={(e) =>
-                          updateSubsystem(selected.id, (prev) => ({
-                            ...prev,
-                            selfTest: {
-                              ...prev.selfTest,
-                              minVelocityRps: Math.max(
-                                0,
-                                Number.parseFloat(e.target.value || "5") || 5,
-                              ),
-                            },
-                          }))
-                        }
-                      />
+                    </span>
+                  </button>
+
+                  {showAdvanced && (
+                    <div className="mt-3 space-y-3.5 pt-1">
+                      {selected.motor.vendor === "talonfx" && (
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-slate-300">{t("subsystems.can_bus")}</label>
+                          <Input
+                            value={selected.motor.canBus}
+                            placeholder="rio"
+                            className="font-mono"
+                            onChange={(e) =>
+                              updateSubsystem(selected.id, (prev) => ({
+                                ...prev,
+                                motor: { ...prev.motor, canBus: e.target.value },
+                              }))
+                            }
+                          />
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-[13px] text-slate-200">{t("subsystems.neutral_mode")}</span>
+                        <div className="flex rounded-md border border-[#253552] bg-[#0b0f17] p-0.5">
+                          {(["coast", "brake"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() =>
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  motor: { ...prev.motor, neutralMode: mode },
+                                }))
+                              }
+                              className={`rounded px-2.5 py-1 text-xs capitalize cursor-pointer ${
+                                selected.motor.neutralMode === mode
+                                  ? "bg-[#142c4f] text-white"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between py-0.5">
+                        <span className="text-[13px] text-slate-200">{t("subsystems.inverted")}</span>
+                        <Switch
+                          checked={selected.motor.inverted}
+                          onCheckedChange={(checked) =>
+                            updateSubsystem(selected.id, (prev) => ({
+                              ...prev,
+                              motor: { ...prev.motor, inverted: checked },
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-slate-300">{t("subsystems.gear_ratio")}</label>
+                          <UnitInput
+                            unit=":1"
+                            type="number"
+                            step={0.1}
+                            min={0.1}
+                            value={selected.motor.gearRatio}
+                            onChange={(e) =>
+                              updateSubsystem(selected.id, (prev) => ({
+                                ...prev,
+                                motor: {
+                                  ...prev.motor,
+                                  gearRatio: Math.max(0.1, Number.parseFloat(e.target.value || "1") || 1),
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-slate-300">{t("subsystems.moi")}</label>
+                          <UnitInput
+                            unit="kg·m²"
+                            type="number"
+                            step={0.0005}
+                            min={0.0001}
+                            value={selected.motor.moiKgM2}
+                            onChange={(e) =>
+                              updateSubsystem(selected.id, (prev) => ({
+                                ...prev,
+                                motor: {
+                                  ...prev.motor,
+                                  moiKgM2: Math.max(
+                                    0.0001,
+                                    Number.parseFloat(e.target.value || "0.001") || 0.001,
+                                  ),
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2.5 border-t border-[#22304a] pt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[13px] text-slate-200">{t("subsystems.selftest_enable")}</span>
+                          <Switch
+                            checked={selected.selfTest.enabled}
+                            onCheckedChange={(checked) =>
+                              updateSubsystem(selected.id, (prev) => ({
+                                ...prev,
+                                selfTest: { ...prev.selfTest, enabled: checked },
+                              }))
+                            }
+                          />
+                        </div>
+                        {selected.selfTest.enabled && (
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <UnitInput
+                              unit="%"
+                              type="number"
+                              step={0.05}
+                              min={-1}
+                              max={1}
+                              value={selected.selfTest.output}
+                              onChange={(e) =>
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  selfTest: {
+                                    ...prev.selfTest,
+                                    output: Math.min(
+                                      1,
+                                      Math.max(-1, Number.parseFloat(e.target.value || "0.3") || 0.3),
+                                    ),
+                                  },
+                                }))
+                              }
+                            />
+                            <UnitInput
+                              unit="RPS"
+                              type="number"
+                              step={0.5}
+                              min={0}
+                              value={selected.selfTest.minVelocityRps}
+                              onChange={(e) =>
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  selfTest: {
+                                    ...prev.selfTest,
+                                    minVelocityRps: Math.max(
+                                      0,
+                                      Number.parseFloat(e.target.value || "5") || 5,
+                                    ),
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
 
-                <div className="space-y-2 p-4">
-                  <Button variant="primary" size="sm" className="w-full" onClick={onGoToStates}>
+                <div className="space-y-2.5 p-4">
+                  <Button variant="secondary" size="sm" className="w-full" onClick={onGoToStates}>
                     {t("step.states")}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Button>
@@ -803,16 +825,16 @@ export function RobotFlowView({
               </div>
             ) : (
               <div className="flex flex-1 flex-col min-h-0">
-                <div className="flex items-center gap-1 overflow-x-auto border-b border-[#172030] px-2.5 py-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 overflow-x-auto border-b border-[#22304a] bg-[#0b0f17] px-3 py-2 shrink-0">
                   {subJavaFiles.map((f, idx) => (
                     <button
                       key={f.path}
                       type="button"
                       onClick={() => setSelectedJavaIdx(idx)}
-                      className={`rounded px-2 py-0.5 font-mono text-[10px] whitespace-nowrap cursor-pointer ${
+                      className={`rounded px-2.5 py-1 font-mono text-[11px] whitespace-nowrap cursor-pointer ${
                         (subJavaFiles[selectedJavaIdx] ? selectedJavaIdx === idx : idx === 0)
                           ? "bg-[#142c4f] text-white"
-                          : "text-[#7c8ba1]"
+                          : "text-slate-400 hover:text-white"
                       }`}
                     >
                       {f.path.split("/").pop()}

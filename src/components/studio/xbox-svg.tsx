@@ -55,17 +55,17 @@ export function XboxControllerSvg({
       fill: isSelected
         ? "url(#activeButtonGrad)"
         : isHovered
-          ? "#183661"
+          ? "#1e4275"
           : isMapped
             ? "#142c4f"
             : "url(#idleButtonGrad)",
       stroke: isSelected
         ? "#60a5fa"
         : isHovered
-          ? "#4f8ae0"
+          ? "#60a5fa"
           : isMapped
             ? "#3b6bb5"
-            : "#27354d",
+            : "#33496e",
       strokeWidth: isSelected ? 2 : isHovered ? 1.7 : 1.25,
       filter: isSelected || isHovered || isMapped ? "url(#activeGlow)" : undefined,
     };
@@ -82,35 +82,35 @@ export function XboxControllerSvg({
     <svg viewBox="0 0 760 430" className="w-full max-w-[680px] select-none">
       <defs>
         <radialGradient id="ambientHalo" cx="50%" cy="48%" r="48%">
-          <stop offset="0%" stopColor="#142c4f" stopOpacity="0.55" />
-          <stop offset="65%" stopColor="#142c4f" stopOpacity="0.14" />
-          <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+          <stop offset="0%" stopColor="#142c4f" stopOpacity="0.65" />
+          <stop offset="65%" stopColor="#142c4f" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#0b0f17" stopOpacity="0" />
         </radialGradient>
 
         <linearGradient id="shellGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#141c2b" />
-          <stop offset="35%" stopColor="#0a0f18" />
-          <stop offset="100%" stopColor="#05070c" />
+          <stop offset="0%" stopColor="#1c2942" />
+          <stop offset="40%" stopColor="#121b2d" />
+          <stop offset="100%" stopColor="#0d1422" />
         </linearGradient>
 
         <linearGradient id="gripGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#0f1624" />
-          <stop offset="100%" stopColor="#060910" />
+          <stop offset="0%" stopColor="#152036" />
+          <stop offset="100%" stopColor="#0d1422" />
         </linearGradient>
 
         <radialGradient id="stickGrad" cx="42%" cy="38%" r="60%">
-          <stop offset="0%" stopColor="#1d283d" />
-          <stop offset="65%" stopColor="#0d1320" />
-          <stop offset="100%" stopColor="#060910" />
+          <stop offset="0%" stopColor="#263757" />
+          <stop offset="65%" stopColor="#141e33" />
+          <stop offset="100%" stopColor="#0d1422" />
         </radialGradient>
 
         <linearGradient id="idleButtonGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#161f30" />
-          <stop offset="100%" stopColor="#090d16" />
+          <stop offset="0%" stopColor="#1b2840" />
+          <stop offset="100%" stopColor="#111a2c" />
         </linearGradient>
 
         <linearGradient id="activeButtonGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#255496" />
+          <stop offset="0%" stopColor="#275ba3" />
           <stop offset="100%" stopColor="#142c4f" />
         </linearGradient>
 
@@ -179,7 +179,7 @@ export function XboxControllerSvg({
            C 444 95, 418 101, 380 101
            C 342 101, 316 95, 284 95 Z"
         fill="url(#shellGrad)"
-        stroke="#27364f"
+        stroke="#33496e"
         strokeWidth="1.8"
       />
 
@@ -344,8 +344,8 @@ export function XboxControllerSvg({
               width={pillW}
               height={24}
               rx={5}
-              fill={isHighlighted ? "#142c4f" : "#070c17"}
-              stroke={isHighlighted ? "#60a5fa" : "#264f8a"}
+              fill={isHighlighted ? "#142c4f" : "#131c2e"}
+              stroke={isHighlighted ? "#60a5fa" : "#3b6bb5"}
               strokeWidth={isHighlighted ? 1.6 : 1.1}
             />
             <text

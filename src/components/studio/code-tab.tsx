@@ -44,11 +44,11 @@ function TreeBranch({
   const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <ul className={depth > 0 ? "ml-2.5 border-l border-[#172030] pl-2" : ""}>
+    <ul className={depth > 0 ? "ml-2.5 border-l border-[#22304a] pl-2" : ""}>
       {folderNames.map((folder) => (
         <li key={folder} className="mt-1">
-          <div className="flex items-center gap-1.5 px-1.5 py-0.5 text-[11px] font-mono text-[#6b7689]">
-            <Folder className="h-3 w-3 text-[#4d6b99] shrink-0" />
+          <div className="flex items-center gap-1.5 px-1.5 py-0.5 text-xs font-mono text-slate-400">
+            <Folder className="h-3.5 w-3.5 text-[#60a5fa] shrink-0" />
             <span>{folder}</span>
           </div>
           <TreeBranch
@@ -64,13 +64,13 @@ function TreeBranch({
           <button
             type="button"
             onClick={() => onSelect(file.fullPath)}
-            className={`w-full flex items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] font-mono transition-colors cursor-pointer ${
+            className={`w-full flex items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs font-mono transition-colors cursor-pointer ${
               activePath === file.fullPath
-                ? "bg-[#142c4f]/70 text-white"
-                : "text-[#9aa5b6] hover:bg-[#0c121e]"
+                ? "bg-[#142c4f] text-white"
+                : "text-slate-300 hover:bg-[#19253d]"
             }`}
           >
-            <FileCode2 className="h-3 w-3 text-[#6384b6] shrink-0" />
+            <FileCode2 className="h-3.5 w-3.5 text-[#93c5fd] shrink-0" />
             <span className="truncate">{file.name}</span>
           </button>
         </li>
@@ -109,26 +109,26 @@ export function CodeTab({
   const vendordeps = useMemo(() => getRequiredVendordeps(project), [project]);
 
   return (
-    <div className="flex h-full flex-col bg-black">
+    <div className="flex h-full flex-col bg-[#0b0f17]">
       {/* Top Metrics & Export Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#172030] bg-[#05070b] px-4 py-2.5 shrink-0">
-        <div className="flex flex-wrap items-center gap-5 font-mono text-[11px]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#22304a] bg-[#131c2e] px-5 py-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-5 font-mono text-xs">
           <div>
-            <span className="text-[#6b7689]">Equipe: </span>
-            <strong className="text-slate-100">#{project.project.teamNumber}</strong>
+            <span className="text-slate-400">Equipe: </span>
+            <strong className="text-white">#{project.project.teamNumber}</strong>
           </div>
           <div>
-            <span className="text-[#6b7689]">Arquivos: </span>
-            <strong className="text-slate-100">{generatedFiles.length}</strong>
+            <span className="text-slate-400">Arquivos: </span>
+            <strong className="text-white">{generatedFiles.length}</strong>
           </div>
           <div>
-            <span className="text-[#6b7689]">Vendordeps: </span>
+            <span className="text-slate-400">Vendordeps: </span>
             <strong className="text-[#93c5fd]">
               {vendordeps.map((d) => d.replace(".json", "")).join(" · ")}
             </strong>
           </div>
           <div>
-            <span className="text-[#6b7689]">Validação: </span>
+            <span className="text-slate-400">Validação: </span>
             <strong className={errorCount === 0 ? "text-emerald-400" : "text-rose-400"}>
               {errorCount === 0 ? "OK" : `${errorCount} erros`}
             </strong>
@@ -141,13 +141,13 @@ export function CodeTab({
           onClick={onDownloadZip}
           disabled={exporting || errorCount > 0}
         >
-          <Download className="h-3.5 w-3.5" />
+          <Download className="h-4 w-4" />
           {exporting ? t("header.exporting") : t("code.download_zip")}
         </Button>
       </div>
 
       <div className="flex flex-1 min-h-0">
-        <div className="w-[245px] shrink-0 overflow-y-auto border-r border-[#172030] bg-[#04060a] p-2.5">
+        <div className="w-[260px] shrink-0 overflow-y-auto border-r border-[#22304a] bg-[#0f1624] p-3">
           <TreeBranch node={tree} activePath={activePath} onSelect={setSelectedFilePath} />
         </div>
         <CodeViewer filePath={activePath} content={activeContent} className="flex-1 min-w-0" />
