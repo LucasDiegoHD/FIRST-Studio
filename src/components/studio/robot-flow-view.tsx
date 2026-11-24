@@ -376,6 +376,8 @@ export function RobotFlowView({
 
   const [canvasView, setCanvasView] = useState<"blocks" | "flow">("blocks");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [draggingTileId, setDraggingTileId] = useState<string | null>(null);
+  const [dragOverTileId, setDragOverTileId] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<"code" | "summary">("code");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [simRequest, setSimRequest] = useState<string>(project.superstructure.initialRequest);
@@ -384,8 +386,23 @@ export function RobotFlowView({
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
   const dragCounter = useRef(0);
+  const dragPayloadRef = useRef<
+    { kind: "new"; type: SubsystemType } | { kind: "reorder"; id: string } | null
+  >(null);
   const prevCountRef = useRef(project.subsystems.length);
   const positionsRef = useRef<Record<string, { x: number; y: number }>>({});
+
+  useEffect(() => {
+    const resetDrag = () => {
+      dragPayloadRef.current = null;
+      dragCounter.current = 0;
+      setIsDragOver(false);
+      setDraggingTileId(null);
+      setDragOverTileId(null);
+    };
+    window.addEventListener("dragend", resetDrag);
+    return () => window.removeEventListener("dragend", resetDrag);
+  }, []);
 
   useEffect(() => {
     if (project.subsystems.length > prevCountRef.current) {
@@ -573,19 +590,56 @@ export function RobotFlowView({
     reorderSubsystems(ids);
   };
 
-  const handleDragStart = (e: React.DragEvent<HTMLButtonElement>, kind: SubsystemType) => {
+  const clearDragState = useCallback(() => {
+    dragPayloadRef.current = null;
+    dragCounter.current = 0;
+    setIsDragOver(false);
+    setDraggingTileId(null);
+    setDragOverTileId(null);
+  }, []);
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, kind: SubsystemType) => {
+    dragPayloadRef.current = { kind: "new", type: kind };
     e.dataTransfer.setData("text/plain", kind);
     e.dataTransfer.effectAllowed = "copy";
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    dragCounter.current = 0;
-    setIsDragOver(false);
-    const kind = e.dataTransfer.getData("text/plain") as SubsystemType;
+    const activePayload = dragPayloadRef.current;
+    const raw = e.dataTransfer.getData("text/plain");
+    clearDragState();
+
+    if (activePayload?.kind === "new") {
+      addSubsystem(activePayload.type);
+      return;
+    }
+
+    const kind = raw as SubsystemType;
     if (VALID_TYPES.has(kind)) {
       addSubsystem(kind);
     }
+  };
+
+  const handleTileDragStart = (e: React.DragEvent<HTMLDivElement>, subId: string) => {
+    dragPayloadRef.current = { kind: "reorder", id: subId };
+    e.dataTransfer.setData("text/plain", `reorder:${subId}`);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggingTileId(subId);
+  };
+
+  const handleTileDrop = (targetId: string) => {
+    const payload = dragPayloadRef.current;
+    clearDragState();
+    if (!payload || payload.kind !== "reorder" || payload.id === targetId) return;
+
+    const ids = project.subsystems.map((s) => s.id);
+    const fromIdx = ids.indexOf(payload.id);
+    const toIdx = ids.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = ids.splice(fromIdx, 1);
+    ids.splice(toIdx, 0, moved);
+    reorderSubsystems(ids);
   };
 
   const paletteGroups: {
@@ -632,13 +686,21 @@ export function RobotFlowView({
                 </p>
                 <div className="flex flex-col gap-2">
                   {group.items.map((item) => (
-                    <button
+                    <div
                       key={item.kind}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       draggable
                       onDragStart={(e) => handleDragStart(e, item.kind)}
+                      onDragEnd={clearDragState}
                       onClick={() => addSubsystem(item.kind)}
-                      className="group flex items-center gap-3 rounded-xl border border-[#2c3f61] bg-[#0f1624] p-3.5 text-left transition-all duration-150 hover:scale-[1.02] hover:border-[#60a5fa] hover:bg-[#19253d] active:scale-[0.98] cursor-grab active:cursor-grabbing"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          addSubsystem(item.kind);
+                        }
+                      }}
+                      className="group select-none flex items-center gap-3 rounded-xl border border-[#2c3f61] bg-[#0f1624] p-3.5 text-left transition-all duration-150 hover:scale-[1.02] hover:border-[#60a5fa] hover:bg-[#19253d] active:scale-[0.98] cursor-grab active:cursor-grabbing"
                     >
                       <SubsystemIcon
                         type={item.kind}
@@ -651,7 +713,7 @@ export function RobotFlowView({
                         <p className="mt-0.5 text-[11px] text-slate-400">{item.desc}</p>
                       </div>
                       <Plus className="h-4 w-4 text-slate-500 group-hover:text-white shrink-0" />
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -706,13 +768,23 @@ export function RobotFlowView({
               className="flex-1 min-h-0 p-0 relative overflow-hidden"
               onDragEnter={(e) => {
                 e.preventDefault();
+                if (dragPayloadRef.current?.kind === "reorder") return;
                 dragCounter.current += 1;
                 if (dragCounter.current === 1) setIsDragOver(true);
               }}
-              onDragOver={(e) => e.preventDefault()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (dragPayloadRef.current?.kind === "reorder") {
+                  e.dataTransfer.dropEffect = "move";
+                } else {
+                  e.dataTransfer.dropEffect = "copy";
+                  if (!isDragOver) setIsDragOver(true);
+                }
+              }}
               onDragLeave={(e) => {
                 e.preventDefault();
-                dragCounter.current -= 1;
+                if (dragPayloadRef.current?.kind === "reorder") return;
+                dragCounter.current = Math.max(0, dragCounter.current - 1);
                 if (dragCounter.current === 0) setIsDragOver(false);
               }}
               onDrop={handleDrop}
@@ -729,7 +801,7 @@ export function RobotFlowView({
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_75%_60%_at_50%_0%,rgba(20,44,79,0.55),transparent_70%)]" />
 
                   <div className="relative z-10 h-full p-6">
-                    {project.subsystems.length === 0 ? (
+                    {project.subsystems.length === 0 && !isDragOver ? (
                       <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
                         <Blocks className="h-12 w-12 text-slate-500" />
                         <p className="mt-3 font-headline text-lg font-medium text-slate-200">
@@ -741,6 +813,8 @@ export function RobotFlowView({
                         {project.subsystems.map((sub, idx) => {
                           const isSelected = selected?.id === sub.id;
                           const isNewlyAdded = lastAddedId === sub.id;
+                          const isDraggingThis = draggingTileId === sub.id;
+                          const isDropTarget = dragOverTileId === sub.id && draggingTileId !== sub.id;
                           const subErrors = issues.filter(
                             (i) => i.targetId === sub.id && i.severity === "error",
                           ).length;
@@ -754,13 +828,34 @@ export function RobotFlowView({
                           return (
                             <div
                               key={sub.id}
+                              draggable
+                              onDragStart={(e) => handleTileDragStart(e, sub.id)}
+                              onDragOver={(e) => {
+                                if (dragPayloadRef.current?.kind !== "reorder") return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.dataTransfer.dropEffect = "move";
+                                if (dragOverTileId !== sub.id) setDragOverTileId(sub.id);
+                              }}
+                              onDragLeave={() => {
+                                if (dragOverTileId === sub.id) setDragOverTileId(null);
+                              }}
+                              onDrop={(e) => {
+                                if (dragPayloadRef.current?.kind !== "reorder") return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleTileDrop(sub.id);
+                              }}
+                              onDragEnd={clearDragState}
                               onClick={() => setSelectedSubsystemId(sub.id)}
                               className={cn(
-                                "group relative aspect-square rounded-xl border-2 bg-[#162238] p-4 flex flex-col items-center justify-center text-center transition-all duration-200 cursor-pointer hover:border-[#60a5fa] hover:bg-[#192844]",
+                                "group relative select-none aspect-square rounded-xl border-2 bg-[#162238] p-4 flex flex-col items-center justify-center text-center transition-all duration-200 cursor-grab active:cursor-grabbing hover:border-[#60a5fa] hover:bg-[#192844]",
                                 isSelected
                                   ? "border-[#60a5fa] bg-[#1b2c4a] shadow-[0_0_24px_-8px_rgba(96,165,250,0.65)] animate-select-bounce"
                                   : "border-[#253552]",
                                 isNewlyAdded && "animate-pop-in animate-pulse-ring",
+                                isDraggingThis && "opacity-45 scale-95",
+                                isDropTarget && "border-[#60a5fa] ring-2 ring-[#60a5fa]/40 scale-[1.03]",
                                 subErrors > 0 && "border-rose-500/80",
                               )}
                             >
@@ -819,6 +914,13 @@ export function RobotFlowView({
                             </div>
                           );
                         })}
+
+                        {isDragOver && (
+                          <div className="aspect-square rounded-xl border-2 border-dashed border-[#60a5fa]/70 bg-[#142c4f]/25 flex flex-col items-center justify-center gap-2 text-[#93c5fd] animate-fade-in">
+                            <Plus className="h-7 w-7" />
+                            <span className="font-headline text-xs font-medium">Soltar aqui</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
