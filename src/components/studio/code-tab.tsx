@@ -2,7 +2,10 @@
 
 import React, { useMemo } from "react";
 import { Download, FileCode2, Folder } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useProject } from "@/context/project-context";
 import { getRequiredVendordeps } from "@/lib/generator";
 import { CodeViewer } from "./code-viewer";
@@ -109,49 +112,56 @@ export function CodeTab({
   const vendordeps = useMemo(() => getRequiredVendordeps(project), [project]);
 
   return (
-    <div className="flex h-full flex-col bg-[#0b0f17]">
-      {/* Top Metrics & Export Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#22304a] bg-[#131c2e] px-5 py-3 shrink-0">
-        <div className="flex flex-wrap items-center gap-5 font-mono text-xs">
-          <div>
-            <span className="text-slate-400">Equipe: </span>
-            <strong className="text-white">#{project.project.teamNumber}</strong>
+    <div className="space-y-6">
+      <PageHeader
+        title="Exportar Projeto"
+        description="Revise os arquivos Ciprix 2026.3.0 gerados e baixe o projeto pronto para WPILib."
+        actions={
+          <Button
+            size="md"
+            variant="primary"
+            onClick={onDownloadZip}
+            disabled={exporting || errorCount > 0}
+          >
+            <Download className="h-4 w-4" />
+            {exporting ? t("header.exporting") : t("code.download_zip")}
+          </Button>
+        }
+      />
+
+      {/* Metrics Strip Card */}
+      <Card className="px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 font-mono text-xs">
+          <div className="flex flex-wrap items-center gap-6">
+            <div>
+              <span className="text-slate-400">Equipe: </span>
+              <strong className="text-white">#{project.project.teamNumber}</strong>
+            </div>
+            <div>
+              <span className="text-slate-400">Arquivos: </span>
+              <strong className="text-white">{generatedFiles.length}</strong>
+            </div>
+            <div>
+              <span className="text-slate-400">Vendordeps: </span>
+              <strong className="text-[#93c5fd]">
+                {vendordeps.map((d) => d.replace(".json", "")).join(" · ")}
+              </strong>
+            </div>
           </div>
-          <div>
-            <span className="text-slate-400">Arquivos: </span>
-            <strong className="text-white">{generatedFiles.length}</strong>
-          </div>
-          <div>
-            <span className="text-slate-400">Vendordeps: </span>
-            <strong className="text-[#93c5fd]">
-              {vendordeps.map((d) => d.replace(".json", "")).join(" · ")}
-            </strong>
-          </div>
-          <div>
-            <span className="text-slate-400">Validação: </span>
-            <strong className={errorCount === 0 ? "text-emerald-400" : "text-rose-400"}>
-              {errorCount === 0 ? "OK" : `${errorCount} erros`}
-            </strong>
-          </div>
+
+          <Badge variant={errorCount === 0 ? "success" : "destructive"}>
+            {errorCount === 0 ? "Validação OK" : `${errorCount} erros`}
+          </Badge>
         </div>
+      </Card>
 
-        <Button
-          size="md"
-          variant="primary"
-          onClick={onDownloadZip}
-          disabled={exporting || errorCount > 0}
-        >
-          <Download className="h-4 w-4" />
-          {exporting ? t("header.exporting") : t("code.download_zip")}
-        </Button>
-      </div>
-
-      <div className="flex flex-1 min-h-0">
-        <div className="w-[260px] shrink-0 overflow-y-auto border-r border-[#22304a] bg-[#0f1624] p-3">
+      {/* File Tree + CodeViewer Card */}
+      <Card className="flex h-[600px] min-h-[600px] overflow-hidden">
+        <div className="w-[265px] shrink-0 overflow-y-auto border-r border-[#22304a] bg-[#0f1624] p-3">
           <TreeBranch node={tree} activePath={activePath} onSelect={setSelectedFilePath} />
         </div>
         <CodeViewer filePath={activePath} content={activeContent} className="flex-1 min-w-0" />
-      </div>
+      </Card>
     </div>
   );
 }

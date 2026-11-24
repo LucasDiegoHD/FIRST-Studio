@@ -2,7 +2,10 @@
 
 import React, { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Code2, Cog, Gamepad2, Trash2 } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
 import { requestToCommandMethod, toPascalCase } from "@/lib/generator/java-utils";
@@ -64,7 +67,6 @@ export function ControlsTab() {
     });
   };
 
-  // 1-click quick bind for the selected button
   const quickBindPilot = (request: string) => {
     updateProject((prev) => {
       const existingIdx = prev.controls.pilotPriority.findIndex((p) => p.button === selectedButton);
@@ -121,7 +123,6 @@ export function ControlsTab() {
     });
   };
 
-  // Live robot feedback for currently selected button
   const liveReaction = useMemo(() => {
     if (port === "pilot") {
       const pilotMatch = project.controls.pilotPriority.find((p) => p.button === selectedButton);
@@ -186,404 +187,426 @@ export function ControlsTab() {
     (ov) => ov.button === selectedButton,
   );
 
+  const portSwitcher = (
+    <div className="flex items-center gap-1.5 rounded-lg border border-[#22304a] bg-[#0f1624] p-1">
+      <button
+        type="button"
+        onClick={() => setPort("pilot")}
+        className={`inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[13px] font-medium cursor-pointer transition-all ${
+          port === "pilot"
+            ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white shadow-sm"
+            : "border border-transparent text-slate-400 hover:text-white"
+        }`}
+      >
+        <Gamepad2 className="h-4 w-4" />
+        <span>{t("controls.pilot_title")}</span>
+        <Badge variant={port === "pilot" ? "default" : "secondary"} className="px-1.5 py-0 text-[11px]">
+          {project.controls.pilotPriority.length}
+        </Badge>
+      </button>
+      <button
+        type="button"
+        onClick={() => setPort("copilot")}
+        className={`inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[13px] font-medium cursor-pointer transition-all ${
+          port === "copilot"
+            ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white shadow-sm"
+            : "border border-transparent text-slate-400 hover:text-white"
+        }`}
+      >
+        <Gamepad2 className="h-4 w-4" />
+        <span>{t("controls.copilot_title")}</span>
+        <Badge
+          variant={port === "copilot" ? "default" : "secondary"}
+          className="px-1.5 py-0 text-[11px]"
+        >
+          {project.controls.copilotOverrides.length}
+        </Badge>
+      </button>
+    </div>
+  );
+
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 divide-y divide-[#22304a] bg-[#0b0f17] lg:grid-cols-12 lg:divide-y-0 lg:divide-x">
-      {/* Left Interactive Stage (Xbox Series X + Quick Bind + Live Motor Feedback) */}
-      <div className="bg-studio-glow relative flex flex-col justify-between overflow-y-auto p-6 lg:col-span-7">
-        {/* Top Port Switcher */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 rounded-lg border border-[#22304a] bg-[#0f1624] p-1">
-            <button
-              type="button"
-              onClick={() => setPort("pilot")}
-              className={`inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[13px] font-medium cursor-pointer transition-all ${
-                port === "pilot"
-                  ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white shadow-[0_0_16px_-4px_rgba(59,130,246,0.55)]"
-                  : "border border-transparent text-slate-400 hover:text-white"
-              }`}
-            >
-              <Gamepad2 className="h-4 w-4" />
-              <span>{t("controls.pilot_title")}</span>
-              <span className="rounded bg-[#0b0f17] px-1.5 py-0.5 font-mono text-[11px]">
-                {project.controls.pilotPriority.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPort("copilot")}
-              className={`inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[13px] font-medium cursor-pointer transition-all ${
-                port === "copilot"
-                  ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white shadow-[0_0_16px_-4px_rgba(59,130,246,0.55)]"
-                  : "border border-transparent text-slate-400 hover:text-white"
-              }`}
-            >
-              <Gamepad2 className="h-4 w-4" />
-              <span>{t("controls.copilot_title")}</span>
-              <span className="rounded bg-[#0b0f17] px-1.5 py-0.5 font-mono text-[11px]">
-                {project.controls.copilotOverrides.length}
-              </span>
-            </button>
-          </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Controles do Xbox"
+        description="Clique nos botões do controle para mapear comandos do piloto e overrides do copiloto."
+        actions={portSwitcher}
+      />
 
-          <p className="font-mono text-xs text-slate-400">
-            {port === "pilot" ? "SuperStructureCommands" : "@AutoCommandFactory"}
-          </p>
-        </div>
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        {/* Left Interactive Stage: Xbox Series X + Quick-Bind Dock */}
+        <Card className="xl:col-span-7 overflow-hidden bg-studio-glow">
+          <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-[#22304a] bg-[#0f1624]/80 py-4">
+            <CardTitle className="text-lg">
+              {port === "pilot" ? "Controle do Piloto (Port 0)" : "Controle do Copiloto (Port 1)"}
+            </CardTitle>
+            <Badge variant="outline">
+              {port === "pilot" ? "SuperStructureCommands" : "@AutoCommandFactory"}
+            </Badge>
+          </CardHeader>
 
-        {/* Center Xbox Series X SVG */}
-        <div className="my-auto flex items-center justify-center py-4">
-          <XboxControllerSvg
-            mappedButtons={mappedButtons}
-            selectedButton={selectedButton}
-            hoveredButton={hoveredButton}
-            onSelectButton={setSelectedButton}
-            onHoverButton={setHoveredButton}
-          />
-        </div>
-
-        {/* Bottom Interactive Quick-Bind + Live Reaction Dock */}
-        <div className="rounded-xl border border-[#2c3f61] bg-[#131c2e]/95 p-4 space-y-3 shadow-xl">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5">
-              <span className="rounded-md border border-[#3b6bb5] bg-[#142c4f] px-2.5 py-0.5 font-mono text-xs font-semibold text-white">
-                {selectedBtnMeta?.label ?? selectedButton}
-              </span>
-              <span className="text-[13px] text-slate-300">{selectedBtnMeta?.fullName}</span>
+          <CardContent className="space-y-5 p-6">
+            <div className="flex items-center justify-center py-2">
+              <XboxControllerSvg
+                mappedButtons={mappedButtons}
+                selectedButton={selectedButton}
+                hoveredButton={hoveredButton}
+                onSelectButton={setSelectedButton}
+                onHoverButton={setHoveredButton}
+              />
             </div>
 
-            {liveReaction ? (
-              <div className="flex items-center gap-2 rounded-md border border-[#2c3f61] bg-[#0b0f17] px-3 py-1 font-mono text-xs text-[#93c5fd]">
-                <Cog
-                  className={`h-3.5 w-3.5 ${
-                    liveReaction.pct > 0
-                      ? "text-[#60a5fa] animate-motor-cw"
-                      : liveReaction.pct < 0
-                        ? "text-[#60a5fa] animate-motor-ccw"
-                        : "text-slate-500"
-                  }`}
-                />
-                <span>{liveReaction.summary}</span>
+            {/* Interactive Quick-Bind + Live Reaction Dock */}
+            <div className="rounded-xl border border-[#2c3f61] bg-[#0f1624]/95 p-4 space-y-3 shadow-lg">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <span className="rounded-md border border-[#3b6bb5] bg-[#142c4f] px-2.5 py-0.5 font-mono text-xs font-semibold text-white">
+                    {selectedBtnMeta?.label ?? selectedButton}
+                  </span>
+                  <span className="text-[13px] text-slate-300">{selectedBtnMeta?.fullName}</span>
+                </div>
+
+                {liveReaction ? (
+                  <div className="flex items-center gap-2 rounded-md border border-[#2c3f61] bg-[#0b0f17] px-3 py-1 font-mono text-xs text-[#93c5fd]">
+                    <Cog
+                      className={`h-3.5 w-3.5 ${
+                        liveReaction.pct > 0
+                          ? "text-[#60a5fa] animate-motor-cw"
+                          : liveReaction.pct < 0
+                            ? "text-[#60a5fa] animate-motor-ccw"
+                            : "text-slate-500"
+                      }`}
+                    />
+                    <span>{liveReaction.summary}</span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-slate-400">
+                    Clique num comando abaixo para vincular
+                  </span>
+                )}
               </div>
-            ) : (
-              <span className="text-xs text-slate-400">
-                Clique num comando abaixo para vincular
-              </span>
-            )}
-          </div>
 
-          {/* 1-Click Action Chips */}
-          <div className="flex flex-wrap items-center gap-2">
-            {port === "pilot"
-              ? project.superstructure.requests.map((req) => {
-                  const active = currentPilotRule?.request === req;
-                  return (
-                    <button
-                      key={req}
-                      type="button"
-                      onClick={() => quickBindPilot(req)}
-                      className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-all cursor-pointer ${
-                        active
-                          ? "border-[#60a5fa] bg-[#142c4f] text-white"
-                          : "border-[#253552] bg-[#0b0f17] text-slate-300 hover:border-[#3b6bb5] hover:text-white"
-                      }`}
-                    >
-                      {active ? "✓ " : "+ "}
-                      {req}
-                    </button>
-                  );
-                })
-              : copilotChoices.map((choice) => {
-                  const active =
-                    currentCopilotRule?.subsystemId === choice.subsystemId &&
-                    currentCopilotRule?.request === choice.request;
-                  return (
-                    <button
-                      key={`${choice.subsystemId}-${choice.request}`}
-                      type="button"
-                      onClick={() => quickBindCopilot(choice.subsystemId, choice.request)}
-                      className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-all cursor-pointer ${
-                        active
-                          ? "border-[#60a5fa] bg-[#142c4f] text-white"
-                          : "border-[#253552] bg-[#0b0f17] text-slate-300 hover:border-[#3b6bb5] hover:text-white"
-                      }`}
-                    >
-                      {active ? "✓ " : "+ "}
-                      {choice.subsystemName}.{choice.request}
-                    </button>
-                  );
-                })}
-          </div>
-        </div>
-      </div>
-
-      {/* Right Column: Priority / Override List + On-Demand Java Preview */}
-      <div className="flex h-full min-h-0 flex-col bg-[#0f1624] lg:col-span-5">
-        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[13px] font-semibold text-white">
-              {port === "pilot" ? t("controls.pilot_title") : t("controls.copilot_title")}
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] text-slate-400">
-                {port === "pilot" ? "prioridade" : "whileTrue()"}
-              </span>
-              <Button
-                size="sm"
-                variant={showJava ? "secondary" : "outline"}
-                onClick={() => setShowJava((v) => !v)}
-                className="h-7 px-2.5 text-xs"
-              >
-                <Code2 className="h-3.5 w-3.5" />
-                {showJava ? "Ocultar Java" : "Ver Java"}
-              </Button>
-            </div>
-          </div>
-
-          {port === "pilot" ? (
-            project.controls.pilotPriority.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-[#253552] bg-[#131c2e]/50 p-6 text-center text-[13px] text-slate-400">
-                Selecione um botão no controle e clique num request para mapear.
-              </p>
-            ) : (
-              <div className="space-y-2.5">
-                {project.controls.pilotPriority.map((rule, idx) => (
-                  <div
-                    key={rule.id}
-                    onClick={() => setSelectedButton(rule.button)}
-                    onMouseEnter={() => setHoveredButton(rule.button)}
-                    onMouseLeave={() => setHoveredButton(null)}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
-                      selectedButton === rule.button
-                        ? "border-[#60a5fa] bg-[#19253d]"
-                        : hoveredButton === rule.button
-                          ? "border-[#3b6bb5] bg-[#152036]"
-                          : "border-[#22304a] bg-[#131c2e] hover:border-[#3b6bb5]"
-                    }`}
-                  >
-                    <span className="rounded bg-[#142c4f] px-2 py-0.5 font-mono text-[11px] text-[#93c5fd]">
-                      #{idx + 1}
-                    </span>
-                    <Select
-                      className="w-24 h-8 font-mono text-xs"
-                      value={rule.button}
-                      onChange={(e) =>
-                        updateProject((prev) => ({
-                          ...prev,
-                          controls: {
-                            ...prev.controls,
-                            pilotPriority: prev.controls.pilotPriority.map((item) =>
-                              item.id === rule.id
-                                ? { ...item, button: e.target.value as XboxButton }
-                                : item,
-                            ),
-                          },
-                        }))
-                      }
-                    >
-                      {XBOX_BUTTONS.map((btn) => (
-                        <option key={btn.value} value={btn.value}>
-                          {btn.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <span className="font-mono text-xs text-slate-500">→</span>
-                    <Select
-                      className="flex-1 font-mono h-8 text-xs"
-                      value={rule.request}
-                      onChange={(e) =>
-                        updateProject((prev) => ({
-                          ...prev,
-                          controls: {
-                            ...prev.controls,
-                            pilotPriority: prev.controls.pilotPriority.map((item) =>
-                              item.id === rule.id ? { ...item, request: e.target.value } : item,
-                            ),
-                          },
-                        }))
-                      }
-                    >
-                      {project.superstructure.requests.map((req) => (
-                        <option key={req} value={req}>
+              <div className="flex flex-wrap items-center gap-2">
+                {port === "pilot"
+                  ? project.superstructure.requests.map((req) => {
+                      const active = currentPilotRule?.request === req;
+                      return (
+                        <button
+                          key={req}
+                          type="button"
+                          onClick={() => quickBindPilot(req)}
+                          className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-all cursor-pointer ${
+                            active
+                              ? "border-[#60a5fa] bg-[#142c4f] text-white"
+                              : "border-[#253552] bg-[#0b0f17] text-slate-300 hover:border-[#3b6bb5] hover:text-white"
+                          }`}
+                        >
+                          {active ? "✓ " : "+ "}
                           {req}
-                        </option>
-                      ))}
-                    </Select>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={idx === 0}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        movePilot(idx, -1);
-                      }}
-                    >
-                      <ArrowUp className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={idx === project.controls.pilotPriority.length - 1}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        movePilot(idx, 1);
-                      }}
-                    >
-                      <ArrowDown className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateProject((prev) => ({
-                          ...prev,
-                          controls: {
-                            ...prev.controls,
-                            pilotPriority: prev.controls.pilotPriority.filter((p) => p.id !== rule.id),
-                          },
-                        }));
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-rose-400" />
-                    </Button>
-                  </div>
-                ))}
+                        </button>
+                      );
+                    })
+                  : copilotChoices.map((choice) => {
+                      const active =
+                        currentCopilotRule?.subsystemId === choice.subsystemId &&
+                        currentCopilotRule?.request === choice.request;
+                      return (
+                        <button
+                          key={`${choice.subsystemId}-${choice.request}`}
+                          type="button"
+                          onClick={() => quickBindCopilot(choice.subsystemId, choice.request)}
+                          className={`rounded-md border px-3 py-1.5 font-mono text-xs transition-all cursor-pointer ${
+                            active
+                              ? "border-[#60a5fa] bg-[#142c4f] text-white"
+                              : "border-[#253552] bg-[#0b0f17] text-slate-300 hover:border-[#3b6bb5] hover:text-white"
+                          }`}
+                        >
+                          {active ? "✓ " : "+ "}
+                          {choice.subsystemName}.{choice.request}
+                        </button>
+                      );
+                    })}
               </div>
-            )
-          ) : project.controls.copilotOverrides.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-[#253552] bg-[#131c2e]/50 p-6 text-center text-[13px] text-slate-400">
-              Selecione um botão no controle e clique num comando de subsistema para mapear.
-            </p>
-          ) : (
-            <div className="space-y-2.5">
-              {project.controls.copilotOverrides.map((ov) => {
-                const sub = project.subsystems.find((s) => s.id === ov.subsystemId);
-                const subClass = sub ? toPascalCase(sub.name) : "Subsystem";
-                const cmdSig = `${subClass}Commands.${requestToCommandMethod(ov.request)}(...)`;
-                return (
-                  <div
-                    key={ov.id}
-                    onClick={() => setSelectedButton(ov.button)}
-                    onMouseEnter={() => setHoveredButton(ov.button)}
-                    onMouseLeave={() => setHoveredButton(null)}
-                    className={`space-y-1.5 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
-                      selectedButton === ov.button
-                        ? "border-[#60a5fa] bg-[#19253d]"
-                        : hoveredButton === ov.button
-                          ? "border-[#3b6bb5] bg-[#152036]"
-                          : "border-[#22304a] bg-[#131c2e] hover:border-[#3b6bb5]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Select
-                        className="w-24 h-8 font-mono text-xs"
-                        value={ov.button}
-                        onChange={(e) =>
-                          updateProject((prev) => ({
-                            ...prev,
-                            controls: {
-                              ...prev.controls,
-                              copilotOverrides: prev.controls.copilotOverrides.map((item) =>
-                                item.id === ov.id
-                                  ? { ...item, button: e.target.value as XboxButton }
-                                  : item,
-                              ),
-                            },
-                          }))
-                        }
-                      >
-                        {XBOX_BUTTONS.map((btn) => (
-                          <option key={btn.value} value={btn.value}>
-                            {btn.label}
-                          </option>
-                        ))}
-                      </Select>
-                      <Select
-                        className="flex-1 h-8 text-xs"
-                        value={ov.subsystemId}
-                        onChange={(e) => {
-                          const nextSub = project.subsystems.find((s) => s.id === e.target.value);
-                          updateProject((prev) => ({
-                            ...prev,
-                            controls: {
-                              ...prev.controls,
-                              copilotOverrides: prev.controls.copilotOverrides.map((item) =>
-                                item.id === ov.id
-                                  ? {
-                                      ...item,
-                                      subsystemId: e.target.value,
-                                      request: nextSub?.fsm.requests[0] ?? "STOP",
-                                    }
-                                  : item,
-                              ),
-                            },
-                          }));
-                        }}
-                      >
-                        {project.subsystems.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </Select>
-                      <Select
-                        className="flex-1 font-mono h-8 text-xs"
-                        value={ov.request}
-                        onChange={(e) =>
-                          updateProject((prev) => ({
-                            ...prev,
-                            controls: {
-                              ...prev.controls,
-                              copilotOverrides: prev.controls.copilotOverrides.map((item) =>
-                                item.id === ov.id ? { ...item, request: e.target.value } : item,
-                              ),
-                            },
-                          }))
-                        }
-                      >
-                        {(sub?.fsm.requests ?? []).map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </Select>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateProject((prev) => ({
-                            ...prev,
-                            controls: {
-                              ...prev.controls,
-                              copilotOverrides: prev.controls.copilotOverrides.filter(
-                                (item) => item.id !== ov.id,
-                              ),
-                            },
-                          }));
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-rose-400" />
-                      </Button>
-                    </div>
-                    <p className="font-mono text-[11px] text-slate-400">{cmdSig}</p>
-                  </div>
-                );
-              })}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Right Column: Priority / Override Rules + On-Demand Java Card */}
+        <div className="xl:col-span-5 space-y-6">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-[#22304a] pb-4">
+              <div>
+                <CardTitle className="text-lg">
+                  {port === "pilot" ? t("controls.pilot_title") : t("controls.copilot_title")}
+                </CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">
+                  {port === "pilot" ? "prioridade" : "whileTrue()"}
+                </Badge>
+                <Button
+                  size="sm"
+                  variant={showJava ? "secondary" : "outline"}
+                  onClick={() => setShowJava((v) => !v)}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  <Code2 className="h-3.5 w-3.5" />
+                  {showJava ? "Ocultar Java" : "Ver Java"}
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="pt-5">
+              {port === "pilot" ? (
+                project.controls.pilotPriority.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-[#253552] bg-[#0f1624] p-6 text-center text-[13px] text-slate-400">
+                    Selecione um botão no controle e clique num request para mapear.
+                  </p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {project.controls.pilotPriority.map((rule, idx) => (
+                      <div
+                        key={rule.id}
+                        onClick={() => setSelectedButton(rule.button)}
+                        onMouseEnter={() => setHoveredButton(rule.button)}
+                        onMouseLeave={() => setHoveredButton(null)}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
+                          selectedButton === rule.button
+                            ? "border-[#60a5fa] bg-[#19253d]"
+                            : hoveredButton === rule.button
+                              ? "border-[#3b6bb5] bg-[#152036]"
+                              : "border-[#22304a] bg-[#0f1624] hover:border-[#3b6bb5]"
+                        }`}
+                      >
+                        <span className="rounded bg-[#142c4f] px-2 py-0.5 font-mono text-[11px] text-[#93c5fd]">
+                          #{idx + 1}
+                        </span>
+                        <Select
+                          className="w-24 h-8 font-mono text-xs"
+                          value={rule.button}
+                          onChange={(e) =>
+                            updateProject((prev) => ({
+                              ...prev,
+                              controls: {
+                                ...prev.controls,
+                                pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                  item.id === rule.id
+                                    ? { ...item, button: e.target.value as XboxButton }
+                                    : item,
+                                ),
+                              },
+                            }))
+                          }
+                        >
+                          {XBOX_BUTTONS.map((btn) => (
+                            <option key={btn.value} value={btn.value}>
+                              {btn.label}
+                            </option>
+                          ))}
+                        </Select>
+                        <span className="font-mono text-xs text-slate-500">→</span>
+                        <Select
+                          className="flex-1 font-mono h-8 text-xs"
+                          value={rule.request}
+                          onChange={(e) =>
+                            updateProject((prev) => ({
+                              ...prev,
+                              controls: {
+                                ...prev.controls,
+                                pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                  item.id === rule.id ? { ...item, request: e.target.value } : item,
+                                ),
+                              },
+                            }))
+                          }
+                        >
+                          {project.superstructure.requests.map((req) => (
+                            <option key={req} value={req}>
+                              {req}
+                            </option>
+                          ))}
+                        </Select>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={idx === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            movePilot(idx, -1);
+                          }}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={idx === project.controls.pilotPriority.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            movePilot(idx, 1);
+                          }}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateProject((prev) => ({
+                              ...prev,
+                              controls: {
+                                ...prev.controls,
+                                pilotPriority: prev.controls.pilotPriority.filter(
+                                  (p) => p.id !== rule.id,
+                                ),
+                              },
+                            }));
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : project.controls.copilotOverrides.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-[#253552] bg-[#0f1624] p-6 text-center text-[13px] text-slate-400">
+                  Selecione um botão no controle e clique num comando de subsistema para mapear.
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  {project.controls.copilotOverrides.map((ov) => {
+                    const sub = project.subsystems.find((s) => s.id === ov.subsystemId);
+                    const subClass = sub ? toPascalCase(sub.name) : "Subsystem";
+                    const cmdSig = `${subClass}Commands.${requestToCommandMethod(ov.request)}(...)`;
+                    return (
+                      <div
+                        key={ov.id}
+                        onClick={() => setSelectedButton(ov.button)}
+                        onMouseEnter={() => setHoveredButton(ov.button)}
+                        onMouseLeave={() => setHoveredButton(null)}
+                        className={`space-y-1.5 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
+                          selectedButton === ov.button
+                            ? "border-[#60a5fa] bg-[#19253d]"
+                            : hoveredButton === ov.button
+                              ? "border-[#3b6bb5] bg-[#152036]"
+                              : "border-[#22304a] bg-[#0f1624] hover:border-[#3b6bb5]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Select
+                            className="w-24 h-8 font-mono text-xs"
+                            value={ov.button}
+                            onChange={(e) =>
+                              updateProject((prev) => ({
+                                ...prev,
+                                controls: {
+                                  ...prev.controls,
+                                  copilotOverrides: prev.controls.copilotOverrides.map((item) =>
+                                    item.id === ov.id
+                                      ? { ...item, button: e.target.value as XboxButton }
+                                      : item,
+                                  ),
+                                },
+                              }))
+                            }
+                          >
+                            {XBOX_BUTTONS.map((btn) => (
+                              <option key={btn.value} value={btn.value}>
+                                {btn.label}
+                              </option>
+                            ))}
+                          </Select>
+                          <Select
+                            className="flex-1 h-8 text-xs"
+                            value={ov.subsystemId}
+                            onChange={(e) => {
+                              const nextSub = project.subsystems.find(
+                                (s) => s.id === e.target.value,
+                              );
+                              updateProject((prev) => ({
+                                ...prev,
+                                controls: {
+                                  ...prev.controls,
+                                  copilotOverrides: prev.controls.copilotOverrides.map((item) =>
+                                    item.id === ov.id
+                                      ? {
+                                          ...item,
+                                          subsystemId: e.target.value,
+                                          request: nextSub?.fsm.requests[0] ?? "STOP",
+                                        }
+                                      : item,
+                                  ),
+                                },
+                              }));
+                            }}
+                          >
+                            {project.subsystems.map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </Select>
+                          <Select
+                            className="flex-1 font-mono h-8 text-xs"
+                            value={ov.request}
+                            onChange={(e) =>
+                              updateProject((prev) => ({
+                                ...prev,
+                                controls: {
+                                  ...prev.controls,
+                                  copilotOverrides: prev.controls.copilotOverrides.map((item) =>
+                                    item.id === ov.id ? { ...item, request: e.target.value } : item,
+                                  ),
+                                },
+                              }))
+                            }
+                          >
+                            {(sub?.fsm.requests ?? []).map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateProject((prev) => ({
+                                ...prev,
+                                controls: {
+                                  ...prev.controls,
+                                  copilotOverrides: prev.controls.copilotOverrides.filter(
+                                    (item) => item.id !== ov.id,
+                                  ),
+                                },
+                              }));
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                          </Button>
+                        </div>
+                        <p className="font-mono text-[11px] text-slate-400">{cmdSig}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {showJava && previewFile && (
+            <Card className="h-[380px] flex flex-col overflow-hidden">
+              <CodeViewer
+                filePath={previewFile.path}
+                content={previewFile.content}
+                className="flex-1"
+              />
+            </Card>
           )}
         </div>
-
-        {/* Bottom On-Demand Java Preview */}
-        {showJava && previewFile && (
-          <div className="h-[44%] min-h-[200px] border-t border-[#22304a] flex flex-col">
-            <CodeViewer
-              filePath={previewFile.path}
-              content={previewFile.content}
-              className="flex-1"
-            />
-          </div>
-        )}
       </div>
     </div>
   );

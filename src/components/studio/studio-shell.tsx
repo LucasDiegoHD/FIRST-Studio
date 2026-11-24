@@ -6,22 +6,26 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import {
-  ArrowLeft,
-  ArrowRight,
-  Cpu,
+  AlertTriangle,
+  CheckCircle,
   Download,
   FolderOpen,
   Gamepad2,
   GitBranch,
-  MoreHorizontal,
+  Globe,
+  Home,
+  LayoutGrid,
+  LayoutTemplate,
   Package,
-  Pencil,
+  PanelLeft,
   Redo2,
-  RotateCcw,
   Save,
   Search,
+  Settings2,
   Undo2,
+  X,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/context/project-context";
 import { exportProjectZip } from "@/lib/generator/zip-exporter";
@@ -64,6 +68,8 @@ export function StudioShell() {
     canRedo,
   } = useProject();
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -176,336 +182,554 @@ export function StudioShell() {
     }
   };
 
-  const steps: {
+  const navItems: {
     id: GuidedStep;
     tab: StudioTab;
     label: string;
     icon: React.ReactNode;
     badge: string;
+    badgeVariant?: "default" | "success" | "destructive";
     shortcut: string;
   }[] = [
     {
       id: "robot",
       tab: "subsystems",
-      label: t("step.robot"),
-      icon: <Cpu className="h-3.5 w-3.5" />,
+      label: "Editor do Robô",
+      icon: <LayoutGrid className="h-4 w-4 shrink-0" />,
       badge: String(project.subsystems.length),
       shortcut: "Alt+1",
     },
     {
       id: "states",
       tab: "fsm",
-      label: t("step.states"),
-      icon: <GitBranch className="h-3.5 w-3.5" />,
+      label: "Estados & FSM",
+      icon: <GitBranch className="h-4 w-4 shrink-0" />,
       badge: String(totalFsmStates),
       shortcut: "Alt+2",
     },
     {
       id: "controls",
       tab: "controls",
-      label: t("step.controls"),
-      icon: <Gamepad2 className="h-3.5 w-3.5" />,
+      label: "Controles",
+      icon: <Gamepad2 className="h-4 w-4 shrink-0" />,
       badge: String(totalBindings),
       shortcut: "Alt+3",
     },
     {
       id: "export",
       tab: "code",
-      label: t("step.export"),
-      icon: <Package className="h-3.5 w-3.5" />,
+      label: "Exportar",
+      icon: <Package className="h-4 w-4 shrink-0" />,
       badge: errorCount === 0 ? "OK" : `${errorCount}!`,
+      badgeVariant: errorCount === 0 ? "success" : "destructive",
       shortcut: "Alt+4",
     },
   ];
 
-  const stepIndex = steps.findIndex((s) => s.id === currentStep);
-  const nextStep = steps[stepIndex + 1];
-  const progressPct = ((stepIndex + 1) / steps.length) * 100;
+  const activeNav = navItems.find((n) => n.id === currentStep) ?? navItems[0];
 
-  return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#0b0f17] text-[#f8fafc]">
-      {/* Guided Studio Header (56px) */}
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#22304a] bg-[#0f1624]/95 backdrop-blur-md px-4 gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Link
-            href="/"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-slate-300 hover:bg-[#19253d] hover:text-white"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{t("header.home")}</span>
-          </Link>
+  const renderSidebarBody = (collapsed: boolean, isMobile = false) => (
+    <div className="flex h-full flex-col bg-[#0f1624] bg-pattern text-slate-100">
+      {/* Sidebar Brand Header */}
+      <div
+        className={cn(
+          "flex h-16 shrink-0 items-center border-b border-[#22304a]",
+          collapsed ? "justify-center px-2" : "justify-between px-4",
+        )}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#3b6bb5] bg-[#142c4f] font-headline text-sm font-bold text-white shadow-sm">
+            FS
+          </span>
+          {!collapsed && (
+            <div className="min-w-0">
+              <p className="truncate font-headline text-base font-bold text-white">
+                {t("app.title")}
+              </p>
+              <p className="truncate font-mono text-[11px] text-[#93c5fd]">Ciprix 2026.3.0</p>
+            </div>
+          )}
+        </div>
+        {isMobile && (
+          <Button size="icon" variant="ghost" onClick={() => setMobileMenuOpen(false)}>
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
 
-          <span className="h-4 w-px bg-[#22304a]" />
+      {/* Sidebar Nav Menu */}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
+        {navItems.map((item) => {
+          const active = currentStep === item.id;
+          const btn = (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setActiveTab(item.tab);
+                if (isMobile) setMobileMenuOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center rounded-lg text-[13px] font-medium transition-all cursor-pointer",
+                collapsed ? "justify-center p-2.5" : "justify-between px-3 py-2.5",
+                active
+                  ? "bg-[#142c4f] border border-[#3b6bb5] text-white shadow-sm"
+                  : "border border-transparent text-slate-300 hover:bg-[#19253d] hover:text-white",
+              )}
+            >
+              <span className="flex items-center gap-2.5 min-w-0">
+                {item.icon}
+                {!collapsed && <span className="truncate">{item.label}</span>}
+              </span>
+              {!collapsed && (
+                <Badge
+                  variant={item.badgeVariant ?? (active ? "default" : "secondary")}
+                  className="px-2 py-0 text-[11px]"
+                >
+                  {item.badge}
+                </Badge>
+              )}
+            </button>
+          );
 
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="inline-flex h-8 items-center gap-2 rounded-md border border-transparent px-2.5 text-[13px] text-slate-100 hover:border-[#2c3f61] hover:bg-[#131c2e] cursor-pointer truncate"
-          >
-            <span className="font-semibold truncate">{project.project.name}</span>
-            <span className="font-mono text-xs text-[#93c5fd]">
+          if (!collapsed) return btn;
+
+          return (
+            <Tooltip.Root key={item.id}>
+              <Tooltip.Trigger asChild>{btn}</Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  side="right"
+                  sideOffset={8}
+                  className="z-50 rounded-md border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1.5 text-xs text-white shadow-xl"
+                >
+                  <span>{item.label}</span>
+                  <span className="ml-2 font-mono text-[10px] text-slate-400">{item.shortcut}</span>
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          );
+        })}
+
+        <div className="my-3 border-t border-[#22304a]" />
+
+        <Tooltip.Root open={collapsed ? undefined : false}>
+          <Tooltip.Trigger asChild>
+            <button
+              type="button"
+              onClick={() => {
+                setSettingsOpen(true);
+                if (isMobile) setMobileMenuOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center rounded-lg border border-transparent text-[13px] font-medium text-slate-300 hover:bg-[#19253d] hover:text-white transition-all cursor-pointer",
+                collapsed ? "justify-center p-2.5" : "gap-2.5 px-3 py-2.5",
+              )}
+            >
+              <Settings2 className="h-4 w-4 shrink-0" />
+              {!collapsed && <span>Configurações</span>}
+            </button>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content
+              side="right"
+              sideOffset={8}
+              className="z-50 rounded-md border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1.5 text-xs text-white shadow-xl"
+            >
+              Configurações do Projeto
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+
+        <Tooltip.Root open={collapsed ? undefined : false}>
+          <Tooltip.Trigger asChild>
+            <Link
+              href="/"
+              className={cn(
+                "flex w-full items-center rounded-lg border border-transparent text-[13px] font-medium text-slate-300 hover:bg-[#19253d] hover:text-white transition-all",
+                collapsed ? "justify-center p-2.5" : "gap-2.5 px-3 py-2.5",
+              )}
+            >
+              <Home className="h-4 w-4 shrink-0" />
+              {!collapsed && <span>Página Inicial</span>}
+            </Link>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content
+              side="right"
+              sideOffset={8}
+              className="z-50 rounded-md border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1.5 text-xs text-white shadow-xl"
+            >
+              Página Inicial
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+      </nav>
+
+      {/* Sidebar Project Footer */}
+      <div className="shrink-0 border-t border-[#22304a] p-3">
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          className={cn(
+            "w-full rounded-lg border border-[#22304a] bg-[#131c2e] hover:border-[#3b6bb5] hover:bg-[#19253d] transition-all cursor-pointer text-left",
+            collapsed ? "flex justify-center p-2" : "p-3 space-y-1",
+          )}
+        >
+          {collapsed ? (
+            <span className="font-mono text-xs font-bold text-[#93c5fd]">
               #{project.project.teamNumber}
             </span>
-            <Pencil className="h-3 w-3 text-slate-400" />
-          </button>
-        </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate font-headline text-sm font-semibold text-white">
+                  {project.project.name}
+                </span>
+                <span className="font-mono text-xs text-[#93c5fd]">
+                  #{project.project.teamNumber}
+                </span>
+              </div>
+              <p className="font-mono text-[11px] text-slate-400">
+                {generatedFiles.length} {t("status.files")} ·{" "}
+                <span className={errorCount > 0 ? "text-rose-400" : "text-emerald-400"}>
+                  {errorCount} {t("status.errors")}
+                </span>
+              </p>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
 
-        {/* 4-Step Live Stepper with Icons & Counters */}
-        <nav className="flex items-center gap-1 rounded-lg border border-[#22304a] bg-[#0b0f17] p-1 overflow-x-auto">
-          {steps.map((st) => {
-            const active = currentStep === st.id;
-            return (
-              <Tooltip.Root key={st.id}>
+  return (
+    <div className="flex h-screen overflow-hidden bg-[#0b0f17] text-[#f8fafc]">
+      {/* Desktop Collapsible Sidebar */}
+      <aside
+        className={cn(
+          "hidden md:flex shrink-0 flex-col border-r border-[#22304a] transition-all duration-200",
+          sidebarCollapsed ? "w-[72px]" : "w-64",
+        )}
+      >
+        {renderSidebarBody(sidebarCollapsed)}
+      </aside>
+
+      {/* Mobile Drawer Sidebar */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-50 flex md:hidden bg-[#0b0f17]/80 backdrop-blur-xs"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <aside
+            className="w-68 h-full border-r border-[#22304a]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {renderSidebarBody(false, true)}
+          </aside>
+        </div>
+      )}
+
+      {/* Right Main Column */}
+      <div className="flex flex-1 flex-col min-w-0 h-screen overflow-hidden">
+        {/* Sticky Top Header Bar */}
+        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[#22304a] bg-[#0f1624]/90 bg-pattern px-4 lg:px-6 backdrop-blur-md">
+          <div className="flex items-center gap-3 min-w-0">
+            <Button
+              size="icon"
+              variant="outline"
+              aria-label="Toggle Sidebar"
+              onClick={() => {
+                if (typeof window !== "undefined" && window.innerWidth < 768) {
+                  setMobileMenuOpen((v) => !v);
+                } else {
+                  setSidebarCollapsed((v) => !v);
+                }
+              }}
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="truncate font-headline text-base font-semibold text-white">
+                {activeNav.label}
+              </span>
+              <Badge variant="outline" className="hidden sm:inline-flex">
+                {project.project.name} #{project.project.teamNumber}
+              </Badge>
+            </div>
+          </div>
+
+          {/* EditorHeader Utility Cluster */}
+          <div className="flex items-center gap-1.5">
+            {/* Templates Dropdown */}
+            <DropdownMenu.Root>
+              <Tooltip.Root>
                 <Tooltip.Trigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(st.tab)}
-                    className={cn(
-                      "inline-flex items-center gap-2 rounded-md px-3.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-all cursor-pointer",
-                      active
-                        ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white shadow-[0_0_16px_-5px_rgba(59,130,246,0.55)]"
-                        : "border border-transparent text-slate-400 hover:bg-[#131c2e] hover:text-white",
-                    )}
-                  >
-                    {st.icon}
-                    <span>{st.label}</span>
-                    <span
-                      className={cn(
-                        "rounded px-1.5 py-0.5 font-mono text-[11px]",
-                        active
-                          ? "bg-[#1e3f73] text-white"
-                          : "bg-[#131c2e] text-slate-400",
-                      )}
-                    >
-                      {st.badge}
-                    </span>
-                  </button>
+                  <DropdownMenu.Trigger asChild>
+                    <Button size="icon" variant="outline" aria-label="Templates">
+                      <LayoutTemplate className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenu.Trigger>
                 </Tooltip.Trigger>
                 <Tooltip.Portal>
                   <Tooltip.Content
                     sideOffset={6}
-                    className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-[11px] text-slate-100 shadow-lg"
+                    className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 text-xs text-slate-100 shadow-lg"
                   >
-                    {st.shortcut}
+                    Modelos de Projeto
                   </Tooltip.Content>
                 </Tooltip.Portal>
               </Tooltip.Root>
-            );
-          })}
-        </nav>
 
-        {/* Right Quick Utilities */}
-        <div className="flex items-center gap-1.5">
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <Button size="icon" variant="ghost" onClick={undo} disabled={!canUndo}>
-                <Undo2 className="h-4 w-4" />
-              </Button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content
-                sideOffset={6}
-                className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-[11px] text-slate-100"
-              >
-                {t("header.undo")}
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={6}
+                  className="z-50 w-56 rounded-lg border border-[#2c3f61] bg-[#131c2e] py-1.5 shadow-2xl text-[13px]"
+                >
+                  <DropdownMenu.Item
+                    onSelect={resetToSkeleton}
+                    className="flex items-center justify-between px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
+                  >
+                    <span>{t("header.preset_skeleton")}</span>
+                    <span className="font-mono text-[10px] text-[#93c5fd]">Roller</span>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={resetToBlank}
+                    className="flex items-center justify-between px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
+                  >
+                    <span>{t("header.preset_blank")}</span>
+                    <span className="font-mono text-[10px] text-slate-400">Vazio</span>
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
 
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <Button size="icon" variant="ghost" onClick={redo} disabled={!canRedo}>
-                <Redo2 className="h-4 w-4" />
-              </Button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content
-                sideOffset={6}
-                className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-[11px] text-slate-100"
-              >
-                {t("header.redo")}
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
+            {/* Health Checklist Popover */}
+            <Popover.Root>
+              <Tooltip.Root>
+                <Tooltip.Trigger asChild>
+                  <Popover.Trigger asChild>
+                    <Button size="icon" variant="outline" className="relative" aria-label="Checklist">
+                      {issues.length > 0 ? (
+                        <AlertTriangle
+                          className={cn(
+                            "h-4 w-4",
+                            errorCount > 0 ? "text-rose-400" : "text-amber-400",
+                          )}
+                        />
+                      ) : (
+                        <CheckCircle className="h-4 w-4 text-emerald-400" />
+                      )}
+                      {issues.length > 0 && (
+                        <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 font-mono text-[10px] font-bold text-white">
+                          {issues.length}
+                        </span>
+                      )}
+                    </Button>
+                  </Popover.Trigger>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    sideOffset={6}
+                    className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 text-xs text-slate-100 shadow-lg"
+                  >
+                    {t("header.checklist")}
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
 
-          <Button size="icon" variant="ghost" onClick={() => setPaletteOpen(true)} title="Ctrl+K">
-            <Search className="h-4 w-4" />
-          </Button>
-
-          <Popover.Root>
-            <Popover.Trigger asChild>
-              <Button size="sm" variant="outline">
-                <span
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    errorCount > 0
-                      ? "bg-rose-400"
-                      : issues.length > 0
-                        ? "bg-amber-400"
-                        : "bg-emerald-400",
-                  )}
-                />
-                <span className="font-mono text-xs">{issues.length}</span>
-              </Button>
-            </Popover.Trigger>
-            <Popover.Portal>
-              <Popover.Content
-                align="end"
-                sideOffset={6}
-                className="z-50 w-80 rounded-lg border border-[#3b6bb5]/70 bg-[#131c2e] p-3 shadow-2xl"
-              >
-                {issues.length === 0 ? (
-                  <p className="text-[13px] text-emerald-300">{t("header.no_issues")}</p>
-                ) : (
-                  <ul className="space-y-1 max-h-60 overflow-y-auto">
-                    {issues.map((issue) => (
-                      <li key={issue.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab(issue.tab);
-                            if (issue.targetId) setSelectedSubsystemId(issue.targetId);
-                          }}
-                          className="w-full rounded px-2.5 py-1.5 text-left text-[13px] hover:bg-[#19253d] cursor-pointer"
-                        >
-                          <span
-                            className={
-                              issue.severity === "error" ? "text-rose-300" : "text-amber-300"
-                            }
+              <Popover.Portal>
+                <Popover.Content
+                  align="end"
+                  sideOffset={6}
+                  className="z-50 w-80 rounded-xl border border-[#3b6bb5]/70 bg-[#131c2e] p-3.5 shadow-2xl"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="font-headline text-sm font-semibold text-white">
+                      Checklist do Robô
+                    </span>
+                    <Badge variant={errorCount > 0 ? "destructive" : "success"}>
+                      {errorCount === 0 ? "OK" : `${errorCount} erros`}
+                    </Badge>
+                  </div>
+                  {issues.length === 0 ? (
+                    <p className="text-[13px] text-emerald-300">{t("header.no_issues")}</p>
+                  ) : (
+                    <ul className="space-y-1.5 max-h-64 overflow-y-auto">
+                      {issues.map((issue) => (
+                        <li key={issue.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab(issue.tab);
+                              if (issue.targetId) setSelectedSubsystemId(issue.targetId);
+                            }}
+                            className="w-full rounded-md border border-[#22304a] bg-[#0f1624] px-3 py-2 text-left text-xs hover:border-[#3b6bb5] hover:bg-[#19253d] cursor-pointer"
                           >
-                            {issue.message}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover.Root>
+                            <span
+                              className={
+                                issue.severity === "error" ? "text-rose-300" : "text-amber-300"
+                              }
+                            >
+                              {issue.message}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
 
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <Button size="icon" variant="ghost" aria-label="Menu">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content
-                align="end"
-                sideOffset={6}
-                className="z-50 w-56 rounded-lg border border-[#2c3f61] bg-[#131c2e] py-1.5 shadow-2xl text-[13px]"
-              >
-                <DropdownMenu.Item
-                  onSelect={handleSaveJson}
-                  className="flex items-center gap-2.5 px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <Button size="icon" variant="outline" onClick={handleSaveJson} aria-label="Save JSON">
+                  <Save className="h-4 w-4" />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={6}
+                  className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 text-xs text-slate-100"
                 >
-                  <Save className="h-4 w-4 text-slate-400" />
                   {t("header.save_json")}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  onSelect={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2.5 px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Load JSON"
                 >
-                  <FolderOpen className="h-4 w-4 text-slate-400" />
+                  <FolderOpen className="h-4 w-4" />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={6}
+                  className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 text-xs text-slate-100"
+                >
                   {t("header.load_json")}
-                </DropdownMenu.Item>
-                <DropdownMenu.Separator className="my-1 h-px bg-[#22304a]" />
-                <DropdownMenu.Item
-                  onSelect={resetToSkeleton}
-                  className="flex items-center gap-2.5 px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+
+            <span className="mx-1 hidden sm:inline-block h-6 w-px bg-[#22304a]" />
+
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <Button size="icon" variant="outline" onClick={undo} disabled={!canUndo} aria-label="Undo">
+                  <Undo2 className="h-4 w-4" />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={6}
+                  className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-xs text-slate-100"
                 >
-                  <RotateCcw className="h-4 w-4 text-slate-400" />
-                  {t("header.preset_skeleton")}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  onSelect={resetToBlank}
-                  className="flex items-center gap-2.5 px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
+                  {t("header.undo")}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <Button size="icon" variant="outline" onClick={redo} disabled={!canRedo} aria-label="Redo">
+                  <Redo2 className="h-4 w-4" />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={6}
+                  className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-xs text-slate-100"
                 >
-                  <RotateCcw className="h-4 w-4 text-slate-400" />
-                  {t("header.preset_blank")}
-                </DropdownMenu.Item>
-                <DropdownMenu.Separator className="my-1 h-px bg-[#22304a]" />
-                <DropdownMenu.Item
-                  onSelect={() => setLocale(locale === "pt" ? "en" : "pt")}
-                  className="flex items-center justify-between px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
+                  {t("header.redo")}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => setPaletteOpen(true)}
+                  aria-label="Command Palette"
                 >
-                  <span>Idioma / Language</span>
-                  <span className="font-mono text-xs text-slate-400">
-                    {locale.toUpperCase()}
-                  </span>
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+                  <Search className="h-4 w-4" />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={6}
+                  className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-xs text-slate-100"
+                >
+                  Ctrl+K
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            onChange={handleLoadFile}
-            className="hidden"
-          />
-
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={handleDownloadZip}
-            disabled={exporting || errorCount > 0}
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">
-              {exporting ? t("header.exporting") : t("header.download_zip")}
-            </span>
-          </Button>
-        </div>
-      </header>
-
-      {/* Main Step Viewport */}
-      <main className="flex-1 min-h-0 overflow-hidden bg-[#0b0f17]">
-        {currentStep === "robot" && (
-          <RobotFlowView
-            onGoToStates={() => setActiveTab("fsm")}
-            onGoToControls={() => setActiveTab("controls")}
-          />
-        )}
-        {currentStep === "states" && (
-          <StatesView
-            initialTarget={activeTab === "superstructure" ? "superstructure" : "subsystem"}
-          />
-        )}
-        {currentStep === "controls" && <ControlsTab />}
-        {currentStep === "export" && (
-          <CodeTab onDownloadZip={handleDownloadZip} exporting={exporting} />
-        )}
-      </main>
-
-      {/* Bottom Progress & Status Bar */}
-      <footer className="relative flex h-9 shrink-0 items-center justify-between border-t border-[#22304a] bg-[#0f1624] px-4 font-mono text-xs text-slate-400">
-        <div
-          className="absolute left-0 top-0 h-[2px] bg-[#60a5fa] transition-all duration-300"
-          style={{ width: `${progressPct}%` }}
-        />
-        <div className="flex items-center gap-3.5">
-          <span>Ciprix 2026.3.0</span>
-          <span>
-            {generatedFiles.length} {t("status.files")}
-          </span>
-          <span className={errorCount > 0 ? "text-rose-400" : "text-emerald-400"}>
-            {errorCount} {t("status.errors")}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="hidden sm:inline text-slate-500">Ctrl+K · Alt+1..4</span>
-          {nextStep && (
-            <Button size="sm" variant="secondary" className="h-7 px-3 text-xs" onClick={() => setActiveTab(nextStep.tab)}>
-              {t("step.next")}: {nextStep.label}
-              <ArrowRight className="h-3 w-3" />
+            <Button
+              size="sm"
+              variant="outline"
+              className="hidden sm:inline-flex font-mono px-2.5"
+              onClick={() => setLocale(locale === "pt" ? "en" : "pt")}
+            >
+              <Globe className="h-3.5 w-3.5 mr-1" />
+              {locale.toUpperCase()}
             </Button>
-          )}
-        </div>
-      </footer>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleLoadFile}
+              className="hidden"
+            />
+
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={handleDownloadZip}
+              disabled={exporting || errorCount > 0}
+              className="ml-1"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">
+                {exporting ? t("header.exporting") : t("header.download_zip")}
+              </span>
+            </Button>
+          </div>
+        </header>
+
+        {/* Scrollable Workspace Content */}
+        <main className="flex-1 overflow-y-auto overflow-x-clip bg-[#0b0f17] p-6 lg:p-8">
+          <div className="mx-auto max-w-[1440px] space-y-6">
+            {currentStep === "robot" && (
+              <RobotFlowView
+                onGoToStates={() => setActiveTab("fsm")}
+                onGoToControls={() => setActiveTab("controls")}
+              />
+            )}
+            {currentStep === "states" && (
+              <StatesView
+                initialTarget={activeTab === "superstructure" ? "superstructure" : "subsystem"}
+              />
+            )}
+            {currentStep === "controls" && <ControlsTab />}
+            {currentStep === "export" && (
+              <CodeTab onDownloadZip={handleDownloadZip} exporting={exporting} />
+            )}
+          </div>
+        </main>
+      </div>
 
       <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
@@ -521,7 +745,7 @@ export function StudioShell() {
       {toastMsg && (
         <div
           className={cn(
-            "fixed bottom-12 right-4 z-50 rounded-lg border px-4 py-2.5 text-[13px] shadow-xl",
+            "fixed bottom-6 right-6 z-50 rounded-lg border px-4 py-2.5 text-[13px] shadow-2xl",
             toastMsg.tone === "ok"
               ? "border-[#3b6bb5] bg-[#131c2e] text-white"
               : "border-rose-700/70 bg-rose-950/90 text-rose-200",

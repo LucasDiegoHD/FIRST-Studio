@@ -90,13 +90,13 @@ export function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col bg-studio-glow text-[#f8fafc]">
       {/* Header */}
-      <header className="border-b border-[#22304a] bg-[#0f1624]/90 backdrop-blur-md">
+      <header className="border-b border-[#22304a] bg-[#0f1624]/90 bg-pattern backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-[#3b6bb5] bg-[#142c4f] font-mono text-xs font-bold text-white">
+            <span className="flex h-8 w-8 items-center justify-center rounded-md border border-[#3b6bb5] bg-[#142c4f] font-headline text-xs font-bold text-white">
               FS
             </span>
-            <span className="text-[15px] font-semibold text-white">{t("app.title")}</span>
+            <span className="font-headline text-[16px] font-bold text-white">{t("app.title")}</span>
             <span className="hidden sm:inline font-mono text-xs text-slate-400">
               · Ciprix 2026.3.0
             </span>
@@ -148,7 +148,7 @@ export function LandingPage() {
               </div>
             )}
 
-            <h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.08] bg-gradient-to-r from-white via-slate-100 to-[#93c5fd] bg-clip-text text-transparent">
+            <h1 className="font-headline text-4xl sm:text-5xl font-bold tracking-tight leading-[1.08] bg-gradient-to-r from-white via-slate-100 to-[#93c5fd] bg-clip-text text-transparent">
               {t("home.hero_title")}
             </h1>
 
@@ -193,7 +193,7 @@ export function LandingPage() {
           <div className="lg:col-span-6 rounded-xl border border-[#2c3f61] bg-[#131c2e] glow-accent overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#22304a] bg-[#0f1624] px-5 py-3.5">
               <div className="flex items-center gap-2.5">
-                <span className="font-mono text-xs text-slate-300">{t("home.demo_label")}</span>
+                <span className="font-headline text-xs font-semibold uppercase tracking-wide text-slate-300">{t("home.demo_label")}</span>
                 <button
                   type="button"
                   onClick={() => setAutoCycle((a) => !a)}
@@ -309,7 +309,7 @@ export function LandingPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="text-[15px] font-semibold text-white">Skeleton · Roller</p>
+                    <p className="font-headline text-[16px] font-semibold text-white">Skeleton · Roller</p>
                     <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[#93c5fd]">
                       <FileCode2 className="h-3.5 w-3.5" />
                       14 arquivos
@@ -337,7 +337,7 @@ export function LandingPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="text-[15px] font-semibold text-white">{t("home.tpl_blank")}</p>
+                    <p className="font-headline text-[16px] font-semibold text-white">{t("home.tpl_blank")}</p>
                     <span className="inline-flex items-center gap-1 font-mono text-[11px] text-slate-400">
                       <FileCode2 className="h-3.5 w-3.5" />
                       9 arquivos
@@ -354,7 +354,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-[#22304a] bg-[#0f1624] py-3.5">
+      <footer className="border-t border-[#22304a] bg-[#0f1624] bg-pattern py-3.5">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 font-mono text-xs text-slate-400">
           <span>
             {t("step.robot")} → {t("step.states")} → {t("step.controls")} → {t("step.export")}
