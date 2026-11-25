@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { generateProjectFiles, getRequiredVendordeps } from "../src/lib/generator";
-import { createSkeletonPreset } from "../src/lib/presets/skeleton";
+import {
+  createBlankPreset,
+  createCompetitionPreset,
+  createSkeletonPreset,
+} from "../src/lib/presets/skeleton";
+import type { CiprixProject } from "../src/lib/schema/ciprix-project";
 
 const STATIC_FILES = [
   "build.gradle",
@@ -12,15 +17,48 @@ const STATIC_FILES = [
   "src/main/deploy/README.txt",
 ];
 
+type PresetName = "skeleton" | "competition" | "blank";
+
+function parseArgs(argv: string[]): { outDir: string; presetName: PresetName } {
+  let outDirArg: string | undefined;
+  let presetName: PresetName = "skeleton";
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--preset" && argv[i + 1]) {
+      const val = argv[i + 1] as PresetName;
+      if (val === "skeleton" || val === "competition" || val === "blank") {
+        presetName = val;
+      } else {
+        throw new Error(`Unknown preset "${val}". Expected skeleton | competition | blank.`);
+      }
+      i++;
+    } else if (!arg.startsWith("--") && !outDirArg) {
+      outDirArg = arg;
+    }
+  }
+
+  return {
+    outDir: path.resolve(outDirArg ?? `.tmp/generated-${presetName}`),
+    presetName,
+  };
+}
+
+function buildPreset(name: PresetName): CiprixProject {
+  if (name === "competition") return createCompetitionPreset();
+  if (name === "blank") return createBlankPreset();
+  return createSkeletonPreset();
+}
+
 async function writeFileEnsuringDir(destPath: string, content: string | Buffer) {
   await fs.mkdir(path.dirname(destPath), { recursive: true });
   await fs.writeFile(destPath, content);
 }
 
 async function main() {
-  const outDir = path.resolve(process.argv[2] ?? ".tmp/generated-skeleton");
+  const { outDir, presetName } = parseArgs(process.argv.slice(2));
   const skeletonDir = path.resolve(process.cwd(), "public/skeleton");
-  const preset = createSkeletonPreset();
+  const preset = buildPreset(presetName);
 
   await fs.rm(outDir, { recursive: true, force: true });
   await fs.mkdir(outDir, { recursive: true });
@@ -45,7 +83,7 @@ async function main() {
     await writeFileEnsuringDir(path.join(outDir, generated.path), generated.content);
   }
 
-  console.log(`Exported Ciprix skeleton project to ${outDir}`);
+  console.log(`Exported Ciprix "${presetName}" project to ${outDir}`);
 }
 
 main().catch((err) => {

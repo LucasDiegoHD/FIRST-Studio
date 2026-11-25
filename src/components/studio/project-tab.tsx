@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -27,16 +28,14 @@ export function ProjectTab() {
             <p className="text-[13px] text-slate-400">{t("project.identity_desc")}</p>
           </div>
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.name")}</label>
+            <Field path="project.name" label={t("project.name")}>
               <Input
                 value={meta.name}
                 onChange={(e) => updateMeta("name", e.target.value)}
                 placeholder="skeleton"
               />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.team_number")}</label>
+            </Field>
+            <Field path="project.teamNumber" label={t("project.team_number")}>
               <UnitInput
                 unit="#"
                 type="number"
@@ -47,19 +46,17 @@ export function ProjectTab() {
                   updateMeta("teamNumber", Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0))
                 }
               />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.package_name")}</label>
+            </Field>
+            <Field path="project.packageName" label={t("project.package_name")}>
               <Input
                 value={meta.packageName}
                 onChange={(e) => updateMeta("packageName", e.target.value.trim())}
                 className="font-mono"
               />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.year")}</label>
+            </Field>
+            <Field path="project.year" label={t("project.year")}>
               <Input value={meta.year} disabled className="font-mono" />
-            </div>
+            </Field>
           </div>
         </section>
 
@@ -69,8 +66,7 @@ export function ProjectTab() {
             <p className="text-[13px] text-slate-400">{t("project.sim_desc")}</p>
           </div>
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.sim_mode")}</label>
+            <Field path="project.simMode" label={t("project.sim_mode")}>
               <Select
                 value={meta.simMode}
                 onChange={(e) => updateMeta("simMode", e.target.value as "SIM" | "REPLAY")}
@@ -78,9 +74,8 @@ export function ProjectTab() {
                 <option value="SIM">Mode.SIM</option>
                 <option value="REPLAY">Mode.REPLAY</option>
               </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.deadband")}</label>
+            </Field>
+            <Field path="project.controllerDeadband" label={t("project.deadband")}>
               <UnitInput
                 unit="db"
                 type="number"
@@ -95,15 +90,14 @@ export function ProjectTab() {
                   )
                 }
               />
-            </div>
+            </Field>
           </div>
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-[13px] text-slate-200">{t("project.tuning_mode")}</span>
+          <Field path="project.tuningMode" label={t("project.tuning_mode")} layout="row" className="pt-1">
             <Switch
               checked={meta.tuningMode}
               onCheckedChange={(checked) => updateMeta("tuningMode", checked)}
             />
-          </div>
+          </Field>
         </section>
 
         <section className="py-5 space-y-4">
@@ -112,8 +106,7 @@ export function ProjectTab() {
             <p className="text-[13px] text-slate-400">{t("project.field_desc")}</p>
           </div>
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.default_alliance")}</label>
+            <Field path="project.defaultAlliance" label={t("project.default_alliance")}>
               <Select
                 value={meta.defaultAlliance}
                 onChange={(e) => updateMeta("defaultAlliance", e.target.value as "Blue" | "Red")}
@@ -121,9 +114,8 @@ export function ProjectTab() {
                 <option value="Blue">Blue</option>
                 <option value="Red">Red</option>
               </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.field_length")}</label>
+            </Field>
+            <Field path="project.fieldLengthMeters" label={t("project.field_length")}>
               <UnitInput
                 unit="m"
                 type="number"
@@ -137,9 +129,8 @@ export function ProjectTab() {
                   )
                 }
               />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-slate-300">{t("project.field_width")}</label>
+            </Field>
+            <Field path="project.fieldWidthMeters" label={t("project.field_width")}>
               <UnitInput
                 unit="m"
                 type="number"
@@ -153,14 +144,13 @@ export function ProjectTab() {
                   )
                 }
               />
-            </div>
+            </Field>
           </div>
         </section>
 
         <section className="py-5 space-y-3">
           <h2 className="text-[15px] font-semibold text-white">{t("project.features_title")}</h2>
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] text-slate-200">{t("project.drive_stub")}</span>
+          <Field path="features.driveContextStub" label={t("project.drive_stub")} layout="row">
             <Switch
               checked={project.features.driveContextStub}
               onCheckedChange={(checked) =>
@@ -170,7 +160,7 @@ export function ProjectTab() {
                 }))
               }
             />
-          </div>
+          </Field>
         </section>
       </div>
     </div>

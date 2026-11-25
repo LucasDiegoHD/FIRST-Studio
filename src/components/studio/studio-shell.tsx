@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import {
   AlertTriangle,
+  Award,
   CheckCircle,
   Download,
   FolderOpen,
@@ -48,7 +50,14 @@ function tabToStep(tab: StudioTab): GuidedStep {
   return "robot";
 }
 
-export function StudioShell() {
+export function StudioShell({
+  activeRoute = "studio",
+  children,
+}: {
+  activeRoute?: "studio" | "credits";
+  children?: React.ReactNode;
+}) {
+  const router = useRouter();
   const {
     project,
     locale,
@@ -56,9 +65,11 @@ export function StudioShell() {
     t,
     activeTab,
     setActiveTab,
-    setSelectedSubsystemId,
     issues,
     generatedFiles,
+    focusRequest,
+    focusIssue,
+    highlightField,
     loadProject,
     resetToSkeleton,
     resetToBlank,
@@ -69,9 +80,20 @@ export function StudioShell() {
     canRedo,
   } = useProject();
 
+  const navigateToTab = useCallback(
+    (tab: StudioTab) => {
+      setActiveTab(tab);
+      if (activeRoute !== "studio") {
+        router.push("/studio");
+      }
+    },
+    [activeRoute, router, setActiveTab],
+  );
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; tone: "ok" | "err" } | null>(null);
@@ -94,22 +116,22 @@ export function StudioShell() {
       if (e.altKey) {
         if (e.key === "1") {
           e.preventDefault();
-          setActiveTab("subsystems");
+          navigateToTab("subsystems");
           return;
         }
         if (e.key === "2") {
           e.preventDefault();
-          setActiveTab("fsm");
+          navigateToTab("fsm");
           return;
         }
         if (e.key === "3") {
           e.preventDefault();
-          setActiveTab("controls");
+          navigateToTab("controls");
           return;
         }
         if (e.key === "4") {
           e.preventDefault();
-          setActiveTab("code");
+          navigateToTab("code");
           return;
         }
       }
@@ -129,7 +151,29 @@ export function StudioShell() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo, setActiveTab]);
+  }, [undo, redo, navigateToTab]);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    if (focusRequest.tab === "project") {
+      setSettingsOpen(true);
+    }
+    const targetPath = focusRequest.path;
+    if (!targetPath) return;
+
+    const timer = setTimeout(() => {
+      const container = document.querySelector<HTMLElement>(
+        `[data-field="${CSS.escape(targetPath)}"]`,
+      );
+      if (!container) return;
+      container.scrollIntoView({ behavior: "smooth", block: "center" });
+      const control = container.querySelector<HTMLElement>("input, select, button, textarea");
+      control?.focus({ preventScroll: true });
+      highlightField(targetPath);
+    }, 90);
+
+    return () => clearTimeout(timer);
+  }, [focusRequest, highlightField]);
 
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const currentStep = tabToStep(activeTab);
@@ -261,13 +305,13 @@ export function StudioShell() {
       {/* Sidebar Nav Menu */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1.5">
         {navItems.map((item) => {
-          const active = currentStep === item.id;
+          const active = activeRoute === "studio" && currentStep === item.id;
           const btn = (
             <button
               key={item.id}
               type="button"
               onClick={() => {
-                setActiveTab(item.tab);
+                navigateToTab(item.tab);
                 if (isMobile) setMobileMenuOpen(false);
               }}
               className={cn(
@@ -368,6 +412,39 @@ export function StudioShell() {
             </Tooltip.Content>
           </Tooltip.Portal>
         </Tooltip.Root>
+
+        <Tooltip.Root open={collapsed ? undefined : false}>
+          <Tooltip.Trigger asChild>
+            <Link
+              href="/credits"
+              onClick={() => {
+                if (isMobile) setMobileMenuOpen(false);
+              }}
+              className={cn(
+                "relative flex w-full items-center rounded-lg text-[13px] font-medium transition-all",
+                collapsed ? "justify-center p-2.5" : "gap-2.5 px-3 py-2.5",
+                activeRoute === "credits"
+                  ? "bg-[#142c4f] border border-[#3b6bb5] text-white shadow-sm"
+                  : "border border-transparent text-slate-300 hover:bg-[#19253d] hover:text-white",
+              )}
+            >
+              {activeRoute === "credits" && !collapsed && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-[#60a5fa]" />
+              )}
+              <Award className="h-4 w-4 shrink-0" />
+              {!collapsed && <span>{t("nav.credits")}</span>}
+            </Link>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content
+              side="right"
+              sideOffset={8}
+              className="z-50 rounded-md border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1.5 text-xs text-white shadow-xl"
+            >
+              {t("nav.credits")}
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
       </nav>
 
       {/* Sidebar Project Footer */}
@@ -456,7 +533,7 @@ export function StudioShell() {
 
             <div className="flex items-center gap-2.5 min-w-0">
               <span className="truncate font-headline text-base font-semibold text-white">
-                {activeNav.label}
+                {activeRoute === "credits" ? t("nav.credits") : activeNav.label}
               </span>
               <Badge variant="outline" className="hidden sm:inline-flex">
                 {project.project.name} #{project.project.teamNumber}
@@ -518,7 +595,7 @@ export function StudioShell() {
             </DropdownMenu.Root>
 
             {/* Health Checklist Popover */}
-            <Popover.Root>
+            <Popover.Root open={checklistOpen} onOpenChange={setChecklistOpen}>
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
                   <Popover.Trigger asChild>
@@ -574,8 +651,11 @@ export function StudioShell() {
                           <button
                             type="button"
                             onClick={() => {
-                              setActiveTab(issue.tab);
-                              if (issue.targetId) setSelectedSubsystemId(issue.targetId);
+                              setChecklistOpen(false);
+                              focusIssue(issue);
+                              if (activeRoute !== "studio" && issue.tab !== "project") {
+                                router.push("/studio");
+                              }
                             }}
                             className="w-full rounded-md border border-[#22304a] bg-[#0f1624] px-3 py-2 text-left text-xs hover:border-[#3b6bb5] hover:bg-[#19253d] cursor-pointer"
                           >
@@ -722,21 +802,30 @@ export function StudioShell() {
 
         {/* Scrollable Workspace Content */}
         <main className="flex-1 overflow-y-auto overflow-x-clip bg-[#0b0f17] p-6 lg:p-8">
-          <div key={currentStep} className="mx-auto max-w-[1440px] space-y-6 animate-page-enter">
-            {currentStep === "robot" && (
-              <RobotFlowView
-                onGoToStates={() => setActiveTab("fsm")}
-                onGoToControls={() => setActiveTab("controls")}
-              />
-            )}
-            {currentStep === "states" && (
-              <StatesView
-                initialTarget={activeTab === "superstructure" ? "superstructure" : "subsystem"}
-              />
-            )}
-            {currentStep === "controls" && <ControlsTab />}
-            {currentStep === "export" && (
-              <CodeTab onDownloadZip={handleDownloadZip} exporting={exporting} />
+          <div
+            key={activeRoute === "credits" ? "credits" : currentStep}
+            className="mx-auto max-w-[1440px] space-y-6 animate-page-enter"
+          >
+            {activeRoute === "credits" && children ? (
+              children
+            ) : (
+              <>
+                {currentStep === "robot" && (
+                  <RobotFlowView
+                    onGoToStates={() => setActiveTab("fsm")}
+                    onGoToControls={() => setActiveTab("controls")}
+                  />
+                )}
+                {currentStep === "states" && (
+                  <StatesView
+                    initialTarget={activeTab === "superstructure" ? "superstructure" : "subsystem"}
+                  />
+                )}
+                {currentStep === "controls" && <ControlsTab />}
+                {currentStep === "export" && (
+                  <CodeTab onDownloadZip={handleDownloadZip} exporting={exporting} />
+                )}
+              </>
             )}
           </div>
         </main>

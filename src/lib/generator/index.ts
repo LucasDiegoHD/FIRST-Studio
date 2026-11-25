@@ -1,5 +1,6 @@
 import type { CiprixProject } from "../schema/ciprix-project";
 import { generateCoreRobotFiles } from "./core/robot-files";
+import { JAVA_FILE_HEADER } from "./java-utils";
 import { generateSubsystemFiles } from "./registry";
 import type { GeneratedFile } from "./subsystems/roller";
 
@@ -26,5 +27,9 @@ export function generateProjectFiles(project: CiprixProject): GeneratedFile[] {
     files.push(...generateSubsystemFiles(subsystem, project.project.packageName));
   }
 
-  return files;
+  return files.map((file) =>
+    file.path.endsWith(".java") && !file.content.startsWith(JAVA_FILE_HEADER)
+      ? { ...file, content: `${JAVA_FILE_HEADER}${file.content}` }
+      : file,
+  );
 }

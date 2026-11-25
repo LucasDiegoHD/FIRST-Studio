@@ -8,6 +8,7 @@ export interface UnitInputProps extends React.InputHTMLAttributes<HTMLInputEleme
 export function UnitInput({ unit, className, ...props }: UnitInputProps) {
   return (
     <div
+      data-unit-input=""
       className={cn(
         "flex h-9 w-full items-center rounded-md border border-[#253552] bg-[#0c121f] transition-colors focus-within:border-[#3b6bb5]",
         className,

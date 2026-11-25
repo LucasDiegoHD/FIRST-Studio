@@ -1,5 +1,7 @@
 import { CiprixProjectSchema, type CiprixProject } from "./schema/ciprix-project";
 import { isValidJavaIdentifier, isValidPackageName } from "./generator/java-utils";
+import type { Locale } from "./i18n";
+import { formatZodIssue } from "./issue-messages";
 
 export type IssueSeverity = "error" | "warning";
 export type StudioTab = "project" | "subsystems" | "fsm" | "superstructure" | "controls" | "code";
@@ -9,20 +11,35 @@ export interface ValidationIssue {
   severity: IssueSeverity;
   tab: StudioTab;
   targetId?: string;
+  path?: string;
+  fieldLabel?: string;
+  section?: string;
+  advanced?: boolean;
+  stateName?: string;
   message: string;
 }
 
-export function validateProject(project: CiprixProject): ValidationIssue[] {
+export function validateProject(
+  project: CiprixProject,
+  locale: Locale = "pt",
+): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
   const parsed = CiprixProjectSchema.safeParse(project);
   if (!parsed.success) {
     parsed.error.issues.forEach((err, index) => {
+      const formatted = formatZodIssue(err, project, locale);
       issues.push({
         id: `schema-${index}`,
         severity: "error",
-        tab: "project",
-        message: `Schema error (${err.path.join(".")}): ${err.message}`,
+        tab: formatted.tab,
+        targetId: formatted.targetId,
+        path: formatted.path,
+        fieldLabel: formatted.fieldLabel,
+        section: formatted.section,
+        advanced: formatted.advanced,
+        stateName: formatted.stateName,
+        message: formatted.message,
       });
     });
   }
@@ -32,7 +49,12 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
       id: "invalid-package",
       severity: "error",
       tab: "project",
-      message: `Pacote Java inválido: "${project.project.packageName}" (use ex: frc.robot).`,
+      path: "project.packageName",
+      fieldLabel: locale === "pt" ? "Pacote Java Base" : "Base Java Package",
+      message:
+        locale === "pt"
+          ? `Pacote Java inválido: "${project.project.packageName}" (use ex: frc.robot).`
+          : `Invalid Java package: "${project.project.packageName}" (e.g. frc.robot).`,
     });
   }
 
@@ -45,18 +67,41 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
       id: "no-subsystems",
       severity: "warning",
       tab: "subsystems",
-      message: "Nenhum subsistema configurado. O projeto compilará apenas com a SuperStructure vazia.",
+      message:
+        locale === "pt"
+          ? "Nenhum subsistema configurado. O projeto compilará apenas com a SuperStructure vazia."
+          : "No subsystems configured. Project will compile with an empty SuperStructure.",
     });
   }
 
   for (const sub of project.subsystems) {
+    if (sub.isDefaultTemplate) {
+      issues.push({
+        id: `sub-basic-defaults-${sub.id}`,
+        severity: "warning",
+        tab: "subsystems",
+        targetId: sub.id,
+        path: `subsystems.${sub.id}.motor.canId`,
+        fieldLabel: locale === "pt" ? "Configuração básica" : "Basic defaults",
+        message:
+          locale === "pt"
+            ? `${sub.name} ainda está com a configuração básica padrão. Ajuste ID CAN, redução, limites e controles para a especificidade do seu robô.`
+            : `${sub.name} is still using basic default settings. Adjust CAN ID, gear ratio, limits, and controls to match your specific robot.`,
+      });
+    }
+
     if (!isValidJavaIdentifier(sub.name)) {
       issues.push({
         id: `sub-invalid-name-${sub.id}`,
         severity: "error",
         tab: "subsystems",
         targetId: sub.id,
-        message: `Nome de classe Java inválido no subsistema "${sub.name}".`,
+        path: `subsystems.${sub.id}.name`,
+        fieldLabel: locale === "pt" ? "Nome da Classe" : "Class Name",
+        message:
+          locale === "pt"
+            ? `Nome de classe Java inválido no subsistema "${sub.name}".`
+            : `Invalid Java class name in subsystem "${sub.name}".`,
       });
     }
 
@@ -67,7 +112,12 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         severity: "error",
         tab: "subsystems",
         targetId: sub.id,
-        message: `Nome de subsistema duplicado: "${sub.name}".`,
+        path: `subsystems.${sub.id}.name`,
+        fieldLabel: locale === "pt" ? "Nome da Classe" : "Class Name",
+        message:
+          locale === "pt"
+            ? `Nome de subsistema duplicado: "${sub.name}".`
+            : `Duplicate subsystem name: "${sub.name}".`,
       });
     } else {
       subsystemNames.add(lowerName);
@@ -81,7 +131,12 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         severity: "error",
         tab: "subsystems",
         targetId: sub.id,
-        message: `CAN ID ${sub.motor.canId} duplicado no barramento "${sub.motor.canBus.trim() || "rio"}" (${existingOwner} e ${sub.name}).`,
+        path: `subsystems.${sub.id}.motor.canId`,
+        fieldLabel: locale === "pt" ? "ID CAN" : "CAN ID",
+        message:
+          locale === "pt"
+            ? `CAN ID ${sub.motor.canId} duplicado no barramento "${sub.motor.canBus.trim() || "rio"}" (${existingOwner} e ${sub.name}).`
+            : `Duplicate CAN ID ${sub.motor.canId} on bus "${sub.motor.canBus.trim() || "rio"}" (${existingOwner} and ${sub.name}).`,
       });
     } else {
       canBuses.set(busKey, sub.name);
@@ -96,7 +151,13 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "error",
           tab: "subsystems",
           targetId: sub.id,
-          message: `CAN ID do follower ${sub.motor.follower.canId} em ${sub.name} duplicado com ${fOwner}.`,
+          path: `subsystems.${sub.id}.motor.follower.canId`,
+          fieldLabel: locale === "pt" ? "ID CAN do Follower" : "Follower CAN ID",
+          advanced: true,
+          message:
+            locale === "pt"
+              ? `CAN ID do follower ${sub.motor.follower.canId} em ${sub.name} duplicado com ${fOwner}.`
+              : `Follower CAN ID ${sub.motor.follower.canId} in ${sub.name} duplicates ${fOwner}.`,
         });
       } else {
         canBuses.set(fBusKey, `${sub.name} (Follower)`);
@@ -113,6 +174,9 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "error",
           tab: "fsm",
           targetId: sub.id,
+          path: `subsystems.${sub.id}.fsm.states.${st.name}.name`,
+          fieldLabel: locale === "pt" ? "Nome do Estado" : "State Name",
+          stateName: st.name,
           message: `Estado "${st.name}" em ${sub.name} não é um identificador Java válido.`,
         });
       }
@@ -122,6 +186,9 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "error",
           tab: "fsm",
           targetId: sub.id,
+          path: `subsystems.${sub.id}.fsm.states.${st.name}.onEnter.constantName`,
+          fieldLabel: locale === "pt" ? "Constante Java" : "Java Constant",
+          stateName: st.name,
           message: `Constante "${st.onEnter.constantName}" em ${sub.name}.${st.name} inválida.`,
         });
       }
@@ -134,6 +201,8 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "error",
           tab: "fsm",
           targetId: sub.id,
+          path: `subsystems.${sub.id}.fsm.requests.${req}`,
+          fieldLabel: locale === "pt" ? "Requisição" : "Request",
           message: `Request "${req}" em ${sub.name} não é um identificador Java válido.`,
         });
       }
@@ -145,6 +214,8 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         severity: "error",
         tab: "fsm",
         targetId: sub.id,
+        path: `subsystems.${sub.id}.fsm.initialState`,
+        fieldLabel: locale === "pt" ? "Estado Inicial" : "Initial State",
         message: `Estado inicial "${sub.fsm.initialState}" não existe em ${sub.name}.`,
       });
     }
@@ -155,6 +226,8 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         severity: "error",
         tab: "fsm",
         targetId: sub.id,
+        path: `subsystems.${sub.id}.fsm.initialRequest`,
+        fieldLabel: locale === "pt" ? "Request Inicial" : "Initial Request",
         message: `Request inicial "${sub.fsm.initialRequest}" não existe em ${sub.name}.`,
       });
     }
@@ -168,6 +241,8 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "error",
           tab: "fsm",
           targetId: sub.id,
+          path: `subsystems.${sub.id}.fsm.bindings.${binding.request}`,
+          fieldLabel: "bindRequest",
           message: `Binding em ${sub.name} referencia request inexistente "${binding.request}".`,
         });
       }
@@ -177,6 +252,8 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "error",
           tab: "fsm",
           targetId: sub.id,
+          path: `subsystems.${sub.id}.fsm.bindings.${binding.request}`,
+          fieldLabel: "bindRequest",
           message: `Binding "${binding.request}" em ${sub.name} aponta para estado inexistente.`,
         });
       }
@@ -192,6 +269,8 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "warning",
           tab: "fsm",
           targetId: sub.id,
+          path: `subsystems.${sub.id}.fsm.requests.${req}`,
+          fieldLabel: locale === "pt" ? "Requisição" : "Request",
           message: `Request "${req}" de ${sub.name} não possui bindRequest associado.`,
         });
       }
@@ -205,6 +284,9 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
             severity: "error",
             tab: "fsm",
             targetId: sub.id,
+            path: `subsystems.${sub.id}.fsm.states.${st.name}.name`,
+            fieldLabel: locale === "pt" ? "Transições" : "Transitions",
+            stateName: st.name,
             message: `Transição em ${sub.name}.${st.name} aponta para estado inexistente "${tr.targetState}".`,
           });
         } else {
@@ -218,6 +300,9 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
             severity: "error",
             tab: "fsm",
             targetId: sub.id,
+            path: `subsystems.${sub.id}.fsm.securityState`,
+            fieldLabel: locale === "pt" ? "Estado de Segurança" : "Security State",
+            stateName: st.name,
             message: `${sub.name}.${st.name} usa timeoutAfter, mas securityState não está configurado.`,
           });
         } else {
@@ -233,6 +318,8 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "error",
           tab: "fsm",
           targetId: sub.id,
+          path: `subsystems.${sub.id}.fsm.securityState`,
+          fieldLabel: locale === "pt" ? "Estado de Segurança" : "Security State",
           message: `securityState "${sub.fsm.securityState}" não existe em ${sub.name}.`,
         });
       } else {
@@ -247,6 +334,9 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
           severity: "warning",
           tab: "fsm",
           targetId: sub.id,
+          path: `subsystems.${sub.id}.fsm.states.${st.name}.name`,
+          fieldLabel: locale === "pt" ? "Nome do Estado" : "State Name",
+          stateName: st.name,
           message: `Estado "${st.name}" de ${sub.name} não é alcançado por nenhum bindRequest.`,
         });
       }
@@ -262,6 +352,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
       id: "super-init-state",
       severity: "error",
       tab: "superstructure",
+      path: "superstructure.initialState",
       message: `Estado inicial da SuperStructure "${project.superstructure.initialState}" não existe.`,
     });
   }
@@ -270,6 +361,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
       id: "super-init-req",
       severity: "error",
       tab: "superstructure",
+      path: "superstructure.initialRequest",
       message: `Request inicial da SuperStructure "${project.superstructure.initialRequest}" não existe.`,
     });
   }
@@ -282,6 +374,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         id: `super-bind-${b.request}`,
         severity: "error",
         tab: "superstructure",
+        path: `superstructure.bindings.${b.request}`,
         message: `Binding da SuperStructure (${b.request} -> ${b.entryState}) inválido.`,
       });
     }
@@ -292,6 +385,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         id: `super-unbound-${req}`,
         severity: "warning",
         tab: "superstructure",
+        path: `superstructure.requests.${req}`,
         message: `RobotRequest "${req}" não tem estado na SuperStructure.`,
       });
     }
@@ -302,6 +396,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         id: `super-tr-${tr.id}`,
         severity: "error",
         tab: "superstructure",
+        path: `superstructure.transitions.${tr.id}`,
         message: `Transição da SuperStructure (${tr.fromState} -> ${tr.toState}) aponta para estado inexistente.`,
       });
     }
@@ -315,6 +410,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         id: `pilot-req-${entry.id}`,
         severity: "error",
         tab: "controls",
+        path: `controls.pilotPriority.${entry.id}.request`,
         message: `Piloto referencia RobotRequest inexistente "${entry.request}".`,
       });
     }
@@ -323,6 +419,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         id: `pilot-btn-dup-${entry.id}`,
         severity: "error",
         tab: "controls",
+        path: `controls.pilotPriority.${entry.id}.button`,
         message: `Botão "${entry.button}" duplicado no controle do piloto.`,
       });
     } else {
@@ -338,6 +435,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         id: `copilot-sub-${entry.id}`,
         severity: "error",
         tab: "controls",
+        path: `controls.copilotOverrides.${entry.id}.subsystemId`,
         message: `Override do copiloto referencia subsistema removido.`,
       });
     } else if (!sub.fsm.requests.includes(entry.request)) {
@@ -345,6 +443,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         id: `copilot-req-${entry.id}`,
         severity: "error",
         tab: "controls",
+        path: `controls.copilotOverrides.${entry.id}.request`,
         message: `Override do copiloto referencia request "${entry.request}" inexistente em ${sub.name}.`,
       });
     }
@@ -353,6 +452,7 @@ export function validateProject(project: CiprixProject): ValidationIssue[] {
         id: `copilot-btn-dup-${entry.id}`,
         severity: "error",
         tab: "controls",
+        path: `controls.copilotOverrides.${entry.id}.button`,
         message: `Botão "${entry.button}" duplicado no controle do copiloto.`,
       });
     } else {

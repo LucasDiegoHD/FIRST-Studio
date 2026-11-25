@@ -384,11 +384,16 @@ export function LandingPage() {
       </main>
 
       <footer className="border-t border-[#22304a] bg-[#0f1624] bg-pattern py-3.5">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 font-mono text-xs text-slate-400">
+        <div className="mx-auto flex flex-wrap max-w-6xl items-center justify-between gap-3 px-6 font-mono text-xs text-slate-400">
           <span>
             {t("step.robot")} → {t("step.states")} → {t("step.controls")} → {t("step.export")}
           </span>
-          <span>@AutoCommandFactory · StateSubsystem · AdvantageKit</span>
+          <div className="flex items-center gap-4">
+            <span>@AutoCommandFactory · StateSubsystem · AdvantageKit</span>
+            <Link href="/credits" className="text-[#93c5fd] hover:text-white transition-colors">
+              {t("nav.credits")}
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

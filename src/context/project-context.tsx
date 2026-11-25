@@ -1,14 +1,26 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useHistoryState } from "@/hooks/useHistoryState";
+import {
+  applyRenameSubsystemRequest,
+  applyRenameSubsystemState,
+} from "@/lib/fsm-operations";
 import { generateProjectFiles } from "@/lib/generator";
 import type { GeneratedFile } from "@/lib/generator/subsystems/roller";
 import { translate, type Locale, type TranslationKey } from "@/lib/i18n";
 import {
+  addSubsystemWithDefaults,
   createBlankPreset,
   createCompetitionPreset,
-  createNewSubsystem,
   createSkeletonPreset,
 } from "@/lib/presets/skeleton";
 import {
@@ -20,6 +32,15 @@ import {
 import { validateProject, type StudioTab, type ValidationIssue } from "@/lib/validator";
 
 const STORAGE_KEY = "firstStudio_ciprixProject_v1";
+
+export interface FocusFieldRequest {
+  path?: string;
+  tab: StudioTab;
+  targetId?: string;
+  advanced?: boolean;
+  stateName?: string;
+  seq: number;
+}
 
 interface ProjectContextValue {
   project: CiprixProject;
@@ -35,6 +56,10 @@ interface ProjectContextValue {
   setSelectedFilePath: (path: string | null) => void;
   issues: ValidationIssue[];
   generatedFiles: GeneratedFile[];
+  focusRequest: FocusFieldRequest | null;
+  highlightedFieldPath: string | null;
+  focusIssue: (issue: ValidationIssue) => void;
+  highlightField: (path: string) => void;
   updateProject: (updater: (prev: CiprixProject) => CiprixProject) => void;
   loadProject: (next: CiprixProject) => void;
   resetToSkeleton: () => void;
@@ -44,6 +69,8 @@ interface ProjectContextValue {
   removeSubsystem: (id: string) => void;
   reorderSubsystems: (orderedIds: string[]) => void;
   updateSubsystem: (id: string, updater: (prev: SubsystemConfig) => SubsystemConfig) => void;
+  renameSubsystemState: (subsystemId: string, oldName: string, nextName: string) => void;
+  renameSubsystemRequest: (subsystemId: string, oldReq: string, nextReq: string) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -65,6 +92,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     initialPreset.subsystems[0]?.id ?? null,
   );
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = useState<FocusFieldRequest | null>(null);
+  const [highlightedFieldPath, setHighlightedFieldPath] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     try {
@@ -130,23 +160,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     (type: SubsystemType) => {
       let createdId = "";
       set((prev) => {
-        const created = createNewSubsystem(type, prev.subsystems);
-        createdId = created.id;
-        const nextActions = { ...prev.superstructure.stateActions };
-        for (const stateName of prev.superstructure.states) {
-          nextActions[stateName] = {
-            ...(nextActions[stateName] ?? {}),
-            [created.id]: created.fsm.initialRequest,
-          };
-        }
-        return {
-          ...prev,
-          subsystems: [...prev.subsystems, created],
-          superstructure: {
-            ...prev.superstructure,
-            stateActions: nextActions,
-          },
-        };
+        const res = addSubsystemWithDefaults(prev, type);
+        createdId = res.createdId;
+        return res.project;
       });
       if (createdId) setSelectedSubsystemId(createdId);
     },
@@ -200,14 +216,55 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     (id: string, updater: (prev: SubsystemConfig) => SubsystemConfig) => {
       set((prev) => ({
         ...prev,
-        subsystems: prev.subsystems.map((s) => (s.id === id ? updater(s) : s)),
+        subsystems: prev.subsystems.map((s) => {
+          if (s.id !== id) return s;
+          const updated = updater(s);
+          return updated.isDefaultTemplate
+            ? { ...updated, isDefaultTemplate: false }
+            : updated;
+        }),
       }));
     },
     [set],
   );
 
+  const renameSubsystemState = useCallback(
+    (subsystemId: string, oldName: string, nextName: string) => {
+      set((prev) => applyRenameSubsystemState(prev, subsystemId, oldName, nextName));
+    },
+    [set],
+  );
+
+  const renameSubsystemRequest = useCallback(
+    (subsystemId: string, oldReq: string, nextReq: string) => {
+      set((prev) => applyRenameSubsystemRequest(prev, subsystemId, oldReq, nextReq));
+    },
+    [set],
+  );
+
+  const highlightField = useCallback((path: string) => {
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedFieldPath(path);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedFieldPath(null);
+    }, 2000);
+  }, []);
+
+  const focusIssue = useCallback((issue: ValidationIssue) => {
+    setActiveTab(issue.tab);
+    if (issue.targetId) setSelectedSubsystemId(issue.targetId);
+    setFocusRequest({
+      path: issue.path,
+      tab: issue.tab,
+      targetId: issue.targetId,
+      advanced: issue.advanced,
+      stateName: issue.stateName,
+      seq: Date.now(),
+    });
+  }, []);
+
   const t = useCallback((key: TranslationKey) => translate(locale, key), [locale]);
-  const issues = useMemo(() => validateProject(project), [project]);
+  const issues = useMemo(() => validateProject(project, locale), [project, locale]);
   const generatedFiles = useMemo(() => generateProjectFiles(project), [project]);
 
   const value: ProjectContextValue = {
@@ -224,6 +281,10 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setSelectedFilePath,
     issues,
     generatedFiles,
+    focusRequest,
+    highlightedFieldPath,
+    focusIssue,
+    highlightField,
     updateProject,
     loadProject,
     resetToSkeleton,
@@ -233,6 +294,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     removeSubsystem,
     reorderSubsystems,
     updateSubsystem,
+    renameSubsystemState,
+    renameSubsystemRequest,
     undo,
     redo,
     canUndo,

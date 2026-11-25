@@ -3,7 +3,6 @@
 import "@xyflow/react/dist/style.css";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as Popover from "@radix-ui/react-popover";
 import {
   Background,
   BackgroundVariant,
@@ -32,7 +31,6 @@ import {
   Gamepad2,
   Gauge,
   GripVertical,
-  HelpCircle,
   Layers,
   LayoutGrid,
   Plus,
@@ -46,6 +44,7 @@ import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { UnitInput } from "@/components/ui/unit-input";
@@ -289,11 +288,13 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
     <div
       onClick={() => onSelect(subsystem.id)}
       className={`w-[270px] overflow-hidden rounded-lg border text-left transition-all cursor-pointer ${
-        selected
-          ? "border-[#60a5fa] bg-[#19253d] shadow-[0_0_24px_-6px_rgba(59,130,246,0.55)]"
-          : activeDir !== 0
-            ? "border-[#3b6bb5] bg-[#152036] shadow-lg"
-            : "border-[#253552] bg-[#131c2e] hover:border-[#3b6bb5]"
+        errorCount > 0
+          ? "border-rose-500 ring-1 ring-rose-500/60 bg-[#1c1624] shadow-[0_0_24px_-6px_rgba(244,63,94,0.45)]"
+          : selected
+            ? "border-[#60a5fa] bg-[#19253d] shadow-[0_0_24px_-6px_rgba(59,130,246,0.55)]"
+            : activeDir !== 0
+              ? "border-[#3b6bb5] bg-[#152036] shadow-lg"
+              : "border-[#253552] bg-[#131c2e] hover:border-[#3b6bb5]"
       }`}
     >
       <Handle type="target" position={Position.Left} />
@@ -319,13 +320,16 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
             {subsystem.name}
           </span>
         </div>
-        <span
-          className={`font-mono text-[11px] ${
-            errorCount > 0 ? "text-rose-400" : "text-[#93c5fd]"
-          }`}
-        >
-          {errorCount > 0 ? `${errorCount} err` : `CAN ${subsystem.motor.canId}`}
-        </span>
+        {errorCount > 0 ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-1.5 py-0.5 font-mono text-[10px] font-bold text-white">
+            <AlertTriangle className="h-2.5 w-2.5" />
+            {errorCount}
+          </span>
+        ) : (
+          <span className="font-mono text-[11px] text-[#93c5fd]">
+            CAN {subsystem.motor.canId}
+          </span>
+        )}
       </div>
 
       <div className="p-3 space-y-2">
@@ -359,31 +363,6 @@ const nodeTypes = {
   subsystemNode: SubsystemFlowNode,
 };
 
-function HelpHint({ text }: { text: string }) {
-  return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          className="text-slate-400 hover:text-white cursor-help"
-          aria-label="Ajuda"
-        >
-          <HelpCircle className="h-3.5 w-3.5" />
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          side="top"
-          sideOffset={6}
-          className="z-50 max-w-xs rounded-lg border border-[#3b6bb5] bg-[#0f1624] p-2.5 text-xs text-slate-200 shadow-xl animate-fade-in"
-        >
-          {text}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
-  );
-}
-
 export function RobotFlowView({
   onGoToStates,
   onGoToControls,
@@ -397,6 +376,7 @@ export function RobotFlowView({
     setSelectedSubsystemId,
     generatedFiles,
     issues,
+    focusRequest,
     addSubsystem,
     updateSubsystem,
     removeSubsystem,
@@ -410,6 +390,12 @@ export function RobotFlowView({
   const [dragOverTileId, setDragOverTileId] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<"code" | "summary">("code");
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  useEffect(() => {
+    if (focusRequest?.tab === "subsystems" && focusRequest.advanced) {
+      setShowAdvanced(true);
+    }
+  }, [focusRequest]);
   const [simRequest, setSimRequest] = useState<string>(project.superstructure.initialRequest);
   const [autoSim, setAutoSim] = useState(false);
   const [selectedJavaIdx, setSelectedJavaIdx] = useState(0);
@@ -895,7 +881,7 @@ export function RobotFlowView({
                                 isNewlyAdded && "animate-pop-in animate-pulse-ring",
                                 isDraggingThis && "opacity-45 scale-95",
                                 isDropTarget && "border-[#60a5fa] ring-2 ring-[#60a5fa]/40 scale-[1.03]",
-                                subErrors > 0 && "border-rose-500/80",
+                                subErrors > 0 && "border-rose-500 ring-1 ring-rose-500/60",
                               )}
                             >
                               <div className="absolute left-2.5 top-2.5 flex items-center gap-1 opacity-55 group-hover:opacity-100">
@@ -927,8 +913,9 @@ export function RobotFlowView({
                               </div>
 
                               {subErrors > 0 && (
-                                <span className="absolute right-2.5 top-2.5 text-rose-400">
-                                  <AlertTriangle className="h-4 w-4" />
+                                <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-rose-600 px-1.5 py-0.5 font-mono text-[10px] font-bold text-white shadow">
+                                  <AlertTriangle className="h-3 w-3" />
+                                  {subErrors}
                                 </span>
                               )}
 
@@ -1045,6 +1032,14 @@ export function RobotFlowView({
                       <Badge variant="outline" className="capitalize">
                         {selected.type}
                       </Badge>
+                      {selected.isDefaultTemplate && (
+                        <Badge
+                          variant="outline"
+                          className="text-amber-300 border-amber-700/60"
+                        >
+                          {t("subsystems.basic_badge")}
+                        </Badge>
+                      )}
                     </div>
                     <Button
                       size="icon"
@@ -1058,67 +1053,60 @@ export function RobotFlowView({
 
                   <CardContent className="space-y-5 pt-6">
                     {/* Nome da Classe */}
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-200">
-                          {t("subsystems.name")}
-                        </label>
-                        <HelpHint text="Nome Java PascalCase usado para gerar o pacote e classe StateSubsystem." />
-                      </div>
-                      <div className="w-1/2">
-                        <Input
-                          value={selected.name}
-                          className="font-mono"
-                          onChange={(e) =>
-                            updateSubsystem(selected.id, (prev) => ({
-                              ...prev,
-                              name: e.target.value.replace(/\s+/g, ""),
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
+                    <Field
+                      path={`subsystems.${selected.id}.name`}
+                      label={t("subsystems.name")}
+                      layout="row"
+                      controlClassName="w-1/2"
+                    >
+                      <Input
+                        value={selected.name}
+                        className="font-mono"
+                        onChange={(e) =>
+                          updateSubsystem(selected.id, (prev) => ({
+                            ...prev,
+                            name: e.target.value.replace(/\s+/g, ""),
+                          }))
+                        }
+                      />
+                    </Field>
 
                     {/* CAN ID */}
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-200">
-                          {t("subsystems.can_id")}
-                        </label>
-                        <HelpHint text="Identificador único no barramento CAN (0 a 62)." />
-                      </div>
-                      <div className="w-1/2">
-                        <UnitInput
-                          unit="ID"
-                          type="number"
-                          min={0}
-                          max={62}
-                          value={selected.motor.canId}
-                          onChange={(e) =>
-                            updateSubsystem(selected.id, (prev) => ({
-                              ...prev,
-                              motor: {
-                                ...prev.motor,
-                                canId: Math.min(
-                                  62,
-                                  Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0),
-                                ),
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
+                    <Field
+                      path={`subsystems.${selected.id}.motor.canId`}
+                      label={t("subsystems.can_id")}
+                      layout="row"
+                      controlClassName="w-1/2"
+                    >
+                      <UnitInput
+                        unit="ID"
+                        type="number"
+                        min={0}
+                        max={62}
+                        value={selected.motor.canId}
+                        onChange={(e) =>
+                          updateSubsystem(selected.id, (prev) => ({
+                            ...prev,
+                            motor: {
+                              ...prev.motor,
+                              canId: Math.min(
+                                62,
+                                Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0),
+                              ),
+                            },
+                          }))
+                        }
+                      />
+                    </Field>
 
                     {/* Vendor Tactile Chips */}
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-200">
-                          {t("subsystems.vendor")}
-                        </label>
-                        <HelpHint text="Controlador de motor usado na implementação IO gerada." />
-                      </div>
-                      <div className="grid w-1/2 grid-cols-3 gap-1.5">
+                    <Field
+                      path={`subsystems.${selected.id}.motor.vendor`}
+                      label={t("subsystems.vendor")}
+                      layout="row"
+                      controlClassName="w-1/2"
+                    >
+                      <div className="grid grid-cols-3 gap-1.5">
                         {vendors.map((v) => (
                           <button
                             key={v.id}
@@ -1139,39 +1127,36 @@ export function RobotFlowView({
                           </button>
                         ))}
                       </div>
-                    </div>
+                    </Field>
 
                     {/* Current Limit */}
                     <div className="space-y-2.5 pt-1">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                          <label className="text-sm font-medium text-slate-200">
-                            {t("subsystems.current_limit")}
-                          </label>
-                          <HelpHint text="Limite de corrente contínua/stator em Ampères para proteger motor e bateria." />
-                        </div>
-                        <div className="w-28">
-                          <UnitInput
-                            unit="A"
-                            type="number"
-                            min={1}
-                            max={120}
-                            value={selected.motor.currentLimitAmps}
-                            onChange={(e) =>
-                              updateSubsystem(selected.id, (prev) => ({
-                                ...prev,
-                                motor: {
-                                  ...prev.motor,
-                                  currentLimitAmps: Math.min(
-                                    120,
-                                    Math.max(1, Number.parseInt(e.target.value || "40", 10) || 40),
-                                  ),
-                                },
-                              }))
-                            }
-                          />
-                        </div>
-                      </div>
+                      <Field
+                        path={`subsystems.${selected.id}.motor.currentLimitAmps`}
+                        label={t("subsystems.current_limit")}
+                        layout="row"
+                        controlClassName="w-28"
+                      >
+                        <UnitInput
+                          unit="A"
+                          type="number"
+                          min={1}
+                          max={120}
+                          value={selected.motor.currentLimitAmps}
+                          onChange={(e) =>
+                            updateSubsystem(selected.id, (prev) => ({
+                              ...prev,
+                              motor: {
+                                ...prev.motor,
+                                currentLimitAmps: Math.min(
+                                  120,
+                                  Math.max(1, Number.parseInt(e.target.value || "40", 10) || 40),
+                                ),
+                              },
+                            }))
+                          }
+                        />
+                      </Field>
                       <input
                         type="range"
                         min={10}
@@ -1207,30 +1192,31 @@ export function RobotFlowView({
                     {showAdvanced && (
                       <div className="space-y-4 rounded-xl border border-[#22304a] bg-[#0f1624] p-4 animate-fade-in">
                         {selected.motor.vendor === "talonfx" && (
-                          <div className="flex items-center justify-between gap-4">
-                            <label className="text-sm font-medium text-slate-200">
-                              {t("subsystems.can_bus")}
-                            </label>
-                            <div className="w-1/2">
-                              <Input
-                                value={selected.motor.canBus}
-                                placeholder="rio"
-                                className="font-mono"
-                                onChange={(e) =>
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    motor: { ...prev.motor, canBus: e.target.value },
-                                  }))
-                                }
-                              />
-                            </div>
-                          </div>
+                          <Field
+                            path={`subsystems.${selected.id}.motor.canBus`}
+                            label={t("subsystems.can_bus")}
+                            layout="row"
+                            controlClassName="w-1/2"
+                          >
+                            <Input
+                              value={selected.motor.canBus}
+                              placeholder="rio"
+                              className="font-mono"
+                              onChange={(e) =>
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  motor: { ...prev.motor, canBus: e.target.value },
+                                }))
+                              }
+                            />
+                          </Field>
                         )}
 
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-sm font-medium text-slate-200">
-                            {t("subsystems.neutral_mode")}
-                          </span>
+                        <Field
+                          path={`subsystems.${selected.id}.motor.neutralMode`}
+                          label={t("subsystems.neutral_mode")}
+                          layout="row"
+                        >
                           <div className="flex rounded-md border border-[#253552] bg-[#0b0f17] p-0.5">
                             {(["coast", "brake"] as const).map((mode) => (
                               <button
@@ -1252,12 +1238,13 @@ export function RobotFlowView({
                               </button>
                             ))}
                           </div>
-                        </div>
+                        </Field>
 
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-slate-200">
-                            {t("subsystems.inverted")}
-                          </span>
+                        <Field
+                          path={`subsystems.${selected.id}.motor.inverted`}
+                          label={t("subsystems.inverted")}
+                          layout="row"
+                        >
                           <Switch
                             checked={selected.motor.inverted}
                             onCheckedChange={(checked) =>
@@ -1267,13 +1254,13 @@ export function RobotFlowView({
                               }))
                             }
                           />
-                        </div>
+                        </Field>
 
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-slate-300">
-                              {t("subsystems.gear_ratio")}
-                            </label>
+                          <Field
+                            path={`subsystems.${selected.id}.motor.gearRatio`}
+                            label={t("subsystems.gear_ratio")}
+                          >
                             <UnitInput
                               unit=":1"
                               type="number"
@@ -1293,9 +1280,11 @@ export function RobotFlowView({
                                 }))
                               }
                             />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-slate-300">{t("subsystems.moi")}</label>
+                          </Field>
+                          <Field
+                            path={`subsystems.${selected.id}.motor.moiKgM2`}
+                            label={t("subsystems.moi")}
+                          >
                             <UnitInput
                               unit="kg·m²"
                               type="number"
@@ -1315,14 +1304,16 @@ export function RobotFlowView({
                                 }))
                               }
                             />
-                          </div>
+                          </Field>
                         </div>
 
                         {/* Physics parameters for Arm / Elevator / Climber */}
                         {selected.physics && (
                           <div className="grid grid-cols-2 gap-3 border-t border-[#22304a] pt-3">
-                            <div className="space-y-1.5">
-                              <label className="text-xs text-slate-300">Massa Sim</label>
+                            <Field
+                              path={`subsystems.${selected.id}.physics.massKg`}
+                              label={t("subsystems.mass_kg")}
+                            >
                               <UnitInput
                                 unit="kg"
                                 type="number"
@@ -1342,10 +1333,12 @@ export function RobotFlowView({
                                   }))
                                 }
                               />
-                            </div>
+                            </Field>
                             {selected.type === "arm" || selected.type === "wrist" || selected.type === "hood" ? (
-                              <div className="space-y-1.5">
-                                <label className="text-xs text-slate-300">Comprimento</label>
+                              <Field
+                                path={`subsystems.${selected.id}.physics.lengthMeters`}
+                                label={t("subsystems.length_m")}
+                              >
                                 <UnitInput
                                   unit="m"
                                   type="number"
@@ -1365,10 +1358,12 @@ export function RobotFlowView({
                                     }))
                                   }
                                 />
-                              </div>
+                              </Field>
                             ) : (
-                              <div className="space-y-1.5">
-                                <label className="text-xs text-slate-300">Raio Tambor</label>
+                              <Field
+                                path={`subsystems.${selected.id}.physics.drumRadiusMeters`}
+                                label={t("subsystems.drum_radius_m")}
+                              >
                                 <UnitInput
                                   unit="m"
                                   type="number"
@@ -1388,7 +1383,7 @@ export function RobotFlowView({
                                     }))
                                   }
                                 />
-                              </div>
+                              </Field>
                             )}
                           </div>
                         )}
@@ -1401,10 +1396,11 @@ export function RobotFlowView({
                             </p>
                             <div className="grid grid-cols-3 gap-2">
                               {(["kP", "kI", "kD"] as const).map((gain) => (
-                                <div key={gain} className="space-y-1">
-                                  <label className="font-mono text-[11px] text-slate-400">
-                                    {gain}
-                                  </label>
+                                <Field
+                                  key={gain}
+                                  path={`subsystems.${selected.id}.closedLoop.${gain}`}
+                                  label={gain}
+                                >
                                   <Input
                                     type="number"
                                     step={0.01}
@@ -1420,15 +1416,16 @@ export function RobotFlowView({
                                       }));
                                     }}
                                   />
-                                </div>
+                                </Field>
                               ))}
                             </div>
                             <div className="grid grid-cols-4 gap-2">
                               {(["kS", "kV", "kA", "kG"] as const).map((gain) => (
-                                <div key={gain} className="space-y-1">
-                                  <label className="font-mono text-[11px] text-slate-400">
-                                    {gain}
-                                  </label>
+                                <Field
+                                  key={gain}
+                                  path={`subsystems.${selected.id}.closedLoop.${gain}`}
+                                  label={gain}
+                                >
                                   <Input
                                     type="number"
                                     step={0.01}
@@ -1444,13 +1441,15 @@ export function RobotFlowView({
                                       }));
                                     }}
                                   />
-                                </div>
+                                </Field>
                               ))}
                             </div>
                             {selected.closedLoop.limitUnit && (
                               <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                  <label className="text-xs text-slate-300">Soft Limit Mín</label>
+                                <Field
+                                  path={`subsystems.${selected.id}.closedLoop.minLimit`}
+                                  label={t("subsystems.soft_limit_min")}
+                                >
                                   <UnitInput
                                     unit={selected.closedLoop.limitUnit}
                                     type="number"
@@ -1466,9 +1465,11 @@ export function RobotFlowView({
                                       }));
                                     }}
                                   />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-xs text-slate-300">Soft Limit Máx</label>
+                                </Field>
+                                <Field
+                                  path={`subsystems.${selected.id}.closedLoop.maxLimit`}
+                                  label={t("subsystems.soft_limit_max")}
+                                >
                                   <UnitInput
                                     unit={selected.closedLoop.limitUnit}
                                     type="number"
@@ -1484,15 +1485,16 @@ export function RobotFlowView({
                                       }));
                                     }}
                                   />
-                                </div>
+                                </Field>
                               </div>
                             )}
 
                             <div className="space-y-2.5 border-t border-[#22304a]/70 pt-2.5">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-slate-300">
-                                  Position Wrap (0–360° Turret)
-                                </span>
+                              <Field
+                                path={`subsystems.${selected.id}.closedLoop.positionWrap`}
+                                label={t("subsystems.position_wrap")}
+                                layout="row"
+                              >
                                 <Switch
                                   checked={Boolean(selected.closedLoop.positionWrap)}
                                   onCheckedChange={(checked) =>
@@ -1504,12 +1506,13 @@ export function RobotFlowView({
                                     }))
                                   }
                                 />
-                              </div>
+                              </Field>
 
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-slate-300">
-                                  SmartMotion Profiled
-                                </span>
+                              <Field
+                                path={`subsystems.${selected.id}.closedLoop.smartMotion`}
+                                label={t("subsystems.smart_motion")}
+                                layout="row"
+                              >
                                 <Switch
                                   checked={Boolean(selected.closedLoop.smartMotion)}
                                   onCheckedChange={(checked) =>
@@ -1530,67 +1533,82 @@ export function RobotFlowView({
                                     }))
                                   }
                                 />
-                              </div>
+                              </Field>
 
                               {selected.closedLoop.smartMotion && (
                                 <div className="grid grid-cols-3 gap-2">
-                                  <UnitInput
-                                    unit="RPS"
-                                    type="number"
-                                    step={1}
-                                    min={0.5}
-                                    value={selected.closedLoop.smartMotion.maxVelRps}
-                                    onChange={(e) => {
-                                      const val = Math.max(0.5, Number.parseFloat(e.target.value || "40") || 40);
-                                      updateSubsystem(selected.id, (prev) => ({
-                                        ...prev,
-                                        closedLoop: prev.closedLoop?.smartMotion
-                                          ? {
-                                              ...prev.closedLoop,
-                                              smartMotion: { ...prev.closedLoop.smartMotion, maxVelRps: val },
-                                            }
-                                          : prev.closedLoop,
-                                      }));
-                                    }}
-                                  />
-                                  <UnitInput
-                                    unit="RPS²"
-                                    type="number"
-                                    step={5}
-                                    min={1}
-                                    value={selected.closedLoop.smartMotion.maxAccelRpss}
-                                    onChange={(e) => {
-                                      const val = Math.max(1, Number.parseFloat(e.target.value || "80") || 80);
-                                      updateSubsystem(selected.id, (prev) => ({
-                                        ...prev,
-                                        closedLoop: prev.closedLoop?.smartMotion
-                                          ? {
-                                              ...prev.closedLoop,
-                                              smartMotion: { ...prev.closedLoop.smartMotion, maxAccelRpss: val },
-                                            }
-                                          : prev.closedLoop,
-                                      }));
-                                    }}
-                                  />
-                                  <UnitInput
-                                    unit="tol"
-                                    type="number"
-                                    step={0.1}
-                                    min={0.01}
-                                    value={selected.closedLoop.smartMotion.allowedError}
-                                    onChange={(e) => {
-                                      const val = Math.max(0.01, Number.parseFloat(e.target.value || "1") || 1);
-                                      updateSubsystem(selected.id, (prev) => ({
-                                        ...prev,
-                                        closedLoop: prev.closedLoop?.smartMotion
-                                          ? {
-                                              ...prev.closedLoop,
-                                              smartMotion: { ...prev.closedLoop.smartMotion, allowedError: val },
-                                            }
-                                          : prev.closedLoop,
-                                      }));
-                                    }}
-                                  />
+                                  <Field
+                                    path={`subsystems.${selected.id}.closedLoop.smartMotion.maxVelRps`}
+                                    label={t("subsystems.smart_vel")}
+                                  >
+                                    <UnitInput
+                                      unit="RPS"
+                                      type="number"
+                                      step={1}
+                                      min={0.5}
+                                      value={selected.closedLoop.smartMotion.maxVelRps}
+                                      onChange={(e) => {
+                                        const val = Math.max(0.5, Number.parseFloat(e.target.value || "40") || 40);
+                                        updateSubsystem(selected.id, (prev) => ({
+                                          ...prev,
+                                          closedLoop: prev.closedLoop?.smartMotion
+                                            ? {
+                                                ...prev.closedLoop,
+                                                smartMotion: { ...prev.closedLoop.smartMotion, maxVelRps: val },
+                                              }
+                                            : prev.closedLoop,
+                                        }));
+                                      }}
+                                    />
+                                  </Field>
+                                  <Field
+                                    path={`subsystems.${selected.id}.closedLoop.smartMotion.maxAccelRpss`}
+                                    label={t("subsystems.smart_accel")}
+                                  >
+                                    <UnitInput
+                                      unit="RPS²"
+                                      type="number"
+                                      step={5}
+                                      min={1}
+                                      value={selected.closedLoop.smartMotion.maxAccelRpss}
+                                      onChange={(e) => {
+                                        const val = Math.max(1, Number.parseFloat(e.target.value || "80") || 80);
+                                        updateSubsystem(selected.id, (prev) => ({
+                                          ...prev,
+                                          closedLoop: prev.closedLoop?.smartMotion
+                                            ? {
+                                                ...prev.closedLoop,
+                                                smartMotion: { ...prev.closedLoop.smartMotion, maxAccelRpss: val },
+                                              }
+                                            : prev.closedLoop,
+                                        }));
+                                      }}
+                                    />
+                                  </Field>
+                                  <Field
+                                    path={`subsystems.${selected.id}.closedLoop.smartMotion.allowedError`}
+                                    label={t("subsystems.smart_err")}
+                                  >
+                                    <UnitInput
+                                      unit="tol"
+                                      type="number"
+                                      step={0.1}
+                                      min={0.01}
+                                      value={selected.closedLoop.smartMotion.allowedError}
+                                      onChange={(e) => {
+                                        const val = Math.max(0.01, Number.parseFloat(e.target.value || "1") || 1);
+                                        updateSubsystem(selected.id, (prev) => ({
+                                          ...prev,
+                                          closedLoop: prev.closedLoop?.smartMotion
+                                            ? {
+                                                ...prev.closedLoop,
+                                                smartMotion: { ...prev.closedLoop.smartMotion, allowedError: val },
+                                              }
+                                            : prev.closedLoop,
+                                        }));
+                                      }}
+                                    />
+                                  </Field>
                                 </div>
                               )}
                             </div>
@@ -1599,10 +1617,11 @@ export function RobotFlowView({
 
                         {/* Dual-Motor Follower */}
                         <div className="space-y-2.5 border-t border-[#22304a] pt-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-slate-200">
-                              Dual-Motor Follower
-                            </span>
+                          <Field
+                            path={`subsystems.${selected.id}.motor.follower.enabled`}
+                            label={t("subsystems.follower_enable")}
+                            layout="row"
+                          >
                             <Switch
                               checked={Boolean(selected.motor.follower?.enabled)}
                               onCheckedChange={(checked) =>
@@ -1619,59 +1638,70 @@ export function RobotFlowView({
                                 }))
                               }
                             />
-                          </div>
+                          </Field>
                           {selected.motor.follower?.enabled && (
                             <div className="grid grid-cols-2 gap-3">
-                              <UnitInput
-                                unit="CAN"
-                                type="number"
-                                min={1}
-                                max={62}
-                                value={selected.motor.follower.canId}
-                                onChange={(e) => {
-                                  const canId = Math.min(62, Math.max(1, Number.parseInt(e.target.value || "1", 10) || 1));
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    motor: {
-                                      ...prev.motor,
-                                      follower: {
-                                        enabled: true,
-                                        canId,
-                                        inverted: prev.motor.follower?.inverted ?? false,
-                                      },
-                                    },
-                                  }));
-                                }}
-                              />
-                              <div className="flex items-center justify-between rounded-md border border-[#22304a] bg-[#0b0f17] px-3 py-1.5">
-                                <span className="text-xs text-slate-300">Invertido</span>
-                                <Switch
-                                  checked={Boolean(selected.motor.follower.inverted)}
-                                  onCheckedChange={(checked) =>
+                              <Field
+                                path={`subsystems.${selected.id}.motor.follower.canId`}
+                                label={t("subsystems.follower_can_id")}
+                              >
+                                <UnitInput
+                                  unit="CAN"
+                                  type="number"
+                                  min={1}
+                                  max={62}
+                                  value={selected.motor.follower.canId}
+                                  onChange={(e) => {
+                                    const canId = Math.min(62, Math.max(1, Number.parseInt(e.target.value || "1", 10) || 1));
                                     updateSubsystem(selected.id, (prev) => ({
                                       ...prev,
                                       motor: {
                                         ...prev.motor,
                                         follower: {
                                           enabled: true,
-                                          canId: prev.motor.follower?.canId ?? prev.motor.canId + 1,
-                                          inverted: checked,
+                                          canId,
+                                          inverted: prev.motor.follower?.inverted ?? false,
                                         },
                                       },
-                                    }))
-                                  }
+                                    }));
+                                  }}
                                 />
-                              </div>
+                              </Field>
+                              <Field
+                                path={`subsystems.${selected.id}.motor.follower.inverted`}
+                                label={t("subsystems.follower_inverted")}
+                              >
+                                <div className="flex h-9 items-center justify-between rounded-md border border-[#22304a] bg-[#0b0f17] px-3">
+                                  <span className="text-xs text-slate-300">Invertido</span>
+                                  <Switch
+                                    checked={Boolean(selected.motor.follower.inverted)}
+                                    onCheckedChange={(checked) =>
+                                      updateSubsystem(selected.id, (prev) => ({
+                                        ...prev,
+                                        motor: {
+                                          ...prev.motor,
+                                          follower: {
+                                            enabled: true,
+                                            canId: prev.motor.follower?.canId ?? prev.motor.canId + 1,
+                                            inverted: checked,
+                                          },
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </div>
+                              </Field>
                             </div>
                           )}
                         </div>
 
                         {/* Proteção & Un-Jam */}
                         <div className="space-y-2.5 border-t border-[#22304a] pt-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-slate-200">
-                              Proteção &amp; Stall Reversal
-                            </span>
+                          <Field
+                            path={`subsystems.${selected.id}.protection.stallReversalEnabled`}
+                            label="Proteção & Stall Reversal"
+                            layout="row"
+                          >
                             <Switch
                               checked={Boolean(selected.protection?.stallReversalEnabled)}
                               onCheckedChange={(checked) =>
@@ -1683,116 +1713,150 @@ export function RobotFlowView({
                                     stallCurrentAmps: prev.protection?.stallCurrentAmps ?? 35,
                                     stallTimeSec: prev.protection?.stallTimeSec ?? 0.25,
                                     reverseTimeSec: prev.protection?.reverseTimeSec ?? 0.35,
-                                    reverseOutput: prev.protection?.reverseOutput ?? -0.5,
+                                    reverseOutput: prev.protection?.reverseOutput ?? 0.3,
                                   },
                                 }))
                               }
                             />
-                          </div>
+                          </Field>
                           {selected.protection?.stallReversalEnabled && (
                             <div className="grid grid-cols-2 gap-2.5">
-                              <UnitInput
-                                unit="Stall A"
-                                type="number"
-                                step={1}
-                                min={5}
-                                value={selected.protection.stallCurrentAmps ?? 35}
-                                onChange={(e) => {
-                                  const val = Math.max(5, Number.parseFloat(e.target.value || "35") || 35);
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    protection: { ...(prev.protection ?? {}), stallCurrentAmps: val },
-                                  }));
-                                }}
-                              />
-                              <UnitInput
-                                unit="Stall s"
-                                type="number"
-                                step={0.05}
-                                min={0.05}
-                                value={selected.protection.stallTimeSec ?? 0.25}
-                                onChange={(e) => {
-                                  const val = Math.max(0.05, Number.parseFloat(e.target.value || "0.25") || 0.25);
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    protection: { ...(prev.protection ?? {}), stallTimeSec: val },
-                                  }));
-                                }}
-                              />
-                              <UnitInput
-                                unit="Rev s"
-                                type="number"
-                                step={0.05}
-                                min={0.05}
-                                value={selected.protection.reverseTimeSec ?? 0.35}
-                                onChange={(e) => {
-                                  const val = Math.max(0.05, Number.parseFloat(e.target.value || "0.35") || 0.35);
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    protection: { ...(prev.protection ?? {}), reverseTimeSec: val },
-                                  }));
-                                }}
-                              />
-                              <UnitInput
-                                unit="Rev %"
-                                type="number"
-                                step={0.05}
-                                min={-1}
-                                max={1}
-                                value={selected.protection.reverseOutput ?? -0.5}
-                                onChange={(e) => {
-                                  const val = Math.min(1, Math.max(-1, Number.parseFloat(e.target.value || "-0.5") || -0.5));
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    protection: { ...(prev.protection ?? {}), reverseOutput: val },
-                                  }));
-                                }}
-                              />
+                              <Field
+                                path={`subsystems.${selected.id}.protection.stallCurrentAmps`}
+                                label={t("subsystems.stall_current")}
+                              >
+                                <UnitInput
+                                  unit="Stall A"
+                                  type="number"
+                                  step={1}
+                                  min={5}
+                                  value={selected.protection.stallCurrentAmps ?? 35}
+                                  onChange={(e) => {
+                                    const val = Math.max(5, Number.parseFloat(e.target.value || "35") || 35);
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      protection: { ...(prev.protection ?? {}), stallCurrentAmps: val },
+                                    }));
+                                  }}
+                                />
+                              </Field>
+                              <Field
+                                path={`subsystems.${selected.id}.protection.stallTimeSec`}
+                                label={t("subsystems.stall_time")}
+                              >
+                                <UnitInput
+                                  unit="Stall s"
+                                  type="number"
+                                  step={0.05}
+                                  min={0.05}
+                                  value={selected.protection.stallTimeSec ?? 0.25}
+                                  onChange={(e) => {
+                                    const val = Math.max(0.05, Number.parseFloat(e.target.value || "0.25") || 0.25);
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      protection: { ...(prev.protection ?? {}), stallTimeSec: val },
+                                    }));
+                                  }}
+                                />
+                              </Field>
+                              <Field
+                                path={`subsystems.${selected.id}.protection.reverseTimeSec`}
+                                label={t("subsystems.reverse_time")}
+                              >
+                                <UnitInput
+                                  unit="Rev s"
+                                  type="number"
+                                  step={0.05}
+                                  min={0.05}
+                                  value={selected.protection.reverseTimeSec ?? 0.35}
+                                  onChange={(e) => {
+                                    const val = Math.max(0.05, Number.parseFloat(e.target.value || "0.35") || 0.35);
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      protection: { ...(prev.protection ?? {}), reverseTimeSec: val },
+                                    }));
+                                  }}
+                                />
+                              </Field>
+                              <Field
+                                path={`subsystems.${selected.id}.protection.reverseOutput`}
+                                label={t("subsystems.reverse_output")}
+                              >
+                                <UnitInput
+                                  unit="Rev"
+                                  type="number"
+                                  step={0.05}
+                                  min={0}
+                                  max={1}
+                                  value={selected.protection.reverseOutput ?? 0.3}
+                                  onChange={(e) => {
+                                    const parsed = Number.parseFloat(e.target.value);
+                                    const val = Number.isFinite(parsed)
+                                      ? Math.min(1, Math.max(0, parsed))
+                                      : 0;
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      protection: { ...(prev.protection ?? {}), reverseOutput: val },
+                                    }));
+                                  }}
+                                />
+                              </Field>
                             </div>
                           )}
                           <div className="grid grid-cols-2 gap-2.5">
-                            <UnitInput
-                              unit="Warn A"
-                              type="number"
-                              step={1}
-                              min={0}
-                              value={selected.protection?.currentWarningAmps ?? 0}
-                              onChange={(e) => {
-                                const raw = Number.parseFloat(e.target.value || "0") || 0;
-                                updateSubsystem(selected.id, (prev) => ({
-                                  ...prev,
-                                  protection: {
-                                    ...(prev.protection ?? {}),
-                                    currentWarningAmps: raw > 0 ? raw : undefined,
-                                  },
-                                }));
-                              }}
-                            />
-                            <UnitInput
-                              unit="Ramp s"
-                              type="number"
-                              step={0.05}
-                              min={0}
-                              value={selected.protection?.openLoopRampSec ?? 0}
-                              onChange={(e) => {
-                                const raw = Number.parseFloat(e.target.value || "0") || 0;
-                                updateSubsystem(selected.id, (prev) => ({
-                                  ...prev,
-                                  protection: {
-                                    ...(prev.protection ?? {}),
-                                    openLoopRampSec: raw > 0 ? raw : undefined,
-                                  },
-                                }));
-                              }}
-                            />
+                            <Field
+                              path={`subsystems.${selected.id}.protection.currentWarningAmps`}
+                              label={t("subsystems.current_warning")}
+                            >
+                              <UnitInput
+                                unit="Warn A"
+                                type="number"
+                                step={1}
+                                min={0}
+                                value={selected.protection?.currentWarningAmps ?? 0}
+                                onChange={(e) => {
+                                  const raw = Number.parseFloat(e.target.value || "0") || 0;
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    protection: {
+                                      ...(prev.protection ?? {}),
+                                      currentWarningAmps: raw > 0 ? raw : undefined,
+                                    },
+                                  }));
+                                }}
+                              />
+                            </Field>
+                            <Field
+                              path={`subsystems.${selected.id}.protection.openLoopRampSec`}
+                              label={t("subsystems.open_loop_ramp")}
+                            >
+                              <UnitInput
+                                unit="Ramp s"
+                                type="number"
+                                step={0.05}
+                                min={0}
+                                value={selected.protection?.openLoopRampSec ?? 0}
+                                onChange={(e) => {
+                                  const raw = Number.parseFloat(e.target.value || "0") || 0;
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    protection: {
+                                      ...(prev.protection ?? {}),
+                                      openLoopRampSec: raw > 0 ? raw : undefined,
+                                    },
+                                  }));
+                                }}
+                              />
+                            </Field>
                           </div>
                         </div>
 
                         <div className="space-y-2.5 border-t border-[#22304a] pt-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-slate-200">
-                              {t("subsystems.selftest_enable")}
-                            </span>
+                          <Field
+                            path={`subsystems.${selected.id}.selfTest.enabled`}
+                            label={t("subsystems.selftest_enable")}
+                            layout="row"
+                          >
                             <Switch
                               checked={selected.selfTest.enabled}
                               onCheckedChange={(checked) =>
@@ -1802,48 +1866,58 @@ export function RobotFlowView({
                                 }))
                               }
                             />
-                          </div>
+                          </Field>
                           {selected.selfTest.enabled && (
                             <div className="grid grid-cols-2 gap-3">
-                              <UnitInput
-                                unit="%"
-                                type="number"
-                                step={0.05}
-                                min={-1}
-                                max={1}
-                                value={selected.selfTest.output}
-                                onChange={(e) =>
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    selfTest: {
-                                      ...prev.selfTest,
-                                      output: Math.min(
-                                        1,
-                                        Math.max(-1, Number.parseFloat(e.target.value || "0.3") || 0.3),
-                                      ),
-                                    },
-                                  }))
-                                }
-                              />
-                              <UnitInput
-                                unit="RPS"
-                                type="number"
-                                step={0.5}
-                                min={0}
-                                value={selected.selfTest.minVelocityRps}
-                                onChange={(e) =>
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    selfTest: {
-                                      ...prev.selfTest,
-                                      minVelocityRps: Math.max(
-                                        0,
-                                        Number.parseFloat(e.target.value || "5") || 5,
-                                      ),
-                                    },
-                                  }))
-                                }
-                              />
+                              <Field
+                                path={`subsystems.${selected.id}.selfTest.output`}
+                                label={t("subsystems.selftest_output")}
+                              >
+                                <UnitInput
+                                  unit="%"
+                                  type="number"
+                                  step={0.05}
+                                  min={-1}
+                                  max={1}
+                                  value={selected.selfTest.output}
+                                  onChange={(e) =>
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      selfTest: {
+                                        ...prev.selfTest,
+                                        output: Math.min(
+                                          1,
+                                          Math.max(-1, Number.parseFloat(e.target.value || "0.3") || 0.3),
+                                        ),
+                                      },
+                                    }))
+                                  }
+                                />
+                              </Field>
+                              <Field
+                                path={`subsystems.${selected.id}.selfTest.minVelocityRps`}
+                                label={t("subsystems.selftest_min_rps")}
+                              >
+                                <UnitInput
+                                  unit="RPS"
+                                  type="number"
+                                  step={0.5}
+                                  min={0}
+                                  value={selected.selfTest.minVelocityRps}
+                                  onChange={(e) =>
+                                    updateSubsystem(selected.id, (prev) => ({
+                                      ...prev,
+                                      selfTest: {
+                                        ...prev.selfTest,
+                                        minVelocityRps: Math.max(
+                                          0,
+                                          Number.parseFloat(e.target.value || "5") || 5,
+                                        ),
+                                      },
+                                    }))
+                                  }
+                                />
+                              </Field>
                             </div>
                           )}
                         </div>

@@ -1,4 +1,10 @@
-import type { CiprixProject, SubsystemConfig, SubsystemType } from "../schema/ciprix-project";
+import { toUpperSnake } from "../generator/java-utils";
+import type {
+  CiprixProject,
+  SubsystemConfig,
+  SubsystemType,
+  XboxButton,
+} from "../schema/ciprix-project";
 
 export function createSkeletonPreset(): CiprixProject {
   return {
@@ -181,7 +187,11 @@ export function createNewSubsystem(
 ): SubsystemConfig {
   const usedIds = new Set(existing.map((s) => s.id));
   const usedNames = new Set(existing.map((s) => s.name.toLowerCase()));
-  const usedCanIds = new Set(existing.map((s) => s.motor.canId));
+  const usedCanIds = new Set<number>();
+  for (const s of existing) {
+    usedCanIds.add(s.motor.canId);
+    if (s.motor.follower?.enabled) usedCanIds.add(s.motor.follower.canId);
+  }
 
   const baseName = BASE_NAMES[type];
   let suffix = 1;
@@ -732,6 +742,156 @@ export function createCompetitionPreset(): CiprixProject {
     },
     features: {
       driveContextStub: false,
+    },
+  };
+}
+
+const PRIMARY_REQUEST_BY_TYPE: Record<SubsystemType, string> = {
+  roller: "INTAKE",
+  shooter: "SHOOT",
+  arm: "SCORE",
+  elevator: "HIGH",
+  climber: "CLIMB",
+  turret: "RIGHT",
+  wrist: "SCORE",
+  indexer: "FEED",
+  hood: "FAR",
+  generic: "RUN",
+};
+
+const PILOT_BUTTON_ORDER: XboxButton[] = [
+  "rightBumper",
+  "leftBumper",
+  "rightTrigger",
+  "leftTrigger",
+  "a",
+  "b",
+  "x",
+  "y",
+  "povUp",
+  "povDown",
+  "povLeft",
+  "povRight",
+  "start",
+  "back",
+];
+
+const COPILOT_BUTTON_ORDER: XboxButton[] = [
+  "a",
+  "b",
+  "x",
+  "y",
+  "leftBumper",
+  "rightBumper",
+  "leftTrigger",
+  "rightTrigger",
+  "povUp",
+  "povDown",
+  "povLeft",
+  "povRight",
+  "start",
+  "back",
+];
+
+export function addSubsystemWithDefaults(
+  project: CiprixProject,
+  type: SubsystemType,
+): { project: CiprixProject; createdId: string } {
+  const created: SubsystemConfig = {
+    ...createNewSubsystem(type, project.subsystems),
+    isDefaultTemplate: true,
+  };
+
+  const preferred = PRIMARY_REQUEST_BY_TYPE[type];
+  const primaryReq = created.fsm.requests.includes(preferred)
+    ? preferred
+    : created.fsm.requests.find((r) => r !== created.fsm.initialRequest);
+
+  const nextStateActions: Record<string, Record<string, string>> = {};
+  for (const stateName of project.superstructure.states) {
+    nextStateActions[stateName] = {
+      ...(project.superstructure.stateActions[stateName] ?? {}),
+      [created.id]: created.fsm.initialRequest,
+    };
+  }
+
+  const nextRequests = [...project.superstructure.requests];
+  const nextStates = [...project.superstructure.states];
+  const nextBindings = [...project.superstructure.bindings];
+  let superName: string | undefined;
+
+  if (primaryReq) {
+    const existingReqSet = new Set(nextRequests);
+    const existingStateSet = new Set(nextStates);
+    const isFree = (candidate: string) =>
+      !existingReqSet.has(candidate) && !existingStateSet.has(candidate);
+
+    const prefixed = `${toUpperSnake(created.name)}_${primaryReq}`;
+    let candidate = isFree(primaryReq) ? primaryReq : prefixed;
+    let suffix = 2;
+    while (!isFree(candidate)) {
+      candidate = `${prefixed}_${suffix}`;
+      suffix++;
+    }
+    superName = candidate;
+
+    nextRequests.push(superName);
+    nextStates.push(superName);
+    nextBindings.push({ request: superName, entryState: superName });
+
+    const row: Record<string, string> = {};
+    for (const sub of project.subsystems) {
+      row[sub.id] = sub.fsm.initialRequest;
+    }
+    row[created.id] = primaryReq;
+    nextStateActions[superName] = row;
+  }
+
+  const nextPilotPriority = [...project.controls.pilotPriority];
+  const usedPilotButtons = new Set(nextPilotPriority.map((p) => p.button));
+  const freePilot = PILOT_BUTTON_ORDER.find((b) => !usedPilotButtons.has(b));
+  if (superName && freePilot) {
+    nextPilotPriority.push({
+      id: `pilot-${created.id}-${Date.now().toString(36)}`,
+      button: freePilot,
+      request: superName,
+    });
+  }
+
+  const nextCopilotOverrides = [...project.controls.copilotOverrides];
+  const usedCopilotButtons = new Set(nextCopilotOverrides.map((c) => c.button));
+  const copilotRequests = created.fsm.requests
+    .filter((r) => r !== created.fsm.initialRequest)
+    .slice(0, 2);
+
+  copilotRequests.forEach((req, idx) => {
+    const freeCopilot = COPILOT_BUTTON_ORDER.find((b) => !usedCopilotButtons.has(b));
+    if (!freeCopilot) return;
+    usedCopilotButtons.add(freeCopilot);
+    nextCopilotOverrides.push({
+      id: `copilot-${created.id}-${idx}-${Date.now().toString(36)}`,
+      button: freeCopilot,
+      subsystemId: created.id,
+      request: req,
+    });
+  });
+
+  return {
+    createdId: created.id,
+    project: {
+      ...project,
+      subsystems: [...project.subsystems, created],
+      superstructure: {
+        ...project.superstructure,
+        requests: nextRequests,
+        states: nextStates,
+        stateActions: nextStateActions,
+        bindings: nextBindings,
+      },
+      controls: {
+        pilotPriority: nextPilotPriority,
+        copilotOverrides: nextCopilotOverrides,
+      },
     },
   };
 }

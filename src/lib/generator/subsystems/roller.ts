@@ -197,7 +197,7 @@ export function generateSingleMotorSubsystem(
   }
   if (pr?.stallReversalEnabled) {
     configExtras.push(
-      `          .withStallReversal(Amps.of(${formatDouble(pr.stallCurrentAmps ?? 35)}), ${formatDouble(pr.stallTimeSec ?? 0.4)}, ${formatDouble(pr.reverseTimeSec ?? 0.3)}, ${formatDouble(pr.reverseOutput ?? 0.25)})`,
+      `          .withStallReversal(Amps.of(${formatDouble(pr.stallCurrentAmps ?? 35)}), ${formatDouble(pr.stallTimeSec ?? 0.4)}, ${formatDouble(pr.reverseTimeSec ?? 0.3)}, ${formatDouble(pr.reverseOutput ?? 0.3)})`,
     );
   } else if (pr?.stallDetectionEnabled) {
     configExtras.push(

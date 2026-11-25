@@ -102,6 +102,7 @@ export const SubsystemSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   type: SubsystemTypeSchema,
+  isDefaultTemplate: z.boolean().optional(),
   motor: z.object({
     vendor: MotorVendorSchema,
     canId: z.number().int().min(0).max(62),
