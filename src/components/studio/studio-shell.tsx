@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
@@ -16,6 +17,7 @@ import {
   GitBranch,
   Globe,
   Home,
+  Keyboard,
   LayoutGrid,
   LayoutTemplate,
   Package,
@@ -24,6 +26,7 @@ import {
   Save,
   Search,
   Settings2,
+  Trash2,
   Undo2,
   X,
 } from "lucide-react";
@@ -31,7 +34,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/context/project-context";
 import { exportProjectZip } from "@/lib/generator/zip-exporter";
-import { CiprixProjectSchema } from "@/lib/schema/ciprix-project";
+import {
+  actionToTab,
+  isEditableTarget,
+  resolveShortcutAction,
+  SHORTCUT_GUIDE,
+} from "@/lib/keyboard-shortcuts";
+import { CiprixProjectSchema, type SubsystemConfig } from "@/lib/schema/ciprix-project";
 import type { StudioTab } from "@/lib/validator";
 import { cn } from "@/lib/utils";
 import { CodeTab } from "./code-tab";
@@ -65,12 +74,16 @@ export function StudioShell({
     t,
     activeTab,
     setActiveTab,
+    selectedSubsystemId,
+    setSelectedSubsystemId,
     issues,
     generatedFiles,
     focusRequest,
     focusIssue,
     highlightField,
     loadProject,
+    removeSubsystem,
+    reorderSubsystems,
     resetToSkeleton,
     resetToBlank,
     resetToCompetition,
@@ -95,63 +108,162 @@ export function StudioShell({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [pendingDeleteSub, setPendingDeleteSub] = useState<SubsystemConfig | null>(null);
   const [exporting, setExporting] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; tone: "ok" | "err" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const showToast = (text: string, tone: "ok" | "err" = "ok") => {
+  const showToast = useCallback((text: string, tone: "ok" | "err" = "ok") => {
     setToastMsg({ text, tone });
     setTimeout(() => setToastMsg(null), 3000);
-  };
+  }, []);
+
+  const errorCount = issues.filter((i) => i.severity === "error").length;
+  const currentStep = tabToStep(activeTab);
+
+  const handleSaveJson = useCallback(() => {
+    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ciprix-project.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(t("toast.saved"));
+  }, [project, showToast, t]);
+
+  const handleDownloadZip = useCallback(async () => {
+    setExporting(true);
+    try {
+      const blob = await exportProjectZip(project);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project.project.name || "first-studio-robot"}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(t("toast.zip_ready"));
+    } catch {
+      showToast(t("toast.zip_error"), "err");
+    } finally {
+      setExporting(false);
+    }
+  }, [project, showToast, t]);
 
   useEffect(() => {
+    const selectedSub =
+      project.subsystems.find((s) => s.id === selectedSubsystemId) ??
+      project.subsystems[0] ??
+      null;
+
     const onKeyDown = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPaletteOpen((v) => !v);
+      const action = resolveShortcutAction(
+        {
+          key: e.key,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+        },
+        {
+          activeRoute,
+          currentStep,
+          hasSelectedSubsystem: Boolean(selectedSub),
+          hasOpenModal: Boolean(
+            settingsOpen || paletteOpen || shortcutsOpen || pendingDeleteSub || checklistOpen,
+          ),
+          isEditable: isEditableTarget(e.target),
+        },
+      );
+      if (!action) return;
+
+      e.preventDefault();
+
+      const nextTab = actionToTab(action);
+      if (nextTab) {
+        navigateToTab(nextTab);
         return;
       }
 
-      if (e.altKey) {
-        if (e.key === "1") {
-          e.preventDefault();
-          navigateToTab("subsystems");
-          return;
+      switch (action) {
+        case "palette":
+          setPaletteOpen((v) => !v);
+          break;
+        case "shortcutsHelp":
+          setShortcutsOpen((v) => !v);
+          break;
+        case "saveJson":
+          handleSaveJson();
+          break;
+        case "exportZip":
+          if (!exporting && errorCount === 0) void handleDownloadZip();
+          break;
+        case "undo":
+          if (canUndo) {
+            undo();
+            showToast(t("toast.undone"));
+          }
+          break;
+        case "redo":
+          if (canRedo) {
+            redo();
+            showToast(t("toast.redone"));
+          }
+          break;
+        case "deleteSubsystem":
+          if (selectedSub) setPendingDeleteSub(selectedSub);
+          break;
+        case "prevSubsystem":
+        case "nextSubsystem": {
+          if (!selectedSub || project.subsystems.length <= 1) break;
+          const idx = project.subsystems.findIndex((s) => s.id === selectedSub.id);
+          const delta = action === "prevSubsystem" ? -1 : 1;
+          const nextIdx = (idx + delta + project.subsystems.length) % project.subsystems.length;
+          setSelectedSubsystemId(project.subsystems[nextIdx].id);
+          break;
         }
-        if (e.key === "2") {
-          e.preventDefault();
-          navigateToTab("fsm");
-          return;
+        case "moveSubsystemLeft":
+        case "moveSubsystemRight": {
+          if (!selectedSub || project.subsystems.length <= 1) break;
+          const idx = project.subsystems.findIndex((s) => s.id === selectedSub.id);
+          const targetIdx = idx + (action === "moveSubsystemLeft" ? -1 : 1);
+          if (targetIdx < 0 || targetIdx >= project.subsystems.length) break;
+          const ids = project.subsystems.map((s) => s.id);
+          const [moved] = ids.splice(idx, 1);
+          ids.splice(targetIdx, 0, moved);
+          reorderSubsystems(ids);
+          break;
         }
-        if (e.key === "3") {
-          e.preventDefault();
-          navigateToTab("controls");
-          return;
-        }
-        if (e.key === "4") {
-          e.preventDefault();
-          navigateToTab("code");
-          return;
-        }
-      }
-
-      const target = e.target as HTMLElement | null;
-      const isInput =
-        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
-      if (isInput) return;
-
-      if (mod && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        undo();
-      } else if (mod && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        redo();
       }
     };
+
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, redo, navigateToTab]);
+  }, [
+    activeRoute,
+    canRedo,
+    canUndo,
+    checklistOpen,
+    currentStep,
+    errorCount,
+    exporting,
+    handleDownloadZip,
+    handleSaveJson,
+    navigateToTab,
+    paletteOpen,
+    pendingDeleteSub,
+    project.subsystems,
+    redo,
+    reorderSubsystems,
+    selectedSubsystemId,
+    setSelectedSubsystemId,
+    settingsOpen,
+    shortcutsOpen,
+    showToast,
+    t,
+    undo,
+  ]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -175,23 +287,9 @@ export function StudioShell({
     return () => clearTimeout(timer);
   }, [focusRequest, highlightField]);
 
-  const errorCount = issues.filter((i) => i.severity === "error").length;
-  const currentStep = tabToStep(activeTab);
-
   const totalFsmStates = project.subsystems.reduce((sum, s) => sum + s.fsm.states.length, 0);
   const totalBindings =
     project.controls.pilotPriority.length + project.controls.copilotOverrides.length;
-
-  const handleSaveJson = () => {
-    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "ciprix-project.json";
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast(t("toast.saved"));
-  };
 
   const handleLoadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -206,24 +304,6 @@ export function StudioShell({
       showToast(t("toast.load_error"), "err");
     } finally {
       e.target.value = "";
-    }
-  };
-
-  const handleDownloadZip = async () => {
-    setExporting(true);
-    try {
-      const blob = await exportProjectZip(project);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${project.project.name || "first-studio-robot"}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast(t("toast.zip_ready"));
-    } catch {
-      showToast(t("toast.zip_error"), "err");
-    } finally {
-      setExporting(false);
     }
   };
 
@@ -767,6 +847,27 @@ export function StudioShell({
               </Tooltip.Portal>
             </Tooltip.Root>
 
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => setShortcutsOpen(true)}
+                  aria-label={t("shortcuts.title")}
+                >
+                  <Keyboard className="h-4 w-4" />
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={6}
+                  className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 font-mono text-xs text-slate-100"
+                >
+                  {t("shortcuts.button")}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+
             <Button
               size="sm"
               variant="outline"
@@ -814,6 +915,7 @@ export function StudioShell({
                   <RobotFlowView
                     onGoToStates={() => setActiveTab("fsm")}
                     onGoToControls={() => setActiveTab("controls")}
+                    onRequestDeleteSubsystem={(sub) => setPendingDeleteSub(sub)}
                   />
                 )}
                 {currentStep === "states" && (
@@ -841,6 +943,106 @@ export function StudioShell({
         onDownloadZip={handleDownloadZip}
         onOpenProjectSettings={() => setSettingsOpen(true)}
       />
+
+      <Dialog.Root
+        open={pendingDeleteSub !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteSub(null);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-[#0b0f17]/80 backdrop-blur-xs animate-fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-rose-700/70 bg-[#0f1624] p-5 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-rose-700/60 bg-rose-950/60 text-rose-400">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <Dialog.Title className="font-headline text-base font-semibold text-white">
+                  {t("confirm.delete_sub_title")}{" "}
+                  {pendingDeleteSub && (
+                    <span className="font-mono text-rose-300">{pendingDeleteSub.name}</span>
+                  )}
+                </Dialog.Title>
+                <Dialog.Description className="text-xs leading-relaxed text-slate-300">
+                  {t("confirm.delete_sub_desc")}
+                </Dialog.Description>
+                <p className="font-mono text-[11px] text-slate-400">{t("confirm.undo_hint")}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[#22304a] pt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                autoFocus
+                onClick={() => setPendingDeleteSub(null)}
+              >
+                {t("confirm.cancel")}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  if (!pendingDeleteSub) return;
+                  removeSubsystem(pendingDeleteSub.id);
+                  setPendingDeleteSub(null);
+                  showToast(t("toast.deleted"));
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t("confirm.delete")}
+              </Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      <Dialog.Root open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-[#0b0f17]/80 backdrop-blur-xs animate-fade-in" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[#2c3f61] bg-[#0f1624] p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-3 border-b border-[#22304a] pb-3">
+              <div>
+                <Dialog.Title className="font-headline text-base font-semibold text-white">
+                  {t("shortcuts.title")}
+                </Dialog.Title>
+                <Dialog.Description className="mt-0.5 text-xs text-slate-400">
+                  {t("shortcuts.desc")}
+                </Dialog.Description>
+              </div>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  className="rounded p-1 text-slate-400 hover:bg-[#19253d] hover:text-white cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </Dialog.Close>
+            </div>
+            <ul className="space-y-2">
+              {SHORTCUT_GUIDE.map((item) => (
+                <li
+                  key={item.labelKey}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-[#22304a] bg-[#131c2e] px-3 py-2 text-xs"
+                >
+                  <span className="text-slate-200">{t(item.labelKey)}</span>
+                  <span className="flex items-center gap-1 shrink-0">
+                    {item.keys.map((k) => (
+                      <kbd
+                        key={k}
+                        className="rounded border border-[#3b6bb5]/60 bg-[#0b0f17] px-1.5 py-0.5 font-mono text-[11px] text-[#93c5fd]"
+                      >
+                        {k}
+                      </kbd>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {toastMsg && (
         <div

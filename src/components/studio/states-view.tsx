@@ -412,6 +412,7 @@ export function StatesView({
                   onNodesChange={onNodesChange}
                   onNodeDragStop={onNodeDragStop}
                   nodeTypes={fsmNodeTypes}
+                  deleteKeyCode={null}
                   fitView
                   fitViewOptions={{ padding: 0.25 }}
                 >

@@ -366,9 +366,11 @@ const nodeTypes = {
 export function RobotFlowView({
   onGoToStates,
   onGoToControls,
+  onRequestDeleteSubsystem,
 }: {
   onGoToStates: () => void;
   onGoToControls: () => void;
+  onRequestDeleteSubsystem?: (sub: SubsystemConfig) => void;
 }) {
   const {
     project,
@@ -959,6 +961,7 @@ export function RobotFlowView({
                     onNodesChange={onNodesChange}
                     onNodeDragStop={onNodeDragStop}
                     nodeTypes={nodeTypes}
+                    deleteKeyCode={null}
                     fitView
                     fitViewOptions={{ padding: 0.2 }}
                     minZoom={0.4}
@@ -1044,7 +1047,11 @@ export function RobotFlowView({
                     <Button
                       size="icon"
                       variant="destructive"
-                      onClick={() => removeSubsystem(selected.id)}
+                      onClick={() =>
+                        onRequestDeleteSubsystem
+                          ? onRequestDeleteSubsystem(selected)
+                          : removeSubsystem(selected.id)
+                      }
                       title={t("subsystems.remove")}
                     >
                       <Trash2 className="h-4 w-4" />
