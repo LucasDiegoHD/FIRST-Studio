@@ -47,25 +47,39 @@ function TreeBranch({
   const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <ul className={depth > 0 ? "ml-2.5 border-l border-[#22304a] pl-2" : ""}>
-      {folderNames.map((folder) => (
-        <li key={folder} className="mt-1">
-          <div className="flex items-center gap-1.5 px-1.5 py-0.5 text-xs font-mono text-slate-400">
-            <Folder className="h-3.5 w-3.5 text-[#60a5fa] shrink-0" />
-            <span>{folder}</span>
-          </div>
-          <TreeBranch
-            node={node.folders[folder]}
-            activePath={activePath}
-            onSelect={onSelect}
-            depth={depth + 1}
-          />
-        </li>
-      ))}
+    <ul className={depth > 0 ? "ml-2 border-l border-[#22304a] pl-2" : ""}>
+      {folderNames.map((folder) => {
+        let label = folder;
+        let current = node.folders[folder];
+        while (current.files.length === 0) {
+          const subFolders = Object.keys(current.folders);
+          if (subFolders.length !== 1) break;
+          label += `/${subFolders[0]}`;
+          current = current.folders[subFolders[0]];
+        }
+        return (
+          <li key={folder} className="mt-1">
+            <div
+              title={label}
+              className="flex items-center gap-1.5 px-1.5 py-0.5 text-xs font-mono text-slate-400"
+            >
+              <Folder className="h-3.5 w-3.5 text-[#60a5fa] shrink-0" />
+              <span className="truncate">{label}</span>
+            </div>
+            <TreeBranch
+              node={current}
+              activePath={activePath}
+              onSelect={onSelect}
+              depth={depth + 1}
+            />
+          </li>
+        );
+      })}
       {files.map((file) => (
         <li key={file.fullPath}>
           <button
             type="button"
+            title={file.name}
             onClick={() => onSelect(file.fullPath)}
             className={`w-full flex items-center gap-1.5 rounded px-2 py-1.5 text-left text-xs font-mono transition-colors cursor-pointer ${
               activePath === file.fullPath
@@ -157,7 +171,7 @@ export function CodeTab({
 
       {/* File Tree + CodeViewer Card */}
       <Card className="flex h-[600px] min-h-[600px] overflow-hidden">
-        <div className="w-[265px] shrink-0 overflow-y-auto border-r border-[#22304a] bg-[#0f1624] p-3">
+        <div className="w-[320px] lg:w-[350px] shrink-0 overflow-auto border-r border-[#22304a] bg-[#0f1624] p-3">
           <TreeBranch node={tree} activePath={activePath} onSelect={setSelectedFilePath} />
         </div>
         <CodeViewer filePath={activePath} content={activeContent} className="flex-1 min-w-0" />
