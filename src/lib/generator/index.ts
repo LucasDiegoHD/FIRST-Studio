@@ -1,5 +1,6 @@
 import type { CiprixProject } from "../schema/ciprix-project";
 import { generateCoreRobotFiles } from "./core/robot-files";
+import { generateDrivetrainFiles } from "./drivetrain";
 import { JAVA_FILE_HEADER } from "./java-utils";
 import { generateLedArbiterFile } from "./leds";
 import { generateSubsystemFiles } from "./registry";
@@ -51,6 +52,22 @@ export function getRequiredVendordeps(project: CiprixProject): string[] {
     }
   }
 
+  const dt = project.drivetrain;
+  if (dt?.enabled) {
+    if (dt.motorVendor === "talonfx" || dt.type === "ctre_swerve" || dt.gyro.type === "pigeon2") {
+      deps.add("Phoenix6-26.3.0.json");
+    }
+    if (dt.motorVendor === "sparkmax") deps.add("REVLib.json");
+    if (dt.motorVendor === "talonsrx") deps.add("Phoenix5-5.36.0.json");
+    if (dt.gyro.type === "navx") deps.add("Studica-2026.0.0.json");
+    if (dt.type === "yagsl") {
+      deps.add("yagsl-2026.4.1.json");
+      deps.add("ReduxLib.json");
+      deps.add("REVLib.json");
+      deps.add("ThriftyLib.json");
+    }
+  }
+
   return Array.from(deps).sort();
 }
 
@@ -63,6 +80,8 @@ export function generateProjectFiles(project: CiprixProject): GeneratedFile[] {
   if (projectUsesRumbleArbiter(project)) {
     files.push(generateRumbleArbiterFile(project.project.packageName));
   }
+
+  files.push(...generateDrivetrainFiles(project.drivetrain, project.project.packageName));
 
   for (const subsystem of project.subsystems) {
     files.push(...generateSubsystemFiles(subsystem, project.project.packageName));

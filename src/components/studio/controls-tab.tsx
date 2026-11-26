@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Code2, Cog, Gamepad2, ImageDown, Plus, Radar, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Code2, Cog, Compass, Gamepad2, ImageDown, Plus, Radar, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import { Hint } from "@/components/ui/hint";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
@@ -166,6 +167,15 @@ export function ControlsTab() {
           map.set(p.button, { label: `${p.request}${thr}`, priority: idx + 1 });
         }
       });
+      if (project.drivetrain?.enabled) {
+        const { resetGyroButton, toggleFieldOrientedButton } = project.drivetrain.controls;
+        if (resetGyroButton && !map.has(resetGyroButton)) {
+          map.set(resetGyroButton, { label: "Zero Gyro" });
+        }
+        if (toggleFieldOrientedButton && !map.has(toggleFieldOrientedButton)) {
+          map.set(toggleFieldOrientedButton, { label: "Field/Robot" });
+        }
+      }
     } else {
       for (const ov of project.controls.copilotOverrides) {
         if (!map.has(ov.button)) {
@@ -179,7 +189,7 @@ export function ControlsTab() {
       }
     }
     return map;
-  }, [port, project.controls, project.subsystems]);
+  }, [port, project.controls, project.subsystems, project.drivetrain]);
 
   const movePilot = (index: number, delta: -1 | 1) => {
     const target = index + delta;
@@ -487,8 +497,102 @@ export function ControlsTab() {
           </CardContent>
         </Card>
 
-        {/* Right Column: Priority / Override Rules + On-Demand Java Card */}
+        {/* Right Column: Priority / Override Rules + Drivetrain Sticks + On-Demand Java Card */}
         <div className="xl:col-span-5 space-y-6">
+          {port === "pilot" && project.drivetrain?.enabled && (
+            <Card>
+              <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-[#22304a] pb-3">
+                <div className="flex items-center gap-2">
+                  <Compass className="h-4 w-4 text-sky-400" />
+                  <CardTitle className="text-base">Tração (Sticks do Piloto)</CardTitle>
+                </div>
+                <Badge variant="outline">{project.drivetrain.type}</Badge>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-4 text-xs">
+                <div className="grid grid-cols-2 gap-2 rounded-lg border border-[#22304a] bg-[#0f1624] p-2.5 font-mono">
+                  <div>
+                    <p className="text-[10px] text-slate-400">LEFT STICK</p>
+                    <p className="text-slate-200">Translação X/Y</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400">RIGHT STICK</p>
+                    <p className="text-slate-200">
+                      {project.drivetrain.assistants.headingStickRotation
+                        ? "HeadingStick"
+                        : "Rotação Omega"}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field path="drivetrain.controls.resetGyroButton" label="Zerar Gyro">
+                    <Select
+                      className="h-8 text-xs font-mono"
+                      value={project.drivetrain.controls.resetGyroButton ?? ""}
+                      onChange={(e) =>
+                        updateProject((prev) =>
+                          prev.drivetrain
+                            ? {
+                                ...prev,
+                                drivetrain: {
+                                  ...prev.drivetrain,
+                                  controls: {
+                                    ...prev.drivetrain.controls,
+                                    resetGyroButton: (e.target.value || undefined) as
+                                      | XboxButton
+                                      | undefined,
+                                  },
+                                },
+                              }
+                            : prev,
+                        )
+                      }
+                    >
+                      <option value="">(Nenhum)</option>
+                      {XBOX_BUTTONS.map((btn) => (
+                        <option key={btn.value} value={btn.value}>
+                          {btn.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field
+                    path="drivetrain.controls.toggleFieldOrientedButton"
+                    label="Field / Robot"
+                  >
+                    <Select
+                      className="h-8 text-xs font-mono"
+                      value={project.drivetrain.controls.toggleFieldOrientedButton ?? ""}
+                      onChange={(e) =>
+                        updateProject((prev) =>
+                          prev.drivetrain
+                            ? {
+                                ...prev,
+                                drivetrain: {
+                                  ...prev.drivetrain,
+                                  controls: {
+                                    ...prev.drivetrain.controls,
+                                    toggleFieldOrientedButton: (e.target.value || undefined) as
+                                      | XboxButton
+                                      | undefined,
+                                  },
+                                },
+                              }
+                            : prev,
+                        )
+                      }
+                    >
+                      <option value="">(Nenhum)</option>
+                      {XBOX_BUTTONS.map((btn) => (
+                        <option key={btn.value} value={btn.value}>
+                          {btn.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-[#22304a] pb-4">
               <div>

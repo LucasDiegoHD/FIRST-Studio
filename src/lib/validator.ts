@@ -740,6 +740,160 @@ export function validateProject(
     }
   }
 
+  // Drivetrain CAN, gyro, and vision checks
+  if (project.drivetrain?.enabled) {
+    const dt = project.drivetrain;
+    const dtBus = dt.canBus.trim() || "rio";
+    const checkDtCan = (
+      canId: number,
+      bus: string,
+      pathSuffix: string,
+      labelPt: string,
+      labelEn: string,
+    ) => {
+      const normBus = bus.trim() || "rio";
+      const key = `${normBus}:${canId}`;
+      const existing = canBuses.get(key);
+      if (existing) {
+        issues.push({
+          id: `dt-can-dup-${pathSuffix}`,
+          severity: "error",
+          tab: "subsystems",
+          targetId: "drivetrain",
+          path: `drivetrain.${pathSuffix}`,
+          fieldLabel: locale === "pt" ? labelPt : labelEn,
+          message:
+            locale === "pt"
+              ? `CAN ID ${canId} no barramento "${normBus}" (Drivetrain · ${labelPt}) conflita com ${existing}.`
+              : `CAN ID ${canId} on bus "${normBus}" (Drivetrain · ${labelEn}) conflicts with ${existing}.`,
+        });
+      } else {
+        canBuses.set(key, `Drivetrain (${locale === "pt" ? labelPt : labelEn})`);
+      }
+    };
+
+    if (dt.gyro.type === "pigeon2") {
+      checkDtCan(
+        dt.gyro.canId,
+        dt.gyro.canBus.trim() || dtBus,
+        "gyro.canId",
+        "Pigeon 2",
+        "Pigeon 2",
+      );
+    }
+
+    if (dt.type === "differential") {
+      checkDtCan(
+        dt.differential.leftLeaderId,
+        dtBus,
+        "differential.leftLeaderId",
+        "Motor Esq. Principal",
+        "Left Leader Motor",
+      );
+      if (dt.differential.leftFollowerId !== undefined) {
+        checkDtCan(
+          dt.differential.leftFollowerId,
+          dtBus,
+          "differential.leftFollowerId",
+          "Follower Esq.",
+          "Left Follower",
+        );
+      }
+      checkDtCan(
+        dt.differential.rightLeaderId,
+        dtBus,
+        "differential.rightLeaderId",
+        "Motor Dir. Principal",
+        "Right Leader Motor",
+      );
+      if (dt.differential.rightFollowerId !== undefined) {
+        checkDtCan(
+          dt.differential.rightFollowerId,
+          dtBus,
+          "differential.rightFollowerId",
+          "Follower Dir.",
+          "Right Follower",
+        );
+      }
+    } else if (dt.type === "mecanum") {
+      const wheelKeys = ["fl", "fr", "bl", "br"] as const;
+      for (const wk of wheelKeys) {
+        const label = wk.toUpperCase();
+        checkDtCan(
+          dt.modules[wk].driveCanId,
+          dtBus,
+          `modules.${wk}.driveCanId`,
+          `Roda ${label}`,
+          `${label} Wheel`,
+        );
+      }
+    } else {
+      const modKeys = ["fl", "fr", "bl", "br"] as const;
+      for (const mk of modKeys) {
+        const mod = dt.modules[mk];
+        const label = mk.toUpperCase();
+        checkDtCan(
+          mod.driveCanId,
+          dtBus,
+          `modules.${mk}.driveCanId`,
+          `${label} Tração`,
+          `${label} Drive`,
+        );
+        checkDtCan(
+          mod.steerCanId,
+          dtBus,
+          `modules.${mk}.steerCanId`,
+          `${label} Direção`,
+          `${label} Steer`,
+        );
+        checkDtCan(
+          mod.encoderCanId,
+          dtBus,
+          `modules.${mk}.encoderCanId`,
+          `${label} Encoder`,
+          `${label} Encoder`,
+        );
+      }
+    }
+
+    if (dt.vision.enabled) {
+      if (dt.vision.cameras.length === 0) {
+        issues.push({
+          id: "dt-vision-empty",
+          severity: "warning",
+          tab: "subsystems",
+          targetId: "drivetrain",
+          path: "drivetrain.vision.enabled",
+          fieldLabel: locale === "pt" ? "Câmeras Limelight" : "Limelight Cameras",
+          message:
+            locale === "pt"
+              ? "AprilTagVision está habilitada no Drivetrain, mas nenhuma câmera Limelight foi adicionada."
+              : "AprilTagVision is enabled on Drivetrain, but no Limelight cameras are configured.",
+        });
+      }
+      const seenNtNames = new Set<string>();
+      for (const cam of dt.vision.cameras) {
+        const nt = cam.ntName.trim().toLowerCase();
+        if (seenNtNames.has(nt)) {
+          issues.push({
+            id: `dt-vision-dup-${cam.id}`,
+            severity: "error",
+            tab: "subsystems",
+            targetId: "drivetrain",
+            path: `drivetrain.vision.cameras.${cam.id}.ntName`,
+            fieldLabel: "NetworkTables Name",
+            message:
+              locale === "pt"
+                ? `Hostname Limelight duplicado: "${cam.ntName}".`
+                : `Duplicate Limelight hostname: "${cam.ntName}".`,
+          });
+        } else {
+          seenNtNames.add(nt);
+        }
+      }
+    }
+  }
+
   // Controls checks
   const pilotButtons = new Set<string>();
   for (const entry of project.controls.pilotPriority) {
@@ -790,6 +944,44 @@ export function validateProject(
         });
       } else {
         pilotButtons.add(btn);
+      }
+    }
+  }
+
+  if (project.drivetrain?.enabled) {
+    const { resetGyroButton, toggleFieldOrientedButton } = project.drivetrain.controls;
+    if (resetGyroButton) {
+      if (pilotButtons.has(resetGyroButton)) {
+        issues.push({
+          id: "dt-btn-reset-gyro-dup",
+          severity: "warning",
+          tab: "controls",
+          path: "drivetrain.controls.resetGyroButton",
+          fieldLabel: locale === "pt" ? "Zerar Gyro" : "Zero Heading",
+          message:
+            locale === "pt"
+              ? `Botão "${resetGyroButton}" de zerar gyro colide com comando da SuperStructure no Piloto.`
+              : `Zero-heading button "${resetGyroButton}" conflicts with a Pilot SuperStructure binding.`,
+        });
+      } else {
+        pilotButtons.add(resetGyroButton);
+      }
+    }
+    if (toggleFieldOrientedButton) {
+      if (pilotButtons.has(toggleFieldOrientedButton)) {
+        issues.push({
+          id: "dt-btn-field-oriented-dup",
+          severity: "warning",
+          tab: "controls",
+          path: "drivetrain.controls.toggleFieldOrientedButton",
+          fieldLabel: locale === "pt" ? "Alternar Field-Oriented" : "Toggle Field-Oriented",
+          message:
+            locale === "pt"
+              ? `Botão "${toggleFieldOrientedButton}" de Field-Oriented colide com outro comando no Piloto.`
+              : `Field-Oriented toggle button "${toggleFieldOrientedButton}" conflicts with another Pilot binding.`,
+        });
+      } else {
+        pilotButtons.add(toggleFieldOrientedButton);
       }
     }
   }

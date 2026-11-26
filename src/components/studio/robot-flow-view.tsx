@@ -69,7 +69,9 @@ import {
   type SubsystemType,
 } from "@/lib/schema/ciprix-project";
 import { cn } from "@/lib/utils";
+import { createDefaultDrivetrain } from "@/lib/presets/drivetrain";
 import { CodeViewer } from "./code-viewer";
+import { DrivetrainPanel } from "./drivetrain-panel";
 
 const VALID_TYPES = new Set<SubsystemType>([
   "roller",
@@ -413,6 +415,7 @@ export function RobotFlowView({
     addSubsystem,
     duplicateSubsystem,
     updateSubsystem,
+    updateProject,
     removeSubsystem,
     reorderSubsystems,
     t,
@@ -645,16 +648,35 @@ export function RobotFlowView({
     return result;
   }, [project, activeSimRequest, activeRobotState]);
 
-  const selected =
-    project.subsystems.find((s) => s.id === selectedSubsystemId) ??
-    project.subsystems[0] ??
-    null;
+  const isDrivetrainSelected = selectedSubsystemId === "drivetrain";
+
+  const selected = isDrivetrainSelected
+    ? null
+    : project.subsystems.find((s) => s.id === selectedSubsystemId) ??
+      project.subsystems[0] ??
+      null;
 
   const subJavaFiles = useMemo(() => {
+    if (isDrivetrainSelected) {
+      return generatedFiles.filter(
+        (f) => f.path.includes("/subsystems/drive/") || f.path.includes("deploy/swerve/"),
+      );
+    }
     if (!selected) return [];
     const subPkg = toPackageSegment(selected.name);
     return generatedFiles.filter((f) => f.path.includes(`/subsystems/${subPkg}/`));
-  }, [generatedFiles, selected]);
+  }, [generatedFiles, selected, isDrivetrainSelected]);
+
+  const openDrivetrain = () => {
+    if (!project.drivetrain) {
+      updateProject((prev) => ({
+        ...prev,
+        drivetrain: createDefaultDrivetrain("ctre_swerve"),
+        features: { ...prev.features, driveContextStub: false },
+      }));
+    }
+    setSelectedSubsystemId("drivetrain");
+  };
 
   const vendors: { id: MotorVendor; label: string }[] = [
     { id: "talonfx", label: "Talon FX" },
@@ -770,6 +792,36 @@ export function RobotFlowView({
             <CardDescription>Arraste para o canvas ou clique para adicionar</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            <div className="space-y-2.5">
+              <p className="font-headline text-xs font-semibold uppercase tracking-wider text-sky-400">
+                Base / Tração
+              </p>
+              <button
+                type="button"
+                onClick={openDrivetrain}
+                className={cn(
+                  "group w-full select-none flex items-center gap-3 rounded-xl border p-3 text-left transition-all duration-150 hover:scale-[1.02] hover:border-[#60a5fa] hover:bg-[#19253d] cursor-pointer",
+                  isDrivetrainSelected
+                    ? "border-sky-400 bg-[#19253d]"
+                    : "border-[#2c3f61] bg-[#0f1624]",
+                )}
+              >
+                <span className="h-8 w-1 shrink-0 rounded-full bg-sky-400" />
+                <Compass className="h-5 w-5 shrink-0 text-sky-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-headline text-sm font-semibold text-white">Drivetrain</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {project.drivetrain?.enabled
+                      ? `${project.drivetrain.type} · ${project.drivetrain.maxSpeedMps} m/s`
+                      : "Swerve / YAGSL / Tank / Mecanum"}
+                  </p>
+                </div>
+                <Badge variant={project.drivetrain?.enabled ? "success" : "outline"} className="text-[10px]">
+                  {project.drivetrain?.enabled ? "Ativo" : "Stub"}
+                </Badge>
+              </button>
+            </div>
+
             {paletteGroups.map((group) => (
               <div key={group.groupTitle} className="space-y-2.5">
                 <p className="font-headline text-xs font-semibold uppercase tracking-wider text-[#93c5fd]">
@@ -896,7 +948,7 @@ export function RobotFlowView({
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_75%_60%_at_50%_0%,rgba(20,44,79,0.55),transparent_70%)]" />
 
                   <div className="relative z-10 h-full p-6">
-                    {project.subsystems.length === 0 && !isDragOver ? (
+                    {project.subsystems.length === 0 && !project.drivetrain?.enabled && !isDragOver ? (
                       <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
                         <Blocks className="h-12 w-12 text-slate-500" />
                         <p className="mt-3 font-headline text-lg font-medium text-slate-200">
@@ -905,6 +957,79 @@ export function RobotFlowView({
                       </div>
                     ) : (
                       <div className="grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-4">
+                        {(() => {
+                          const dt = project.drivetrain;
+                          const dtErrors = issues.filter(
+                            (i) => i.targetId === "drivetrain" && i.severity === "error",
+                          ).length;
+                          const dtLabel = dt?.enabled
+                            ? dt.type === "ctre_swerve"
+                              ? "CTRE Swerve"
+                              : dt.type === "yagsl"
+                                ? "YAGSL"
+                                : dt.type === "akit_swerve"
+                                  ? "AKit Swerve"
+                                  : dt.type === "differential"
+                                    ? "Differential"
+                                    : "Mecanum"
+                            : "Stub";
+                          return (
+                            <div
+                              onClick={openDrivetrain}
+                              className={cn(
+                                "group relative select-none overflow-hidden aspect-square rounded-xl border-2 flex flex-col justify-between text-center transition-all duration-200 cursor-pointer hover:border-[#60a5fa] hover:bg-[#192844]",
+                                dt?.enabled ? "bg-[#142038]" : "bg-[#0f1624] border-dashed opacity-85",
+                                isDrivetrainSelected
+                                  ? "border-sky-400 bg-[#1b2c4a] shadow-lg animate-select-bounce"
+                                  : "border-[#253552]",
+                                dtErrors > 0 && "border-rose-500 ring-1 ring-rose-500/60",
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  "h-1.5 w-full shrink-0",
+                                  dtErrors > 0 ? "bg-rose-500" : dt?.enabled ? "bg-sky-400" : "bg-slate-600",
+                                )}
+                              />
+                              <div className="relative flex flex-1 flex-col items-center justify-center px-3 pt-4 pb-2">
+                                {dtErrors > 0 && (
+                                  <span className="absolute right-2 top-1.5 inline-flex items-center gap-0.5 rounded-full bg-rose-600 px-1.5 py-0.5 font-mono text-[9px] font-bold text-white">
+                                    <AlertTriangle className="h-2.5 w-2.5" />
+                                    {dtErrors}
+                                  </span>
+                                )}
+                                <Compass className="h-8 w-8 text-sky-400 transition-transform duration-200 group-hover:scale-110" />
+                                <p className="mt-2 w-full truncate font-headline text-sm font-bold text-white">
+                                  Drive
+                                </p>
+                                <div className="mt-1.5 flex items-center justify-center gap-1 font-mono text-[10px]">
+                                  <span className="rounded bg-[#0b0f17] px-1.5 py-0.5 text-[#93c5fd] font-semibold">
+                                    {dtLabel}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="px-3 pb-2.5 space-y-1">
+                                <div className="flex items-center justify-between font-mono text-[10px] text-slate-400">
+                                  <span className="truncate">
+                                    {dt?.enabled ? dt.gyro.type : "DriveContext"}
+                                  </span>
+                                  <span>
+                                    {dt?.enabled ? `${dt.maxSpeedMps} m/s` : "Opcional"}
+                                  </span>
+                                </div>
+                                <div className="h-1 w-full overflow-hidden rounded-full bg-[#0b0f17]">
+                                  <div
+                                    className={cn(
+                                      "h-full transition-all",
+                                      dt?.enabled ? "bg-sky-400" : "bg-slate-600",
+                                    )}
+                                    style={{ width: dt?.enabled ? "100%" : "25%" }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {project.subsystems.map((sub, idx) => {
                           const isSelected = selected?.id === sub.id;
                           const isNewlyAdded = lastAddedId === sub.id;
@@ -1137,7 +1262,9 @@ export function RobotFlowView({
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
             {/* Left: FGCLib-style ConfigPanel Card */}
             <Card className="xl:col-span-7">
-              {!selected ? (
+              {isDrivetrainSelected ? (
+                <DrivetrainPanel />
+              ) : !selected ? (
                 <CardContent className="flex flex-col items-center justify-center py-14 text-center gap-3">
                   <p className="text-sm text-slate-400">{t("subsystems.select_prompt")}</p>
                   <Button size="sm" variant="primary" onClick={() => addSubsystem("roller")}>
@@ -2577,6 +2704,27 @@ export function RobotFlowView({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#22304a] font-mono">
+                        {project.drivetrain?.enabled && (
+                          <tr
+                            onClick={() => setSelectedSubsystemId("drivetrain")}
+                            className="bg-sky-950/20 hover:bg-[#19253d] cursor-pointer"
+                          >
+                            <td className="py-2.5 pr-2 font-sans font-medium text-sky-300">Drive</td>
+                            <td className="py-2.5 px-2 text-slate-300">{project.drivetrain.type}</td>
+                            <td className="py-2.5 px-2 text-slate-300">
+                              {project.drivetrain.motorVendor}
+                            </td>
+                            <td className="py-2.5 px-2 text-[#93c5fd]">
+                              {project.drivetrain.gyro.type === "pigeon2"
+                                ? `Pigeon ${project.drivetrain.gyro.canId}`
+                                : project.drivetrain.gyro.type}
+                            </td>
+                            <td className="py-2.5 px-2 text-slate-300">
+                              {project.drivetrain.currentLimitAmps}A
+                            </td>
+                            <td className="py-2.5 pl-2 text-slate-300">brake</td>
+                          </tr>
+                        )}
                         {project.subsystems.map((sub) => (
                           <tr
                             key={sub.id}

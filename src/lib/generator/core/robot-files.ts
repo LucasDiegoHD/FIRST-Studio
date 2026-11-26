@@ -551,14 +551,32 @@ ${requestSelectionBody}
     }
   }
 
+  const dt = project.drivetrain;
+  const hasDrivetrain = Boolean(dt?.enabled);
+  const visionCameras = hasDrivetrain && dt?.vision.enabled ? dt.vision.cameras : [];
+  const hasVision = visionCameras.length > 0;
+
   if (edgeSensorEntries.length > 0) {
     containerImportSet.add(`import ${pkg}.Constants.RobotRequest;`);
   }
   if (needRobotStateImport) {
     containerImportSet.add(`import ${pkg}.Constants.RobotState;`);
   }
+  if (hasDrivetrain) {
+    containerImportSet.add(`import ${pkg}.subsystems.drive.Drive;`);
+  }
+  if (hasVision) {
+    containerImportSet.add("import edu.wpi.first.apriltag.AprilTagFieldLayout;");
+    containerImportSet.add("import edu.wpi.first.apriltag.AprilTagFields;");
+    containerImportSet.add("import org.ciprix.vision.AprilTagVision;");
+    containerImportSet.add("import org.ciprix.vision.VisionFilter;");
+    containerImportSet.add("import org.ciprix.vision.VisionIO;");
+    containerImportSet.add("import org.ciprix.vision.VisionIOLimelight;");
+  }
 
   const containerFields = [
+    ...(hasDrivetrain ? ["  private final Drive drive;"] : []),
+    ...(hasVision ? ["  private final AprilTagVision vision;"] : []),
     ...(usesLeds ? ["  private final LedArbiter ledArbiter = new LedArbiter();"] : []),
     ...(usesRumble ? ["  private final RumbleArbiter rumbleArbiter;"] : []),
     ...ledInfos.map((info) => `  private final ${info.className} ${info.varName};`),
@@ -566,7 +584,20 @@ ${requestSelectionBody}
     `  private final SuperStructure superStructure;`,
   ].join("\n");
 
+  const visionCamCalls = visionCameras
+    .map(
+      (cam) =>
+        `            .withCamera(\n                "${escapeJavaString(cam.name)}",\n                switch (CiprixSettings.getMode()) {\n                  case REAL, SIM ->\n                      new VisionIOLimelight("${escapeJavaString(cam.ntName)}", drive::getRotation);\n                  case REPLAY -> new VisionIO() {};\n                },\n                ${formatDouble(cam.stdDevFactor)})`,
+    )
+    .join("\n");
+
   const containerInits = [
+    ...(hasDrivetrain ? ["    drive = new Drive();"] : []),
+    ...(hasVision
+      ? [
+          `    vision =\n        new AprilTagVision(drive::addVisionMeasurement, drive::getPose, drive::getRobotVelocity)\n            .withFilter(\n                new VisionFilter()\n                    .field(AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltWelded)))\n${visionCamCalls};`,
+        ]
+      : []),
     ...(usesRumble ? ["    rumbleArbiter = new RumbleArbiter(pilot, copilot);"] : []),
     ...ledInfos.map(
       (info) =>
@@ -638,9 +669,29 @@ ${requestSelectionBody}
     )
     .join("\n");
 
-  const driveContextComment = project.features.driveContextStub
-    ? "\n    // DriveContext stub enabled: integrate Phoenix Tuner X or YAGSL drivetrain here."
-    : "";
+  const driveBindingLines: string[] = [];
+  if (hasDrivetrain && dt) {
+    driveBindingLines.push(
+      `    drive.setDefaultCommand(\n        drive.driveTeleopCommand(\n            () -> -pilot.getLeftY(),\n            () -> -pilot.getLeftX(),\n            () -> -pilot.getRightX(),\n            () -> -pilot.getRightY()));`,
+    );
+    if (dt.controls.resetGyroButton) {
+      driveBindingLines.push(
+        `    pilot.${xboxButtonToJavaMethod(dt.controls.resetGyroButton)}.onTrue(Commands.runOnce(drive::zeroHeading).ignoringDisable(true));`,
+      );
+    }
+    if (dt.controls.toggleFieldOrientedButton) {
+      driveBindingLines.push(
+        `    pilot.${xboxButtonToJavaMethod(dt.controls.toggleFieldOrientedButton)}.onTrue(Commands.runOnce(drive::toggleFieldOriented).ignoringDisable(true));`,
+      );
+    }
+  }
+  const driveBlock =
+    driveBindingLines.length > 0 ? "\n" + driveBindingLines.join("\n") : "";
+
+  const driveContextComment =
+    !hasDrivetrain && project.features.driveContextStub
+      ? "\n    // DriveContext stub enabled: integrate Phoenix Tuner X or YAGSL drivetrain here."
+      : "";
 
   const effectBlock =
     effectTriggerLines.length > 0 ? "\n" + effectTriggerLines.join("\n") : "";
@@ -664,7 +715,7 @@ ${containerInits ? containerInits + "\n" : ""}    superStructure = new SuperStru
     configureBindings();
   }
 
-  private void configureBindings() {
+  private void configureBindings() {${driveBlock}
     superStructure.setDefaultCommand(
         SuperStructureCommands.manageRequests(${pilotArgs}));
 ${defaultCommands ? "\n" + defaultCommands : ""}

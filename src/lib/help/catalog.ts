@@ -1208,6 +1208,522 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "0.50 (50%)",
     },
   },
+  "drivetrain.enabled": {
+    pt: {
+      what: "Ativa a geração completa do subsistema Drive (tração do robô).",
+      why: "Gera Drive.java implementando DriveContext, DriveAccelerationLimits, telemetria AdvantageKit e binding dos sticks no RobotContainer.",
+      typical: "Ativado para o código completo do robô",
+    },
+    en: {
+      what: "Enables full generation of the Drive subsystem.",
+      why: "Generates Drive.java implementing DriveContext, DriveAccelerationLimits, AdvantageKit logging, and Xbox stick bindings in RobotContainer.",
+      typical: "Enabled for complete robot code",
+    },
+  },
+  "drivetrain.type": {
+    pt: {
+      what: "Arquitetura do chassi e stack de software da tração.",
+      why: "Define quais arquivos IO, vendordeps e configurações JSON serão gerados.",
+      typical: "ctre_swerve / yagsl / akit_swerve / differential / mecanum",
+    },
+    en: {
+      what: "Chassis architecture and drivetrain software stack.",
+      why: "Determines generated IO files, vendordeps, and JSON configs.",
+      typical: "ctre_swerve / yagsl / akit_swerve / differential / mecanum",
+    },
+  },
+  "drivetrain.motorVendor": {
+    pt: {
+      what: "Controlador de motor usado nos módulos ou lados do chassi.",
+      why: "Seleciona ModuleIOTalonFX (Kraken/Falcon), ModuleIOSparkMax (NEO) ou ModuleIOTalonSRX.",
+      typical: "talonfx / sparkmax",
+    },
+    en: {
+      what: "Motor controller vendor used on drive/steer motors.",
+      why: "Selects ModuleIOTalonFX (Kraken/Falcon), ModuleIOSparkMax (NEO), or ModuleIOTalonSRX.",
+      typical: "talonfx / sparkmax",
+    },
+  },
+  "drivetrain.canBus": {
+    pt: {
+      what: "Barramento CAN principal do drivetrain (\"rio\" ou nome do CANivore).",
+      why: "Agrupa dispositivos do chassi e evita conflitos de ID entre barramentos.",
+      typical: "\"rio\" ou \"canivore\"",
+    },
+    en: {
+      what: "Primary CAN bus for drivetrain devices (\"rio\" or CANivore name).",
+      why: "Targets the right CAN bus and prevents cross-bus ID collisions.",
+      typical: "\"rio\" or \"canivore\"",
+    },
+  },
+  "drivetrain.gyro.type": {
+    pt: {
+      what: "Sensor giroscópio usado para odometria e Field-Oriented Drive.",
+      why: "Seleciona GyroIOPigeon2, GyroIONavX (Studica) ou GyroIOADIS16470.",
+      typical: "pigeon2 / navx / adis16470",
+    },
+    en: {
+      what: "Gyroscope sensor used for odometry and Field-Oriented Drive.",
+      why: "Selects GyroIOPigeon2, GyroIONavX (Studica), or GyroIOADIS16470.",
+      typical: "pigeon2 / navx / adis16470",
+    },
+  },
+  "drivetrain.gyro.canId": {
+    pt: {
+      what: "ID CAN do Pigeon 2 (0–62).",
+      why: "Identifica o giroscópio na rede CAN; não pode colidir com motores nem outros módulos.",
+      typical: "0 ou 13",
+    },
+    en: {
+      what: "CAN ID of the Pigeon 2 (0–62).",
+      why: "Addresses the gyro on the CAN bus; must not collide with motors or encoders.",
+      typical: "0 or 13",
+    },
+  },
+  "drivetrain.gyro.canBus": {
+    pt: {
+      what: "Barramento CAN do Pigeon 2 (ex: \"rio\" ou \"canivore\").",
+      why: "Deixe igual ao canBus do swerve se o Pigeon estiver ligado no mesmo CANivore.",
+      typical: "\"rio\" ou \"canivore\"",
+    },
+    en: {
+      what: "CAN bus name for the Pigeon 2 (e.g. \"rio\" or \"canivore\").",
+      why: "Match the drivetrain canBus if wired to the same CANivore.",
+      typical: "\"rio\" or \"canivore\"",
+    },
+  },
+  "drivetrain.maxSpeedMps": {
+    pt: {
+      what: "Velocidade linear máxima teórica/desejada do robô em m/s.",
+      why: "Retornada por DriveContext.getMaxSpeed() e usada na escala do joystick e ThrottleMap.",
+      typical: "4.5 m/s (SDS MK4i L2)",
+    },
+    en: {
+      what: "Maximum linear speed of the drivetrain in m/s.",
+      why: "Exposed via DriveContext.getMaxSpeed() and used for teleop scaling and ThrottleMap.",
+      typical: "4.5 m/s (SDS MK4i L2)",
+    },
+  },
+  "drivetrain.maxAngularSpeedRadPerSec": {
+    pt: {
+      what: "Velocidade angular máxima de giro do robô em rad/s.",
+      why: "Retornada por DriveContext.getMaxAngularSpeed() e limite do ManualRotation.",
+      typical: "10.0 rad/s",
+    },
+    en: {
+      what: "Maximum angular velocity of the drivetrain in rad/s.",
+      why: "Exposed via DriveContext.getMaxAngularSpeed() and ManualRotation ceiling.",
+      typical: "10.0 rad/s",
+    },
+  },
+  "drivetrain.maxLinearAccelMps2": {
+    pt: {
+      what: "Aceleração linear máxima em m/s² (DriveAccelerationLimits).",
+      why: "Limita arrancadas bruscas para evitar deslizar rodas, cair peças ou puxar corrente demais.",
+      typical: "8.0 – 12.0 m/s²",
+    },
+    en: {
+      what: "Maximum linear acceleration in m/s² (DriveAccelerationLimits).",
+      why: "Prevents wheel slip, tipping, and brownouts during sudden stick inputs.",
+      typical: "8.0 – 12.0 m/s²",
+    },
+  },
+  "drivetrain.maxAngularAccelRadPerSec2": {
+    pt: {
+      what: "Aceleração angular máxima em rad/s².",
+      why: "Suaviza comandos de rotação via DriveAccelerationLimits.getMaxAngularAcceleration().",
+      typical: "20.0 rad/s²",
+    },
+    en: {
+      what: "Maximum angular acceleration in rad/s².",
+      why: "Smooths rotational commands via DriveAccelerationLimits.getMaxAngularAcceleration().",
+      typical: "20.0 rad/s²",
+    },
+  },
+  "drivetrain.wheelDiameterMeters": {
+    pt: {
+      what: "Diâmetro externo da roda em metros.",
+      why: "Essencial para converter rotações do motor em metros percorridos na odometria.",
+      typical: "0.1016 m (4 in) / 0.1524 m (6 in)",
+    },
+    en: {
+      what: "Outer wheel diameter in meters.",
+      why: "Converts motor rotations into accurate linear distance for odometry.",
+      typical: "0.1016 m (4 in) / 0.1524 m (6 in)",
+    },
+  },
+  "drivetrain.driveGearRatio": {
+    pt: {
+      what: "Redução total da transmissão de tração (motor : roda).",
+      why: "Ajusta conversão de velocidade/posição e cálculo de odometria.",
+      typical: "6.75 (MK4i L2) · 4.71 (MAXSwerve)",
+    },
+    en: {
+      what: "Drive gear reduction ratio (motor : wheel).",
+      why: "Calibrates linear velocity scaling and odometry distance.",
+      typical: "6.75 (MK4i L2) · 4.71 (MAXSwerve)",
+    },
+  },
+  "drivetrain.steerGearRatio": {
+    pt: {
+      what: "Redução do motor de direção/azimuth em módulos swerve.",
+      why: "Usado quando a direção lê encoder relativo ou faz homing inicial.",
+      typical: "21.43 (MK4i) · 12.8 (MK4)",
+    },
+    en: {
+      what: "Steer/azimuth gear ratio for swerve modules.",
+      why: "Used for azimuth PID control and relative encoder fallback.",
+      typical: "21.43 (MK4i) · 12.8 (MK4)",
+    },
+  },
+  "drivetrain.trackWidthMeters": {
+    pt: {
+      what: "Distância centro-a-centro entre as rodas esquerda e direita (metros).",
+      why: "Define a cinemática SwerveDriveKinematics / DifferentialDriveKinematics.",
+      typical: "0.55 m (~21.6 in)",
+    },
+    en: {
+      what: "Center-to-center distance between left and right wheels (meters).",
+      why: "Configures SwerveDriveKinematics or DifferentialDriveKinematics geometry.",
+      typical: "0.55 m (~21.6 in)",
+    },
+  },
+  "drivetrain.wheelBaseMeters": {
+    pt: {
+      what: "Distância centro-a-centro entre as rodas da frente e de trás (metros).",
+      why: "Define as posições front-back dos módulos na cinemática swerve/mecanum.",
+      typical: "0.55 m (~21.6 in)",
+    },
+    en: {
+      what: "Center-to-center distance between front and back wheels (meters).",
+      why: "Defines front-back module offsets in swerve/mecanum kinematics.",
+      typical: "0.55 m (~21.6 in)",
+    },
+  },
+  "drivetrain.currentLimitAmps": {
+    pt: {
+      what: "Limite de corrente de estator por motor da tração (Amperes).",
+      why: "Protege bateria contra brownout e evita superaquecimento dos motores.",
+      typical: "60 A (Kraken) · 40 A (NEO)",
+    },
+    en: {
+      what: "Stator current limit per drive motor (Amps).",
+      why: "Protects battery voltage against brownouts and motors from overheating.",
+      typical: "60 A (Kraken) · 40 A (NEO)",
+    },
+  },
+  "drivetrain.fieldOrientedDefault": {
+    pt: {
+      what: "Inicia o robô em modo Field-Oriented (referenciado à arena).",
+      why: "Frente no joystick sempre empurra o robô para longe da Driver Station.",
+      typical: "Ativado (true)",
+    },
+    en: {
+      what: "Starts teleop in Field-Oriented drive mode.",
+      why: "Pushing forward on the stick always drives away from the Driver Station wall.",
+      typical: "Enabled (true)",
+    },
+  },
+  "drivetrain.assistants.throttleMap": {
+    pt: {
+      what: "Aplica org.ciprix.util.drivetrain.ThrottleMapModifier no joystick.",
+      why: "Mantém direção suave em manobras lentas sem perder velocidade máxima no fim do curso.",
+      typical: "Ativado",
+    },
+    en: {
+      what: "Applies Ciprix ThrottleMapModifier to translation inputs.",
+      why: "Gives fine low-speed precision while preserving full top speed at full stick deflection.",
+      typical: "Enabled",
+    },
+  },
+  "drivetrain.assistants.headingStickRotation": {
+    pt: {
+      what: "Usa HeadingStickRotation do Ciprix no stick direito.",
+      why: "O ângulo empurrado no stick direito vira o ângulo alvo absoluto do chassi.",
+      typical: "Opcional (alternativa ao giro tradicional)",
+    },
+    en: {
+      what: "Uses Ciprix HeadingStickRotation on the right thumbstick.",
+      why: "Pointing the right stick aims the robot chassis toward that field heading automatically.",
+      typical: "Optional (alternative to rate rotation)",
+    },
+  },
+  "drivetrain.assistants.pidRotation": {
+    pt: {
+      what: "Mantém o heading atual com PIDRotation quando o piloto não gira.",
+      why: "Corrige desvios de tração ou colisões leves automaticamente.",
+      typical: "Ativado",
+    },
+    en: {
+      what: "Holds heading using Ciprix PIDRotation when rotation stick is neutral.",
+      why: "Automatically resists wheel scrub and light bumps during straight driving.",
+      typical: "Enabled",
+    },
+  },
+  "drivetrain.assistants.rotKp": {
+    pt: {
+      what: "Ganho proporcional (kP) passado a PIDRotation.setDefaultGains.",
+      why: "Controla quão forte o robô corrige erro angular.",
+      typical: "4.0",
+    },
+    en: {
+      what: "Proportional gain (kP) passed to PIDRotation.setDefaultGains.",
+      why: "Controls how aggressively heading error is corrected.",
+      typical: "4.0",
+    },
+  },
+  "drivetrain.assistants.rotKi": {
+    pt: {
+      what: "Ganho integral (kI) de PIDRotation.",
+      why: "Quase sempre 0.0 para evitar overshoot em giros rápidos.",
+      typical: "0.0",
+    },
+    en: {
+      what: "Integral gain (kI) for PIDRotation.",
+      why: "Usually 0.0 to avoid rotational overshoot.",
+      typical: "0.0",
+    },
+  },
+  "drivetrain.assistants.rotKd": {
+    pt: {
+      what: "Ganho derivativo (kD) de PIDRotation.",
+      why: "Amortece oscilações ao chegar no ângulo alvo.",
+      typical: "0.2",
+    },
+    en: {
+      what: "Derivative gain (kD) for PIDRotation.",
+      why: "Dampens oscillation when settling on target heading.",
+      typical: "0.2",
+    },
+  },
+  "drivetrain.assistants.accelerationLimits": {
+    pt: {
+      what: "Ativa DriveAccelerationLimits (rampa de vx, vy e omega a 50Hz).",
+      why: "Reduz patinagem em arranques e protege caixa de redução.",
+      typical: "Ativado",
+    },
+    en: {
+      what: "Enables DriveAccelerationLimits slew-rate limiting on vx, vy, and omega.",
+      why: "Reduces wheel slip on rapid stick reversals and protects gearboxes.",
+      typical: "Enabled",
+    },
+  },
+  "drivetrain.controls.resetGyroButton": {
+    pt: {
+      what: "Botão do controle do Piloto que chama drive.zeroHeading().",
+      why: "Permite zerar a frente do robô na arena a qualquer momento.",
+      typical: "start / back / y",
+    },
+    en: {
+      what: "Pilot Xbox button bound to drive.zeroHeading().",
+      why: "Lets the driver re-zero field-oriented forward direction on the fly.",
+      typical: "start / back / y",
+    },
+  },
+  "drivetrain.controls.toggleFieldOrientedButton": {
+    pt: {
+      what: "Botão do Piloto que alterna entre Field-Oriented e Robot-Oriented.",
+      why: "Útil para manobras alinhadas ao chassi perto do reef/parede ou se o gyro falhar.",
+      typical: "back / Opcional",
+    },
+    en: {
+      what: "Pilot Xbox button that toggles Field-Oriented vs Robot-Oriented mode.",
+      why: "Helpful for robot-relative lining up or as gyro fallback.",
+      typical: "back / Optional",
+    },
+  },
+  "drivetrain.modules.*.driveCanId": {
+    pt: {
+      what: "ID CAN do motor de tração deste módulo swerve (0–62).",
+      why: "Deve ser único no barramento CAN configurado.",
+      typical: "1, 4, 7, 10",
+    },
+    en: {
+      what: "CAN ID of this module's drive motor (0–62).",
+      why: "Must be unique on the configured CAN bus.",
+      typical: "1, 4, 7, 10",
+    },
+  },
+  "drivetrain.modules.*.steerCanId": {
+    pt: {
+      what: "ID CAN do motor de direção deste módulo swerve (0–62).",
+      why: "Deve ser único no barramento CAN configurado.",
+      typical: "2, 5, 8, 11",
+    },
+    en: {
+      what: "CAN ID of this module's steer motor (0–62).",
+      why: "Must be unique on the configured CAN bus.",
+      typical: "2, 5, 8, 11",
+    },
+  },
+  "drivetrain.modules.*.encoderCanId": {
+    pt: {
+      what: "ID CAN do CANcoder / encoder absoluto do módulo (0–62).",
+      why: "Fornece ângulo absoluto da roda no boot sem precisar zerar manualmente.",
+      typical: "3, 6, 9, 12",
+    },
+    en: {
+      what: "CAN ID of the module's CANcoder / absolute encoder (0–62).",
+      why: "Provides absolute wheel angle on boot without manual zeroing.",
+      typical: "3, 6, 9, 12",
+    },
+  },
+  "drivetrain.modules.*.encoderOffsetRot": {
+    pt: {
+      what: "Offset magnético do encoder em rotações (-1.0 a 1.0).",
+      why: "Alinha o zero lógico com todas as rodas apontando retas para a frente.",
+      typical: "Lido no Phoenix Tuner X / REV Hardware Client",
+    },
+    en: {
+      what: "Magnetic encoder zero offset in rotations (-1.0 to 1.0).",
+      why: "Aligns the software zero with all wheels pointing straight forward.",
+      typical: "Measured in Phoenix Tuner X / REV Hardware Client",
+    },
+  },
+  "drivetrain.modules.*.driveInverted": {
+    pt: {
+      what: "Inverte sentido do motor de tração deste módulo.",
+      why: "Corrige módulos montados espelhados entre esquerda e direita.",
+      typical: "false / true conforme montagem",
+    },
+    en: {
+      what: "Inverts the drive motor direction on this module.",
+      why: "Corrects mirrored left/right swerve module orientation.",
+      typical: "false / true per hardware side",
+    },
+  },
+  "drivetrain.modules.*.steerInverted": {
+    pt: {
+      what: "Inverte sentido do motor de direção deste módulo.",
+      why: "Deve girar positivamente no sentido anti-horário visto de cima (CCW+).",
+      typical: "true (MK4i com falcon/kraken)",
+    },
+    en: {
+      what: "Inverts the steer motor direction on this module.",
+      why: "Steer positive rotation must be Counter-Clockwise when viewed from above.",
+      typical: "true (SDS MK4i)",
+    },
+  },
+  "drivetrain.differential.leftLeaderId": {
+    pt: {
+      what: "ID CAN do motor líder do lado esquerdo (tank drive).",
+      why: "Comanda o lado esquerdo e lê odometria via encoder integrado.",
+      typical: "1",
+    },
+    en: {
+      what: "CAN ID of the left side leader motor (tank drive).",
+      why: "Commands left drivetrain output and reads wheel odometry.",
+      typical: "1",
+    },
+  },
+  "drivetrain.differential.leftFollowerId": {
+    pt: {
+      what: "ID CAN do motor follower esquerdo (opcional).",
+      why: "Espelha o líder esquerdo por hardware na gearbox CIM/NEO/Kraken.",
+      typical: "2",
+    },
+    en: {
+      what: "CAN ID of the optional left follower motor.",
+      why: "Mirrors the left leader motor in hardware on dual-motor gearboxes.",
+      typical: "2",
+    },
+  },
+  "drivetrain.differential.rightLeaderId": {
+    pt: {
+      what: "ID CAN do motor líder do lado direito (tank drive).",
+      why: "Comanda o lado direito e lê odometria via encoder integrado.",
+      typical: "3",
+    },
+    en: {
+      what: "CAN ID of the right side leader motor (tank drive).",
+      why: "Commands right drivetrain output and reads wheel odometry.",
+      typical: "3",
+    },
+  },
+  "drivetrain.differential.rightFollowerId": {
+    pt: {
+      what: "ID CAN do motor follower direito (opcional).",
+      why: "Espelha o líder direito por hardware.",
+      typical: "4",
+    },
+    en: {
+      what: "CAN ID of the optional right follower motor.",
+      why: "Mirrors the right leader motor in hardware.",
+      typical: "4",
+    },
+  },
+  "drivetrain.differential.leftInverted": {
+    pt: {
+      what: "Inverte o lado esquerdo do tank drive.",
+      why: "Garante que frente positiva ande para frente nos dois lados.",
+      typical: "false",
+    },
+    en: {
+      what: "Inverts the left side motors of the differential drive.",
+      why: "Ensures positive speed drives both sides forward.",
+      typical: "false",
+    },
+  },
+  "drivetrain.differential.rightInverted": {
+    pt: {
+      what: "Inverte o lado direito do tank drive.",
+      why: "Em maioria dos chassis espelhados, um lado precisa estar invertido.",
+      typical: "true",
+    },
+    en: {
+      what: "Inverts the right side motors of the differential drive.",
+      why: "On most mirrored chassis, one side must be inverted to drive straight.",
+      typical: "true",
+    },
+  },
+  "drivetrain.vision.enabled": {
+    pt: {
+      what: "Ativa fusão de câmera(s) Limelight via org.ciprix.vision.AprilTagVision.",
+      why: "Corrige drift da odometria usando AprilTags oficiais da temporada 2026 (k2026RebuiltWelded).",
+      typical: "Ativado quando há Limelight no robô",
+    },
+    en: {
+      what: "Enables Limelight camera pose fusion via Ciprix AprilTagVision.",
+      why: "Corrects odometry drift against the official 2026 AprilTag field layout.",
+      typical: "Enabled when using Limelight cameras",
+    },
+  },
+  "drivetrain.vision.cameras.*.name": {
+    pt: {
+      what: "Nome lógico da câmera usado nos logs AdvantageKit (Vision/<Nome>).",
+      why: "Facilita distinguir câmera frontal/traseira no AdvantageScope.",
+      typical: "Front / Back",
+    },
+    en: {
+      what: "Logical camera label used in AdvantageKit logs (Vision/<Name>).",
+      why: "Makes multiple cameras easy to tell apart in AdvantageScope.",
+      typical: "Front / Back",
+    },
+  },
+  "drivetrain.vision.cameras.*.ntName": {
+    pt: {
+      what: "Hostname/tabela NetworkTables configurada na interface web da Limelight.",
+      why: "Passado ao construtor VisionIOLimelight(\"<ntName>\", drive::getRotation).",
+      typical: "limelight-front / limelight",
+    },
+    en: {
+      what: "NetworkTables hostname configured in the Limelight web UI.",
+      why: "Passed to VisionIOLimelight(\"<ntName>\", drive::getRotation).",
+      typical: "limelight-front / limelight",
+    },
+  },
+  "drivetrain.vision.cameras.*.stdDevFactor": {
+    pt: {
+      what: "Multiplicador de confiança/desvio padrão da câmera na fusão (menor = mais confiança).",
+      why: "Câmeras mais estáveis podem usar 1.0; câmeras mais ruidosas usam 1.5–3.0.",
+      typical: "1.0",
+    },
+    en: {
+      what: "Trust multiplier (std dev factor) for pose estimation (lower = higher trust).",
+      why: "Well-calibrated cameras use 1.0; noisier angles use 1.5–3.0.",
+      typical: "1.0",
+    },
+  },
 };
 
 export const REGISTERED_FIELD_PATHS = Object.keys(HELP_CATALOG);
@@ -1216,6 +1732,14 @@ export function normalizeFieldPath(path: string): string {
   if (HELP_CATALOG[path]) return path;
 
   const parts = path.split(".");
+  if (parts[0] === "drivetrain") {
+    if (parts[1] === "modules" && parts.length >= 4) {
+      return `drivetrain.modules.*.${parts.slice(3).join(".")}`;
+    }
+    if (parts[1] === "vision" && parts[2] === "cameras" && parts.length >= 5) {
+      return `drivetrain.vision.cameras.*.${parts.slice(4).join(".")}`;
+    }
+  }
   if (parts[0] === "subsystems" && parts.length >= 3) {
     if (parts[2] === "fsm") {
       if (parts[3] === "states" && parts.length >= 6) {

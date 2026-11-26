@@ -210,6 +210,10 @@ const dictionaries = {
     "subsystems.leds_title": "Hardware de LEDs",
     "subsystems.sensors_title": "Sensores de Presença",
     "subsystems.add_sensor": "Adicionar Sensor",
+    "drivetrain.title": "Drivetrain (Tração)",
+    "drivetrain.enable": "Habilitar Drivetrain completo",
+    "drivetrain.disable": "Somente SuperStructure (stub)",
+    "drivetrain.import_tuner": "Importar TunerConstants.java",
   },
   en: {
     "app.title": "FIRST Studio",
@@ -420,6 +424,10 @@ const dictionaries = {
     "subsystems.leds_title": "LED Hardware",
     "subsystems.sensors_title": "Presence Sensors",
     "subsystems.add_sensor": "Add Sensor",
+    "drivetrain.title": "Drivetrain",
+    "drivetrain.enable": "Enable full Drivetrain",
+    "drivetrain.disable": "SuperStructure only (stub)",
+    "drivetrain.import_tuner": "Import TunerConstants.java",
   },
 } as const;
 

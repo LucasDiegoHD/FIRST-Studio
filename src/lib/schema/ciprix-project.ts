@@ -473,6 +473,92 @@ export const ControlsSchema = z.object({
 });
 export type ControlsConfig = z.infer<typeof ControlsSchema>;
 
+export const DrivetrainTypeSchema = z.enum([
+  "ctre_swerve",
+  "yagsl",
+  "akit_swerve",
+  "differential",
+  "mecanum",
+]);
+export type DrivetrainType = z.infer<typeof DrivetrainTypeSchema>;
+
+export const GyroTypeSchema = z.enum(["pigeon2", "navx", "adis16470"]);
+export type GyroType = z.infer<typeof GyroTypeSchema>;
+
+export const SwerveModuleConfigSchema = z.object({
+  driveCanId: z.number().int().min(0).max(62),
+  steerCanId: z.number().int().min(0).max(62),
+  encoderCanId: z.number().int().min(0).max(62),
+  encoderOffsetRot: z.number().min(-1).max(1),
+  driveInverted: z.boolean(),
+  steerInverted: z.boolean(),
+});
+export type SwerveModuleConfig = z.infer<typeof SwerveModuleConfigSchema>;
+
+export const VisionCameraSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  ntName: z.string().min(1),
+  stdDevFactor: z.number().positive().max(10),
+});
+export type VisionCameraConfig = z.infer<typeof VisionCameraSchema>;
+
+export const DrivetrainConfigSchema = z.object({
+  enabled: z.boolean(),
+  type: DrivetrainTypeSchema,
+  motorVendor: MotorVendorSchema,
+  canBus: z.string(),
+  gyro: z.object({
+    type: GyroTypeSchema,
+    canId: z.number().int().min(0).max(62),
+    canBus: z.string(),
+  }),
+  maxSpeedMps: z.number().positive().max(12),
+  maxAngularSpeedRadPerSec: z.number().positive().max(30),
+  maxLinearAccelMps2: z.number().positive().max(50),
+  maxAngularAccelRadPerSec2: z.number().positive().max(100),
+  wheelDiameterMeters: z.number().positive().max(0.5),
+  driveGearRatio: z.number().positive().max(100),
+  steerGearRatio: z.number().positive().max(100),
+  trackWidthMeters: z.number().positive().max(2),
+  wheelBaseMeters: z.number().positive().max(2),
+  currentLimitAmps: z.number().int().min(10).max(120),
+  fieldOrientedDefault: z.boolean(),
+  assistants: z.object({
+    throttleMap: z.boolean(),
+    headingStickRotation: z.boolean(),
+    pidRotation: z.boolean(),
+    rotKp: z.number().min(0),
+    rotKi: z.number().min(0),
+    rotKd: z.number().min(0),
+    accelerationLimits: z.boolean(),
+  }),
+  controls: z.object({
+    resetGyroButton: XboxButtonSchema.optional(),
+    toggleFieldOrientedButton: XboxButtonSchema.optional(),
+  }),
+  modules: z.object({
+    fl: SwerveModuleConfigSchema,
+    fr: SwerveModuleConfigSchema,
+    bl: SwerveModuleConfigSchema,
+    br: SwerveModuleConfigSchema,
+  }),
+  differential: z.object({
+    leftLeaderId: z.number().int().min(0).max(62),
+    leftFollowerId: z.number().int().min(0).max(62).optional(),
+    rightLeaderId: z.number().int().min(0).max(62),
+    rightFollowerId: z.number().int().min(0).max(62).optional(),
+    leftInverted: z.boolean(),
+    rightInverted: z.boolean(),
+  }),
+  tunerConstantsRaw: z.string().optional(),
+  vision: z.object({
+    enabled: z.boolean(),
+    cameras: z.array(VisionCameraSchema),
+  }),
+});
+export type DrivetrainConfig = z.infer<typeof DrivetrainConfigSchema>;
+
 export const ProjectMetaSchema = z.object({
   name: z.string().min(1),
   teamNumber: z.number().int().min(0).max(99999),
@@ -490,6 +576,7 @@ export type ProjectMeta = z.infer<typeof ProjectMetaSchema>;
 export const CiprixProjectSchema = z.object({
   schemaVersion: z.literal(2),
   project: ProjectMetaSchema,
+  drivetrain: DrivetrainConfigSchema.optional(),
   subsystems: z.array(SubsystemSchema),
   superstructure: SuperStructureSchema,
   controls: ControlsSchema,
