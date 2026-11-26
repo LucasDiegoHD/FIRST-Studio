@@ -81,7 +81,6 @@ export function validateProject(
         severity: "warning",
         tab: "subsystems",
         targetId: sub.id,
-        path: `subsystems.${sub.id}.motor.canId`,
         fieldLabel: locale === "pt" ? "Configuração básica" : "Basic defaults",
         message:
           locale === "pt"

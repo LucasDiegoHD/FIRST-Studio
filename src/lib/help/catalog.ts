@@ -154,6 +154,16 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "Intake",
     },
   },
+  "subsystems.*.basicDefaults": {
+    pt: {
+      what: "Este subsistema ainda está com a configuração básica padrão.",
+      why: "Ajuste ID CAN, redução, limites e controles para a especificidade do seu robô. Este aviso some automaticamente ao editar o mecanismo.",
+    },
+    en: {
+      what: "This subsystem is still using basic default settings.",
+      why: "Adjust CAN ID, gear ratio, limits, and controls to match your specific robot. This notice disappears once you edit it.",
+    },
+  },
   "subsystems.*.motor.canId": {
     pt: {
       what: "Endereço único do controlador no barramento CAN (0 a 62).",

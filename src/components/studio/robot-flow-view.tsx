@@ -46,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
+import { Hint } from "@/components/ui/hint";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { UnitInput } from "@/components/ui/unit-input";
@@ -943,8 +944,8 @@ export function RobotFlowView({
                                     {subErrors}
                                   </span>
                                 ) : sub.isDefaultTemplate ? (
-                                  <span className="absolute right-2 top-1.5 rounded border border-amber-700/60 bg-amber-950/60 px-1.5 py-0.5 font-mono text-[9px] text-amber-300">
-                                    {t("subsystems.basic_badge")}
+                                  <span className="absolute right-2 top-1.5">
+                                    <Hint hintKey="subsystems.*.basicDefaults" tone="warning" />
                                   </span>
                                 ) : null}
 
@@ -1080,12 +1081,7 @@ export function RobotFlowView({
                         {selected.type}
                       </Badge>
                       {selected.isDefaultTemplate && (
-                        <Badge
-                          variant="outline"
-                          className="text-amber-300 border-amber-700/60"
-                        >
-                          {t("subsystems.basic_badge")}
-                        </Badge>
+                        <Hint hintKey="subsystems.*.basicDefaults" tone="warning" />
                       )}
                     </div>
                     <div className="flex items-center gap-1.5">

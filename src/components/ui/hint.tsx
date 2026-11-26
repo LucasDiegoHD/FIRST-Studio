@@ -3,16 +3,18 @@
 import React, { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Tooltip from "@radix-ui/react-tooltip";
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, Info } from "lucide-react";
 import { useProject } from "@/context/project-context";
 import { getHelpEntry } from "@/lib/help/catalog";
 import { cn } from "@/lib/utils";
 
 export function Hint({
   hintKey,
+  tone = "default",
   className,
 }: {
   hintKey: string;
+  tone?: "default" | "warning";
   className?: string;
 }) {
   const { locale, t } = useProject();
@@ -21,14 +23,17 @@ export function Hint({
   const entry = getHelpEntry(hintKey, locale);
   if (!entry) return null;
 
+  const isWarning = tone === "warning";
+  const Icon = isWarning ? Info : HelpCircle;
+
   const body = (
     <div className="space-y-1.5 text-left">
       <p className="text-xs leading-snug text-slate-100">
-        <span className="font-semibold text-[#93c5fd]">{t("hint.what")}: </span>
+        {!isWarning && <span className="font-semibold text-[#93c5fd]">{t("hint.what")}: </span>}
         {entry.what}
       </p>
       <p className="text-[11px] leading-snug text-slate-300">
-        <span className="font-semibold text-slate-200">{t("hint.why")}: </span>
+        {!isWarning && <span className="font-semibold text-slate-200">{t("hint.why")}: </span>}
         {entry.why}
       </p>
       {entry.typical && (
@@ -42,6 +47,11 @@ export function Hint({
     </div>
   );
 
+  const contentClass = cn(
+    "z-50 max-w-xs rounded-lg border bg-[#0f1624] p-3 shadow-2xl animate-fade-in",
+    isWarning ? "border-amber-500/70" : "border-[#3b6bb5]",
+  );
+
   return (
     <Popover.Root open={pinned} onOpenChange={setPinned}>
       <Tooltip.Root open={pinned ? false : undefined}>
@@ -52,21 +62,20 @@ export function Hint({
               onClick={(e) => e.stopPropagation()}
               aria-label={`${t("hint.what")}: ${entry.what}`}
               className={cn(
-                "inline-flex items-center justify-center rounded-full text-slate-400 transition-colors hover:text-[#93c5fd] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#60a5fa] cursor-help",
-                pinned && "text-[#60a5fa]",
+                "inline-flex items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-1 cursor-help",
+                isWarning
+                  ? "text-amber-400 hover:text-amber-300 focus-visible:ring-amber-400"
+                  : "text-slate-400 hover:text-[#93c5fd] focus-visible:ring-[#60a5fa]",
+                pinned && (isWarning ? "text-amber-300" : "text-[#60a5fa]"),
                 className,
               )}
             >
-              <HelpCircle className="h-3.5 w-3.5" />
+              <Icon className="h-3.5 w-3.5" />
             </button>
           </Popover.Trigger>
         </Tooltip.Trigger>
         <Tooltip.Portal>
-          <Tooltip.Content
-            side="top"
-            sideOffset={6}
-            className="z-50 max-w-xs rounded-lg border border-[#3b6bb5] bg-[#0f1624] p-3 shadow-2xl animate-fade-in"
-          >
+          <Tooltip.Content side="top" sideOffset={6} className={contentClass}>
             {body}
           </Tooltip.Content>
         </Tooltip.Portal>
@@ -76,7 +85,7 @@ export function Hint({
           side="top"
           sideOffset={6}
           onClick={(e) => e.stopPropagation()}
-          className="z-50 max-w-xs rounded-lg border border-[#3b6bb5] bg-[#0f1624] p-3 shadow-2xl animate-fade-in"
+          className={contentClass}
         >
           {body}
         </Popover.Content>
