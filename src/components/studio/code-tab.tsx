@@ -116,9 +116,13 @@ function TreeBranch({
 export function CodeTab({
   onDownloadZip,
   exporting,
+  openBridgeSignal = 0,
+  deploySignal = 0,
 }: {
   onDownloadZip: () => void;
   exporting: boolean;
+  openBridgeSignal?: number;
+  deploySignal?: number;
 }) {
   const {
     project,
@@ -138,6 +142,12 @@ export function CodeTab({
   const [syncing, setSyncing] = useState(false);
   const [showBridge, setShowBridge] = useState(false);
   const [folderFeedback, setFolderFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (openBridgeSignal > 0 || deploySignal > 0) {
+      setShowBridge(true);
+    }
+  }, [openBridgeSignal, deploySignal]);
 
   useEffect(() => {
     const supported = isFileSystemAccessSupported();
@@ -376,6 +386,7 @@ export function CodeTab({
         <BridgeDeployPanel
           project={project}
           hasLocalFolder={Boolean(dirHandle && !needsReconnect)}
+          deploySignal={deploySignal}
           onSyncLocalBeforeRun={handleAutoSyncBeforeBridge}
         />
       )}

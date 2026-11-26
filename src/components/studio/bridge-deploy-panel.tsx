@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  BRIDGE_TOKEN_KEY,
+  BRIDGE_URL_KEY,
+  notifyBridgeUpdated,
+} from "@/hooks/useBridgeStatus";
+import {
   DEFAULT_BRIDGE_URL,
   arrayBufferToBase64,
   checkBridgeHealth,
@@ -25,17 +30,17 @@ import { generateProjectFiles } from "@/lib/generator";
 import { collectSkeletonAssets } from "@/lib/local-folder";
 import type { CiprixProject } from "@/lib/schema/ciprix-project";
 
-const TOKEN_STORAGE_KEY = "firstStudio_bridgeToken_v1";
-
 interface BridgeDeployPanelProps {
   project: CiprixProject;
   hasLocalFolder: boolean;
+  deploySignal?: number;
   onSyncLocalBeforeRun?: () => Promise<boolean>;
 }
 
 export function BridgeDeployPanel({
   project,
   hasLocalFolder,
+  deploySignal = 0,
   onSyncLocalBeforeRun,
 }: BridgeDeployPanelProps) {
   const [bridgeUrl, setBridgeUrl] = useState(DEFAULT_BRIDGE_URL);
@@ -49,11 +54,15 @@ export function BridgeDeployPanel({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement | null>(null);
+  const lastDeploySignalRef = useRef(0);
+  const runTaskRef = useRef<((task: GradleTask) => Promise<void>) | null>(null);
 
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem(TOKEN_STORAGE_KEY);
-      if (saved) setToken(saved);
+      const savedToken = sessionStorage.getItem(BRIDGE_TOKEN_KEY);
+      const savedUrl = sessionStorage.getItem(BRIDGE_URL_KEY);
+      if (savedUrl) setBridgeUrl(savedUrl);
+      if (savedToken) setToken(savedToken);
     } catch {
       // Ignore storage errors
     }
@@ -72,10 +81,12 @@ export function BridgeDeployPanel({
       const tok = await pairWithBridge(pairCode, bridgeUrl);
       setToken(tok);
       try {
-        sessionStorage.setItem(TOKEN_STORAGE_KEY, tok);
+        sessionStorage.setItem(BRIDGE_TOKEN_KEY, tok);
+        sessionStorage.setItem(BRIDGE_URL_KEY, bridgeUrl);
       } catch {
         // Ignore storage errors
       }
+      notifyBridgeUpdated();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Falha ao conectar no Bridge");
     } finally {
@@ -152,6 +163,15 @@ export function BridgeDeployPanel({
       setRunningTask(null);
     }
   };
+
+  runTaskRef.current = handleRunTask;
+
+  useEffect(() => {
+    if (deploySignal > lastDeploySignalRef.current && token && !runningTask) {
+      lastDeploySignalRef.current = deploySignal;
+      void runTaskRef.current?.("deploy");
+    }
+  }, [deploySignal, token, runningTask]);
 
   return (
     <Card className="p-4 space-y-4 border-[#2c3f61] bg-[#0f1624]">

@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   Award,
   CheckCircle,
-  Download,
   FolderOpen,
   Gamepad2,
   GitBranch,
@@ -23,16 +22,19 @@ import {
   Package,
   PanelLeft,
   Redo2,
+  Rocket,
   Save,
   Search,
   Settings2,
   Trash2,
   Undo2,
+  WifiOff,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/context/project-context";
+import { useBridgeStatus } from "@/hooks/useBridgeStatus";
 import { exportProjectZip } from "@/lib/generator/zip-exporter";
 import {
   actionToTab,
@@ -113,6 +115,9 @@ export function StudioShell({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pendingDeleteSub, setPendingDeleteSub] = useState<SubsystemConfig | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [bridgeOpenSignal, setBridgeOpenSignal] = useState(0);
+  const [bridgeDeploySignal, setBridgeDeploySignal] = useState(0);
+  const bridgeStatus = useBridgeStatus(project.project.teamNumber);
   const [toastMsg, setToastMsg] = useState<{
     text: string;
     tone: "ok" | "err";
@@ -924,18 +929,50 @@ export function StudioShell({
               className="hidden"
             />
 
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={handleDownloadZip}
-              disabled={exporting || errorCount > 0}
-              className="ml-1"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">
-                {exporting ? t("header.exporting") : t("header.download_zip")}
-              </span>
-            </Button>
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                {bridgeStatus.robotConnected ? (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={errorCount > 0}
+                    onClick={() => {
+                      navigateToTab("code");
+                      setBridgeDeploySignal((n) => n + 1);
+                    }}
+                    className="ml-1 bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500/70"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-emerald-200 animate-pulse shrink-0" />
+                    <Rocket className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{t("header.deploy_code")}</span>
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigateToTab("code");
+                      setBridgeOpenSignal((n) => n + 1);
+                    }}
+                    className="ml-1 border-[#2c3f61] bg-[#0f1624] text-slate-300 hover:border-[#3b6bb5] hover:text-white"
+                  >
+                    <span className="h-2 w-2 rounded-full bg-rose-400/90 shrink-0" />
+                    <WifiOff className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="hidden sm:inline">{t("header.robot_disconnected")}</span>
+                  </Button>
+                )}
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={6}
+                  className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 text-xs text-slate-100 shadow-lg"
+                >
+                  {bridgeStatus.robotConnected
+                    ? `roboRIO: ${bridgeStatus.address} (${bridgeStatus.mode})`
+                    : t("header.robot_disconnected_hint")}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
           </div>
         </header>
 
@@ -964,7 +1001,12 @@ export function StudioShell({
                 )}
                 {currentStep === "controls" && <ControlsTab />}
                 {currentStep === "export" && (
-                  <CodeTab onDownloadZip={handleDownloadZip} exporting={exporting} />
+                  <CodeTab
+                    onDownloadZip={handleDownloadZip}
+                    exporting={exporting}
+                    openBridgeSignal={bridgeOpenSignal}
+                    deploySignal={bridgeDeploySignal}
+                  />
                 )}
               </>
             )}
