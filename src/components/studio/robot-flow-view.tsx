@@ -34,7 +34,9 @@ import {
   GripVertical,
   Layers,
   LayoutGrid,
+  Lightbulb,
   Plus,
+  Radar,
   RotateCw,
   SlidersHorizontal,
   Target,
@@ -49,15 +51,22 @@ import { Field } from "@/components/ui/field";
 import { Hint } from "@/components/ui/hint";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Select } from "@/components/ui/select";
 import { UnitInput } from "@/components/ui/unit-input";
 import { useProject } from "@/context/project-context";
 import { toPackageSegment } from "@/lib/generator/java-utils";
 import { getSubsystemTheme } from "@/lib/subsystem-theme";
-import type {
-  MotorVendor,
-  SubsystemAction,
-  SubsystemConfig,
-  SubsystemType,
+import {
+  getPrimaryMotorAction,
+  isLedSubsystem,
+  isMotorSubsystem,
+  type MotorSubsystemConfig,
+  type MotorVendor,
+  type SensorConfig,
+  type SensorType,
+  type SubsystemAction,
+  type SubsystemConfig,
+  type SubsystemType,
 } from "@/lib/schema/ciprix-project";
 import { cn } from "@/lib/utils";
 import { CodeViewer } from "./code-viewer";
@@ -72,6 +81,7 @@ const VALID_TYPES = new Set<SubsystemType>([
   "wrist",
   "indexer",
   "hood",
+  "leds",
   "generic",
 ]);
 
@@ -99,6 +109,8 @@ function SubsystemIcon({
       return <FastForward className={className} />;
     case "hood":
       return <Gauge className={className} />;
+    case "leds":
+      return <Lightbulb className={className} />;
     case "generic":
       return <Cpu className={className} />;
     case "roller":
@@ -280,13 +292,25 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
     errorCount,
     onSelect,
   } = data;
-  const vendor =
-    subsystem.motor.vendor === "talonfx"
+  const isLed = isLedSubsystem(subsystem);
+  const vendor = isLed
+    ? subsystem.leds.driver === "candle"
+      ? "CANdle"
+      : "AddressableLED"
+    : subsystem.motor?.vendor === "talonfx"
       ? "TalonFX"
-      : subsystem.motor.vendor === "sparkmax"
+      : subsystem.motor?.vendor === "sparkmax"
         ? "SparkMax"
         : "TalonSRX";
   const theme = getSubsystemTheme(subsystem.type);
+  const hwIdLabel = isLed
+    ? subsystem.leds.driver === "candle"
+      ? `CAN ${subsystem.leds.canId ?? 30}`
+      : `PWM ${subsystem.leds.pwmPort ?? 0}`
+    : `CAN ${subsystem.motor?.canId ?? 0}`;
+  const hwDetailLabel = isLed
+    ? `${vendor} · ${subsystem.leds.ledCount} LEDs`
+    : `${vendor} · ${subsystem.motor?.currentLimitAmps ?? 40}A`;
 
   return (
     <div
@@ -332,7 +356,7 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
           </span>
         ) : (
           <span className="font-mono text-[11px] text-[#93c5fd]">
-            CAN {subsystem.motor.canId}
+            {hwIdLabel}
           </span>
         )}
       </div>
@@ -340,7 +364,7 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
       <div className="p-3 space-y-2">
         <div className="flex items-center justify-between font-mono text-[11px]">
           <span className="text-slate-300">
-            {vendor} · {subsystem.motor.currentLimitAmps}A
+            {hwDetailLabel}
           </span>
           <span className={activeDir !== 0 ? "text-[#93c5fd] font-semibold" : "text-slate-400"}>
             {setpointLabel}
@@ -476,7 +500,14 @@ export function RobotFlowView({
         position: xboxPos,
         data: {
           buttons: project.controls.pilotPriority.map((p) => ({
-            label: p.button.replace("Bumper", "B").replace("Trigger", "T").replace("Stick", "S").toUpperCase(),
+            label:
+              p.source === "sensor"
+                ? `SENSOR`
+                : (p.button ?? "a")
+                    .replace("Bumper", "B")
+                    .replace("Trigger", "T")
+                    .replace("Stick", "S")
+                    .toUpperCase(),
             request: p.request,
           })),
           simRequest: activeSimRequest,
@@ -502,12 +533,35 @@ export function RobotFlowView({
       const subId = `sub-${sub.id}`;
       const pos = positionsRef.current[subId] ?? { x: 620, y: 40 + idx * 125 };
 
+      if (!isMotorSubsystem(sub)) {
+        const errorCount = issues.filter(
+          (i) => i.targetId === sub.id && i.severity === "error",
+        ).length;
+        list.push({
+          id: subId,
+          type: "subsystemNode",
+          position: pos,
+          data: {
+            subsystem: sub,
+            activeRequest: "LED_ARBITER",
+            activeStateName: sub.leds?.driver === "candle" ? "CANdle" : "AddressableLED",
+            setpointLabel: `${sub.leds?.ledCount ?? 30} LEDs`,
+            barPct: 100,
+            activeDir: 0,
+            selected: selectedSubsystemId === sub.id,
+            errorCount,
+            onSelect: setSelectedSubsystemId,
+          },
+        });
+        return;
+      }
+
       const subReq =
         project.superstructure.stateActions[activeRobotState]?.[sub.id] ?? sub.fsm.initialRequest;
       const binding = sub.fsm.bindings.find((b) => b.request === subReq);
       const activeStateName = binding?.goalState ?? binding?.entryState ?? sub.fsm.initialState;
       const stObj = sub.fsm.states.find((s) => s.name === activeStateName);
-      const sp = formatSetpoint(stObj?.onEnter);
+      const sp = formatSetpoint(getPrimaryMotorAction(stObj));
       const errorCount = issues.filter(
         (i) => i.targetId === sub.id && i.severity === "error",
       ).length;
@@ -572,6 +626,7 @@ export function RobotFlowView({
     ];
 
     for (const sub of project.subsystems) {
+      if (!isMotorSubsystem(sub)) continue;
       const subReq =
         project.superstructure.stateActions[activeRobotState]?.[sub.id] ?? sub.fsm.initialRequest;
       const active = subReq !== sub.fsm.initialRequest;
@@ -691,9 +746,10 @@ export function RobotFlowView({
       ],
     },
     {
-      groupTitle: "Força & Geral",
+      groupTitle: "Força & Sinalização",
       items: [
         { kind: "climber", title: "Climber", desc: "Brake 60A · EXTEND/CLIMB" },
+        { kind: "leds", title: "LEDs", desc: "AddressableLED / CANdle · LedArbiter" },
         { kind: "generic", title: "Motor Genérico", desc: "StateSubsystem simples" },
       ],
     },
@@ -857,17 +913,32 @@ export function RobotFlowView({
                           const subErrors = issues.filter(
                             (i) => i.targetId === sub.id && i.severity === "error",
                           ).length;
-                          const vendorLabel =
-                            sub.motor.vendor === "talonfx"
+                          const isLedSub = isLedSubsystem(sub);
+                          const vendorLabel = isLedSub
+                            ? sub.leds.driver === "candle"
+                              ? "CANdle"
+                              : "PWM LED"
+                            : sub.motor?.vendor === "talonfx"
                               ? "TalonFX"
-                              : sub.motor.vendor === "sparkmax"
+                              : sub.motor?.vendor === "sparkmax"
                                 ? "SparkMax"
                                 : "TalonSRX";
                           const theme = getSubsystemTheme(sub.type);
-                          const currentPct = Math.min(
-                            100,
-                            Math.round((sub.motor.currentLimitAmps / 120) * 100),
-                          );
+                          const currentPct = isLedSub
+                            ? Math.min(100, Math.round((sub.leds.ledCount / 300) * 100))
+                            : Math.min(
+                                100,
+                                Math.round(((sub.motor?.currentLimitAmps ?? 40) / 120) * 100),
+                              );
+                          const primaryBadge = isLedSub
+                            ? sub.leds.driver === "candle"
+                              ? `CAN ${sub.leds.canId ?? 30}`
+                              : `PWM ${sub.leds.pwmPort ?? 0}`
+                            : `CAN ${sub.motor?.canId ?? 0}`;
+                          const rightFootLabel = isLedSub
+                            ? `${sub.leds.ledCount} LEDs`
+                            : `${sub.motor?.currentLimitAmps ?? 40}A`;
+                          const sensorCount = sub.sensors?.length ?? 0;
 
                           return (
                             <div
@@ -958,21 +1029,28 @@ export function RobotFlowView({
                                 </span>
                                 <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1">
                                   <Badge variant="default" className="text-[10px] px-1.5 py-0 tabular-nums">
-                                    CAN {sub.motor.canId}
+                                    {primaryBadge}
                                   </Badge>
                                   <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                                     {vendorLabel}
                                   </Badge>
-                                  <span className="rounded border border-[#22304a] bg-[#0b0f17] px-1.5 py-0 font-mono text-[9px] uppercase text-slate-300">
-                                    {sub.motor.neutralMode}
-                                  </span>
+                                  {!isLedSub && sub.motor && (
+                                    <span className="rounded border border-[#22304a] bg-[#0b0f17] px-1.5 py-0 font-mono text-[9px] uppercase text-slate-300">
+                                      {sub.motor.neutralMode}
+                                    </span>
+                                  )}
+                                  {sensorCount > 0 && (
+                                    <span className="rounded border border-cyan-700/60 bg-cyan-950/60 px-1.5 py-0 font-mono text-[9px] text-cyan-200">
+                                      {sensorCount} {sensorCount === 1 ? "sensor" : "sensores"}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
                               <div className="border-t border-[#22304a]/80 bg-[#0f1624]/90 px-3 py-1.5">
                                 <div className="flex items-center justify-between font-mono text-[10px] text-slate-400 tabular-nums mb-1">
                                   <span>{sub.type}</span>
-                                  <span className="text-slate-200">{sub.motor.currentLimitAmps}A</span>
+                                  <span className="text-slate-200">{rightFootLabel}</span>
                                 </div>
                                 <div className="h-1 w-full overflow-hidden rounded-full bg-[#0b0f17]">
                                   <div
@@ -1076,7 +1154,13 @@ export function RobotFlowView({
                         className={cn("h-5 w-5 shrink-0", getSubsystemTheme(selected.type).iconText)}
                       />
                       <CardTitle className="truncate">{selected.name}</CardTitle>
-                      <Badge variant="default">CAN {selected.motor.canId}</Badge>
+                      <Badge variant="default">
+                        {isLedSubsystem(selected)
+                          ? selected.leds.driver === "candle"
+                            ? `CAN ${selected.leds.canId ?? 30}`
+                            : `PWM ${selected.leds.pwmPort ?? 0}`
+                          : `CAN ${selected.motor?.canId ?? 0}`}
+                      </Badge>
                       <Badge variant="outline" className="capitalize">
                         {selected.type}
                       </Badge>
@@ -1132,110 +1216,486 @@ export function RobotFlowView({
                       />
                     </Field>
 
-                    {/* CAN ID */}
-                    <Field
-                      path={`subsystems.${selected.id}.motor.canId`}
-                      label={t("subsystems.can_id")}
-                      layout="row"
-                      controlClassName="w-1/2"
-                    >
-                      <UnitInput
-                        unit="ID"
-                        type="number"
-                        min={0}
-                        max={62}
-                        value={selected.motor.canId}
-                        onChange={(e) =>
-                          updateSubsystem(selected.id, (prev) => ({
-                            ...prev,
-                            motor: {
-                              ...prev.motor,
-                              canId: Math.min(
-                                62,
-                                Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0),
-                              ),
-                            },
-                          }))
-                        }
-                      />
-                    </Field>
-
-                    {/* Vendor Tactile Chips */}
-                    <Field
-                      path={`subsystems.${selected.id}.motor.vendor`}
-                      label={t("subsystems.vendor")}
-                      layout="row"
-                      controlClassName="w-1/2"
-                    >
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {vendors.map((v) => (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onClick={() =>
+                    {/* LED Hardware Panel OR Motor Subsystem Inspector */}
+                    {isLedSubsystem(selected) ? (
+                      <div className="space-y-4">
+                        <Field
+                          path={`subsystems.${selected.id}.leds.driver`}
+                          label="Driver LEDs"
+                          layout="row"
+                          controlClassName="w-1/2"
+                        >
+                          <Select
+                            value={selected.leds.driver}
+                            className="h-9 text-xs font-mono"
+                            onChange={(e) => {
+                              const driver = e.target.value as "addressableLed" | "candle";
                               updateSubsystem(selected.id, (prev) => ({
                                 ...prev,
-                                motor: { ...prev.motor, vendor: v.id },
+                                leds: {
+                                  ...(prev.leds ?? { driver: "addressableLed", ledCount: 30 }),
+                                  driver,
+                                  pwmPort:
+                                    driver === "addressableLed" ? prev.leds?.pwmPort ?? 0 : prev.leds?.pwmPort,
+                                  canId: driver === "candle" ? prev.leds?.canId ?? 30 : prev.leds?.canId,
+                                },
+                              }));
+                            }}
+                          >
+                            <option value="addressableLed">AddressableLED (PWM)</option>
+                            <option value="candle">CTRE CANdle (CAN)</option>
+                          </Select>
+                        </Field>
+
+                        <Field
+                          path={`subsystems.${selected.id}.leds.ledCount`}
+                          label="Quantidade de LEDs"
+                          layout="row"
+                          controlClassName="w-1/2"
+                        >
+                          <UnitInput
+                            unit="LEDs"
+                            type="number"
+                            min={1}
+                            max={300}
+                            value={selected.leds.ledCount}
+                            onChange={(e) =>
+                              updateSubsystem(selected.id, (prev) => ({
+                                ...prev,
+                                leds: {
+                                  ...(prev.leds ?? { driver: "addressableLed", ledCount: 30 }),
+                                  ledCount: Math.min(300, Math.max(1, Number.parseInt(e.target.value || "30", 10) || 1)),
+                                },
                               }))
                             }
-                            className={`rounded-md border py-2 text-xs font-medium transition-all cursor-pointer ${
-                              selected.motor.vendor === v.id
-                                ? "border-[#60a5fa] bg-[#142c4f] text-white"
-                                : "border-[#253552] bg-[#0f1624] text-slate-300 hover:text-white"
-                            }`}
-                          >
-                            {v.label}
-                          </button>
-                        ))}
-                      </div>
-                    </Field>
+                          />
+                        </Field>
 
-                    {/* Current Limit */}
-                    <div className="space-y-2.5 pt-1">
-                      <Field
-                        path={`subsystems.${selected.id}.motor.currentLimitAmps`}
-                        label={t("subsystems.current_limit")}
-                        layout="row"
-                        controlClassName="w-28"
-                      >
-                        <UnitInput
-                          unit="A"
-                          type="number"
-                          min={1}
-                          max={120}
-                          value={selected.motor.currentLimitAmps}
-                          onChange={(e) =>
-                            updateSubsystem(selected.id, (prev) => ({
-                              ...prev,
-                              motor: {
-                                ...prev.motor,
-                                currentLimitAmps: Math.min(
-                                  120,
-                                  Math.max(1, Number.parseInt(e.target.value || "40", 10) || 40),
-                                ),
-                              },
-                            }))
-                          }
-                        />
-                      </Field>
-                      <input
-                        type="range"
-                        min={10}
-                        max={120}
-                        step={5}
-                        value={selected.motor.currentLimitAmps}
-                        onChange={(e) =>
-                          updateSubsystem(selected.id, (prev) => ({
-                            ...prev,
-                            motor: {
-                              ...prev.motor,
-                              currentLimitAmps: Number.parseInt(e.target.value, 10),
-                            },
-                          }))
-                        }
-                        className="w-full"
-                      />
-                    </div>
+                        {selected.leds.driver === "addressableLed" ? (
+                          <Field
+                            path={`subsystems.${selected.id}.leds.pwmPort`}
+                            label="Porta PWM"
+                            layout="row"
+                            controlClassName="w-1/2"
+                          >
+                            <UnitInput
+                              unit="PWM"
+                              type="number"
+                              min={0}
+                              max={9}
+                              value={selected.leds.pwmPort ?? 0}
+                              onChange={(e) =>
+                                updateSubsystem(selected.id, (prev) => ({
+                                  ...prev,
+                                  leds: {
+                                    ...(prev.leds ?? { driver: "addressableLed", ledCount: 30 }),
+                                    pwmPort: Math.min(9, Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0)),
+                                  },
+                                }))
+                              }
+                            />
+                          </Field>
+                        ) : (
+                          <>
+                            <Field
+                              path={`subsystems.${selected.id}.leds.canId`}
+                              label="CAN ID CANdle"
+                              layout="row"
+                              controlClassName="w-1/2"
+                            >
+                              <UnitInput
+                                unit="ID"
+                                type="number"
+                                min={0}
+                                max={62}
+                                value={selected.leds.canId ?? 30}
+                                onChange={(e) =>
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    leds: {
+                                      ...(prev.leds ?? { driver: "candle", ledCount: 30 }),
+                                      canId: Math.min(62, Math.max(0, Number.parseInt(e.target.value || "30", 10) || 0)),
+                                    },
+                                  }))
+                                }
+                              />
+                            </Field>
+                            <Field
+                              path={`subsystems.${selected.id}.leds.canBus`}
+                              label="Barramento CAN"
+                              layout="row"
+                              controlClassName="w-1/2"
+                            >
+                              <Input
+                                value={selected.leds.canBus ?? ""}
+                                placeholder="rio"
+                                className="font-mono"
+                                onChange={(e) =>
+                                  updateSubsystem(selected.id, (prev) => ({
+                                    ...prev,
+                                    leds: {
+                                      ...(prev.leds ?? { driver: "candle", ledCount: 30 }),
+                                      canBus: e.target.value,
+                                    },
+                                  }))
+                                }
+                              />
+                            </Field>
+                          </>
+                        )}
+                      </div>
+                    ) : isMotorSubsystem(selected) ? (() => {
+                      const motorSub: MotorSubsystemConfig = selected;
+                      const sensors = motorSub.sensors ?? [];
+                      return (
+                        <div className="space-y-5">
+                          {/* CAN ID */}
+                          <Field
+                            path={`subsystems.${motorSub.id}.motor.canId`}
+                            label={t("subsystems.can_id")}
+                            layout="row"
+                            controlClassName="w-1/2"
+                          >
+                            <UnitInput
+                              unit="ID"
+                              type="number"
+                              min={0}
+                              max={62}
+                              value={motorSub.motor.canId}
+                              onChange={(e) =>
+                                updateSubsystem(motorSub.id, (prev) =>
+                                  prev.motor
+                                    ? {
+                                        ...prev,
+                                        motor: {
+                                          ...prev.motor,
+                                          canId: Math.min(
+                                            62,
+                                            Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0),
+                                          ),
+                                        },
+                                      }
+                                    : prev,
+                                )
+                              }
+                            />
+                          </Field>
+
+                          {/* Vendor Tactile Chips */}
+                          <Field
+                            path={`subsystems.${motorSub.id}.motor.vendor`}
+                            label={t("subsystems.vendor")}
+                            layout="row"
+                            controlClassName="w-1/2"
+                          >
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {vendors.map((v) => (
+                                <button
+                                  key={v.id}
+                                  type="button"
+                                  onClick={() =>
+                                    updateSubsystem(motorSub.id, (prev) =>
+                                      prev.motor ? { ...prev, motor: { ...prev.motor, vendor: v.id } } : prev,
+                                    )
+                                  }
+                                  className={`rounded-md border py-2 text-xs font-medium transition-all cursor-pointer ${
+                                    motorSub.motor.vendor === v.id
+                                      ? "border-[#60a5fa] bg-[#142c4f] text-white"
+                                      : "border-[#253552] bg-[#0f1624] text-slate-300 hover:text-white"
+                                  }`}
+                                >
+                                  {v.label}
+                                </button>
+                              ))}
+                            </div>
+                          </Field>
+
+                          {/* Current Limit */}
+                          <div className="space-y-2.5 pt-1">
+                            <Field
+                              path={`subsystems.${motorSub.id}.motor.currentLimitAmps`}
+                              label={t("subsystems.current_limit")}
+                              layout="row"
+                              controlClassName="w-28"
+                            >
+                              <UnitInput
+                                unit="A"
+                                type="number"
+                                min={1}
+                                max={120}
+                                value={motorSub.motor.currentLimitAmps}
+                                onChange={(e) =>
+                                  updateSubsystem(motorSub.id, (prev) =>
+                                    prev.motor
+                                      ? {
+                                          ...prev,
+                                          motor: {
+                                            ...prev.motor,
+                                            currentLimitAmps: Math.min(
+                                              120,
+                                              Math.max(1, Number.parseInt(e.target.value || "40", 10) || 40),
+                                            ),
+                                          },
+                                        }
+                                      : prev,
+                                  )
+                                }
+                              />
+                            </Field>
+                            <input
+                              type="range"
+                              min={10}
+                              max={120}
+                              step={5}
+                              value={motorSub.motor.currentLimitAmps}
+                              onChange={(e) =>
+                                updateSubsystem(motorSub.id, (prev) =>
+                                  prev.motor
+                                    ? {
+                                        ...prev,
+                                        motor: {
+                                          ...prev.motor,
+                                          currentLimitAmps: Number.parseInt(e.target.value, 10),
+                                        },
+                                      }
+                                    : prev,
+                                )
+                              }
+                              className="w-full"
+                            />
+                          </div>
+
+                          {/* Presence Sensors */}
+                          <div className="border-t border-[#22304a] pt-4 space-y-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Radar className="h-4 w-4 text-cyan-300" />
+                                <span className="text-sm font-medium text-white">
+                                  {t("subsystems.sensors_title")}
+                                </span>
+                                <Badge variant="default">{sensors.length}</Badge>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-xs"
+                                onClick={() => {
+                                  const nextIdx = sensors.length + 1;
+                                  const newSensor: SensorConfig = {
+                                    id: `sen-${Date.now().toString(36)}`,
+                                    name: nextIdx === 1 ? "hasPiece" : `sensor${nextIdx}`,
+                                    type: "dio",
+                                    channel: sensors.length,
+                                    inverted: true,
+                                  };
+                                  updateSubsystem(motorSub.id, (prev) => ({
+                                    ...prev,
+                                    sensors: [...(prev.sensors ?? []), newSensor],
+                                  }));
+                                }}
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                {t("subsystems.add_sensor")}
+                              </Button>
+                            </div>
+
+                            {sensors.map((sensor, sIdx) => {
+                              const patchSensor = (nextSensor: SensorConfig) => {
+                                updateSubsystem(motorSub.id, (prev) => ({
+                                  ...prev,
+                                  sensors: (prev.sensors ?? []).map((item, i) =>
+                                    i === sIdx ? nextSensor : item,
+                                  ),
+                                }));
+                              };
+                              return (
+                                <div
+                                  key={sensor.id}
+                                  className="space-y-2 rounded-lg border border-[#22304a] bg-[#0f1624] p-3"
+                                >
+                                  <div className="flex items-end gap-2">
+                                    <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.name`} label="Nome (Java)" className="flex-1">
+                                      <Input
+                                        value={sensor.name}
+                                        className="h-8 font-mono text-xs"
+                                        onChange={(e) =>
+                                          patchSensor({
+                                            ...sensor,
+                                            name: e.target.value.replace(/[^A-Za-z0-9_]/g, ""),
+                                          })
+                                        }
+                                      />
+                                    </Field>
+                                    <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.type`} label="Tipo" className="w-36">
+                                      <Select
+                                        value={sensor.type}
+                                        className="h-8 font-mono text-xs"
+                                        onChange={(e) => {
+                                          const nextType = e.target.value as SensorType;
+                                          if (nextType === "dio") {
+                                            patchSensor({
+                                              id: sensor.id,
+                                              name: sensor.name,
+                                              type: "dio",
+                                              channel: 0,
+                                              inverted: true,
+                                            });
+                                          } else if (nextType === "canrange") {
+                                            patchSensor({
+                                              id: sensor.id,
+                                              name: sensor.name,
+                                              type: "canrange",
+                                              canId: 20,
+                                              canBus: "",
+                                              thresholdMeters: 0.2,
+                                            });
+                                          } else {
+                                            patchSensor({
+                                              id: sensor.id,
+                                              name: sensor.name,
+                                              type: "lasercan",
+                                              canId: 21,
+                                              thresholdMm: 150,
+                                            });
+                                          }
+                                        }}
+                                      >
+                                        <option value="dio">Beam Break (DIO)</option>
+                                        <option value="canrange">CANrange (CTRE)</option>
+                                        <option value="lasercan">LaserCAN (Grapple)</option>
+                                      </Select>
+                                    </Field>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-8 w-8"
+                                      onClick={() =>
+                                        updateSubsystem(motorSub.id, (prev) => ({
+                                          ...prev,
+                                          sensors: (prev.sensors ?? []).filter((_, i) => i !== sIdx),
+                                        }))
+                                      }
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                                    </Button>
+                                  </div>
+
+                                  {sensor.type === "dio" && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.channel`} label="Canal DIO">
+                                        <UnitInput
+                                          unit="DIO"
+                                          type="number"
+                                          min={0}
+                                          max={25}
+                                          value={sensor.channel}
+                                          onChange={(e) =>
+                                            patchSensor({
+                                              ...sensor,
+                                              channel: Math.min(25, Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0)),
+                                            })
+                                          }
+                                        />
+                                      </Field>
+                                      <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.inverted`} label="Invertido (NPN)">
+                                        <div className="flex h-9 items-center justify-between rounded-md border border-[#22304a] bg-[#0b0f17] px-3">
+                                          <span className="text-xs text-slate-300">Active-low</span>
+                                          <Switch
+                                            checked={sensor.inverted}
+                                            onCheckedChange={(checked) =>
+                                              patchSensor({ ...sensor, inverted: checked })
+                                            }
+                                          />
+                                        </div>
+                                      </Field>
+                                    </div>
+                                  )}
+
+                                  {sensor.type === "canrange" && (
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.canId`} label="CAN ID">
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          max={62}
+                                          value={sensor.canId}
+                                          className="h-8 font-mono text-xs"
+                                          onChange={(e) =>
+                                            patchSensor({
+                                              ...sensor,
+                                              canId: Math.min(62, Math.max(0, Number.parseInt(e.target.value || "20", 10) || 0)),
+                                            })
+                                          }
+                                        />
+                                      </Field>
+                                      <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.canBus`} label="CAN Bus">
+                                        <Input
+                                          value={sensor.canBus}
+                                          placeholder="rio"
+                                          className="h-8 font-mono text-xs"
+                                          onChange={(e) =>
+                                            patchSensor({ ...sensor, canBus: e.target.value })
+                                          }
+                                        />
+                                      </Field>
+                                      <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.thresholdMeters`} label="Limiar (m)">
+                                        <Input
+                                          type="number"
+                                          step={0.01}
+                                          min={0.01}
+                                          max={4}
+                                          value={sensor.thresholdMeters}
+                                          className="h-8 font-mono text-xs"
+                                          onChange={(e) =>
+                                            patchSensor({
+                                              ...sensor,
+                                              thresholdMeters: Math.min(4, Math.max(0.01, Number.parseFloat(e.target.value || "0.2") || 0.2)),
+                                            })
+                                          }
+                                        />
+                                      </Field>
+                                    </div>
+                                  )}
+
+                                  {sensor.type === "lasercan" && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.canId`} label="CAN ID (rio)">
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          max={62}
+                                          value={sensor.canId}
+                                          className="h-8 font-mono text-xs"
+                                          onChange={(e) =>
+                                            patchSensor({
+                                              ...sensor,
+                                              canId: Math.min(62, Math.max(0, Number.parseInt(e.target.value || "21", 10) || 0)),
+                                            })
+                                          }
+                                        />
+                                      </Field>
+                                      <Field path={`subsystems.${motorSub.id}.sensors.${sensor.id}.thresholdMm`} label="Limiar (mm)">
+                                        <Input
+                                          type="number"
+                                          step={5}
+                                          min={10}
+                                          max={4000}
+                                          value={sensor.thresholdMm}
+                                          className="h-8 font-mono text-xs"
+                                          onChange={(e) =>
+                                            patchSensor({
+                                              ...sensor,
+                                              thresholdMm: Math.min(4000, Math.max(10, Number.parseInt(e.target.value || "150", 10) || 150)),
+                                            })
+                                          }
+                                        />
+                                      </Field>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
 
                     {/* FGCLib-style Show Advanced Switch */}
                     <div className="border-t border-[#22304a] pt-4 flex items-center justify-between">
@@ -1252,29 +1712,30 @@ export function RobotFlowView({
 
                     {showAdvanced && (
                       <div className="space-y-4 rounded-xl border border-[#22304a] bg-[#0f1624] p-4 animate-fade-in">
-                        {selected.motor.vendor === "talonfx" && (
+                        {motorSub.motor.vendor === "talonfx" && (
                           <Field
-                            path={`subsystems.${selected.id}.motor.canBus`}
+                            path={`subsystems.${motorSub.id}.motor.canBus`}
                             label={t("subsystems.can_bus")}
                             layout="row"
                             controlClassName="w-1/2"
                           >
                             <Input
-                              value={selected.motor.canBus}
+                              value={motorSub.motor.canBus}
                               placeholder="rio"
                               className="font-mono"
                               onChange={(e) =>
-                                updateSubsystem(selected.id, (prev) => ({
-                                  ...prev,
-                                  motor: { ...prev.motor, canBus: e.target.value },
-                                }))
+                                updateSubsystem(motorSub.id, (prev) =>
+                                  prev.motor
+                                    ? { ...prev, motor: { ...prev.motor, canBus: e.target.value } }
+                                    : prev,
+                                )
                               }
                             />
                           </Field>
                         )}
 
                         <Field
-                          path={`subsystems.${selected.id}.motor.neutralMode`}
+                          path={`subsystems.${motorSub.id}.motor.neutralMode`}
                           label={t("subsystems.neutral_mode")}
                           layout="row"
                         >
@@ -1284,13 +1745,14 @@ export function RobotFlowView({
                                 key={mode}
                                 type="button"
                                 onClick={() =>
-                                  updateSubsystem(selected.id, (prev) => ({
-                                    ...prev,
-                                    motor: { ...prev.motor, neutralMode: mode },
-                                  }))
+                                  updateSubsystem(motorSub.id, (prev) =>
+                                    prev.motor
+                                      ? { ...prev, motor: { ...prev.motor, neutralMode: mode } }
+                                      : prev,
+                                  )
                                 }
                                 className={`rounded px-3 py-1 text-xs capitalize cursor-pointer ${
-                                  selected.motor.neutralMode === mode
+                                  motorSub.motor.neutralMode === mode
                                     ? "bg-[#142c4f] text-white"
                                     : "text-slate-400"
                                 }`}
@@ -1302,24 +1764,25 @@ export function RobotFlowView({
                         </Field>
 
                         <Field
-                          path={`subsystems.${selected.id}.motor.inverted`}
+                          path={`subsystems.${motorSub.id}.motor.inverted`}
                           label={t("subsystems.inverted")}
                           layout="row"
                         >
                           <Switch
-                            checked={selected.motor.inverted}
+                            checked={motorSub.motor.inverted}
                             onCheckedChange={(checked) =>
-                              updateSubsystem(selected.id, (prev) => ({
-                                ...prev,
-                                motor: { ...prev.motor, inverted: checked },
-                              }))
+                              updateSubsystem(motorSub.id, (prev) =>
+                                prev.motor
+                                  ? { ...prev, motor: { ...prev.motor, inverted: checked } }
+                                  : prev,
+                              )
                             }
                           />
                         </Field>
 
                         <div className="grid grid-cols-2 gap-3">
                           <Field
-                            path={`subsystems.${selected.id}.motor.gearRatio`}
+                            path={`subsystems.${motorSub.id}.motor.gearRatio`}
                             label={t("subsystems.gear_ratio")}
                           >
                             <UnitInput
@@ -1327,23 +1790,27 @@ export function RobotFlowView({
                               type="number"
                               step={0.1}
                               min={0.1}
-                              value={selected.motor.gearRatio}
+                              value={motorSub.motor.gearRatio}
                               onChange={(e) =>
-                                updateSubsystem(selected.id, (prev) => ({
-                                  ...prev,
-                                  motor: {
-                                    ...prev.motor,
-                                    gearRatio: Math.max(
-                                      0.1,
-                                      Number.parseFloat(e.target.value || "1") || 1,
-                                    ),
-                                  },
-                                }))
+                                updateSubsystem(motorSub.id, (prev) =>
+                                  prev.motor
+                                    ? {
+                                        ...prev,
+                                        motor: {
+                                          ...prev.motor,
+                                          gearRatio: Math.max(
+                                            0.1,
+                                            Number.parseFloat(e.target.value || "1") || 1,
+                                          ),
+                                        },
+                                      }
+                                    : prev,
+                                )
                               }
                             />
                           </Field>
                           <Field
-                            path={`subsystems.${selected.id}.motor.moiKgM2`}
+                            path={`subsystems.${motorSub.id}.motor.moiKgM2`}
                             label={t("subsystems.moi")}
                           >
                             <UnitInput
@@ -1351,18 +1818,22 @@ export function RobotFlowView({
                               type="number"
                               step={0.0005}
                               min={0.0001}
-                              value={selected.motor.moiKgM2}
+                              value={motorSub.motor.moiKgM2}
                               onChange={(e) =>
-                                updateSubsystem(selected.id, (prev) => ({
-                                  ...prev,
-                                  motor: {
-                                    ...prev.motor,
-                                    moiKgM2: Math.max(
-                                      0.0001,
-                                      Number.parseFloat(e.target.value || "0.001") || 0.001,
-                                    ),
-                                  },
-                                }))
+                                updateSubsystem(motorSub.id, (prev) =>
+                                  prev.motor
+                                    ? {
+                                        ...prev,
+                                        motor: {
+                                          ...prev.motor,
+                                          moiKgM2: Math.max(
+                                            0.0001,
+                                            Number.parseFloat(e.target.value || "0.001") || 0.001,
+                                          ),
+                                        },
+                                      }
+                                    : prev,
+                                )
                               }
                             />
                           </Field>
@@ -1679,31 +2150,35 @@ export function RobotFlowView({
                         {/* Dual-Motor Follower */}
                         <div className="space-y-2.5 border-t border-[#22304a] pt-3">
                           <Field
-                            path={`subsystems.${selected.id}.motor.follower.enabled`}
+                            path={`subsystems.${motorSub.id}.motor.follower.enabled`}
                             label={t("subsystems.follower_enable")}
                             layout="row"
                           >
                             <Switch
-                              checked={Boolean(selected.motor.follower?.enabled)}
+                              checked={Boolean(motorSub.motor.follower?.enabled)}
                               onCheckedChange={(checked) =>
-                                updateSubsystem(selected.id, (prev) => ({
-                                  ...prev,
-                                  motor: {
-                                    ...prev.motor,
-                                    follower: {
-                                      enabled: checked,
-                                      canId: prev.motor.follower?.canId ?? prev.motor.canId + 1,
-                                      inverted: prev.motor.follower?.inverted ?? false,
-                                    },
-                                  },
-                                }))
+                                updateSubsystem(motorSub.id, (prev) =>
+                                  prev.motor
+                                    ? {
+                                        ...prev,
+                                        motor: {
+                                          ...prev.motor,
+                                          follower: {
+                                            enabled: checked,
+                                            canId: prev.motor.follower?.canId ?? prev.motor.canId + 1,
+                                            inverted: prev.motor.follower?.inverted ?? false,
+                                          },
+                                        },
+                                      }
+                                    : prev,
+                                )
                               }
                             />
                           </Field>
-                          {selected.motor.follower?.enabled && (
+                          {motorSub.motor.follower?.enabled && (
                             <div className="grid grid-cols-2 gap-3">
                               <Field
-                                path={`subsystems.${selected.id}.motor.follower.canId`}
+                                path={`subsystems.${motorSub.id}.motor.follower.canId`}
                                 label={t("subsystems.follower_can_id")}
                               >
                                 <UnitInput
@@ -1711,43 +2186,51 @@ export function RobotFlowView({
                                   type="number"
                                   min={1}
                                   max={62}
-                                  value={selected.motor.follower.canId}
+                                  value={motorSub.motor.follower.canId}
                                   onChange={(e) => {
                                     const canId = Math.min(62, Math.max(1, Number.parseInt(e.target.value || "1", 10) || 1));
-                                    updateSubsystem(selected.id, (prev) => ({
-                                      ...prev,
-                                      motor: {
-                                        ...prev.motor,
-                                        follower: {
-                                          enabled: true,
-                                          canId,
-                                          inverted: prev.motor.follower?.inverted ?? false,
-                                        },
-                                      },
-                                    }));
+                                    updateSubsystem(motorSub.id, (prev) =>
+                                      prev.motor
+                                        ? {
+                                            ...prev,
+                                            motor: {
+                                              ...prev.motor,
+                                              follower: {
+                                                enabled: true,
+                                                canId,
+                                                inverted: prev.motor.follower?.inverted ?? false,
+                                              },
+                                            },
+                                          }
+                                        : prev,
+                                    );
                                   }}
                                 />
                               </Field>
                               <Field
-                                path={`subsystems.${selected.id}.motor.follower.inverted`}
+                                path={`subsystems.${motorSub.id}.motor.follower.inverted`}
                                 label={t("subsystems.follower_inverted")}
                               >
                                 <div className="flex h-9 items-center justify-between rounded-md border border-[#22304a] bg-[#0b0f17] px-3">
                                   <span className="text-xs text-slate-300">Invertido</span>
                                   <Switch
-                                    checked={Boolean(selected.motor.follower.inverted)}
+                                    checked={Boolean(motorSub.motor.follower.inverted)}
                                     onCheckedChange={(checked) =>
-                                      updateSubsystem(selected.id, (prev) => ({
-                                        ...prev,
-                                        motor: {
-                                          ...prev.motor,
-                                          follower: {
-                                            enabled: true,
-                                            canId: prev.motor.follower?.canId ?? prev.motor.canId + 1,
-                                            inverted: checked,
-                                          },
-                                        },
-                                      }))
+                                      updateSubsystem(motorSub.id, (prev) =>
+                                        prev.motor
+                                          ? {
+                                              ...prev,
+                                              motor: {
+                                                ...prev.motor,
+                                                follower: {
+                                                  enabled: true,
+                                                  canId: prev.motor.follower?.canId ?? prev.motor.canId + 1,
+                                                  inverted: checked,
+                                                },
+                                              },
+                                            }
+                                          : prev,
+                                      )
                                     }
                                   />
                                 </div>
@@ -1914,24 +2397,25 @@ export function RobotFlowView({
 
                         <div className="space-y-2.5 border-t border-[#22304a] pt-3">
                           <Field
-                            path={`subsystems.${selected.id}.selfTest.enabled`}
+                            path={`subsystems.${motorSub.id}.selfTest.enabled`}
                             label={t("subsystems.selftest_enable")}
                             layout="row"
                           >
                             <Switch
-                              checked={selected.selfTest.enabled}
+                              checked={motorSub.selfTest.enabled}
                               onCheckedChange={(checked) =>
-                                updateSubsystem(selected.id, (prev) => ({
-                                  ...prev,
-                                  selfTest: { ...prev.selfTest, enabled: checked },
-                                }))
+                                updateSubsystem(motorSub.id, (prev) =>
+                                  prev.selfTest
+                                    ? { ...prev, selfTest: { ...prev.selfTest, enabled: checked } }
+                                    : prev,
+                                )
                               }
                             />
                           </Field>
-                          {selected.selfTest.enabled && (
+                          {motorSub.selfTest.enabled && (
                             <div className="grid grid-cols-2 gap-3">
                               <Field
-                                path={`subsystems.${selected.id}.selfTest.output`}
+                                path={`subsystems.${motorSub.id}.selfTest.output`}
                                 label={t("subsystems.selftest_output")}
                               >
                                 <UnitInput
@@ -1940,23 +2424,27 @@ export function RobotFlowView({
                                   step={0.05}
                                   min={-1}
                                   max={1}
-                                  value={selected.selfTest.output}
+                                  value={motorSub.selfTest.output}
                                   onChange={(e) =>
-                                    updateSubsystem(selected.id, (prev) => ({
-                                      ...prev,
-                                      selfTest: {
-                                        ...prev.selfTest,
-                                        output: Math.min(
-                                          1,
-                                          Math.max(-1, Number.parseFloat(e.target.value || "0.3") || 0.3),
-                                        ),
-                                      },
-                                    }))
+                                    updateSubsystem(motorSub.id, (prev) =>
+                                      prev.selfTest
+                                        ? {
+                                            ...prev,
+                                            selfTest: {
+                                              ...prev.selfTest,
+                                              output: Math.min(
+                                                1,
+                                                Math.max(-1, Number.parseFloat(e.target.value || "0.3") || 0.3),
+                                              ),
+                                            },
+                                          }
+                                        : prev,
+                                    )
                                   }
                                 />
                               </Field>
                               <Field
-                                path={`subsystems.${selected.id}.selfTest.minVelocityRps`}
+                                path={`subsystems.${motorSub.id}.selfTest.minVelocityRps`}
                                 label={t("subsystems.selftest_min_rps")}
                               >
                                 <UnitInput
@@ -1964,18 +2452,22 @@ export function RobotFlowView({
                                   type="number"
                                   step={0.5}
                                   min={0}
-                                  value={selected.selfTest.minVelocityRps}
+                                  value={motorSub.selfTest.minVelocityRps}
                                   onChange={(e) =>
-                                    updateSubsystem(selected.id, (prev) => ({
-                                      ...prev,
-                                      selfTest: {
-                                        ...prev.selfTest,
-                                        minVelocityRps: Math.max(
-                                          0,
-                                          Number.parseFloat(e.target.value || "5") || 5,
-                                        ),
-                                      },
-                                    }))
+                                    updateSubsystem(motorSub.id, (prev) =>
+                                      prev.selfTest
+                                        ? {
+                                            ...prev,
+                                            selfTest: {
+                                              ...prev.selfTest,
+                                              minVelocityRps: Math.max(
+                                                0,
+                                                Number.parseFloat(e.target.value || "5") || 5,
+                                              ),
+                                            },
+                                          }
+                                        : prev,
+                                    )
                                   }
                                 />
                               </Field>
@@ -1984,6 +2476,9 @@ export function RobotFlowView({
                         </div>
                       </div>
                     )}
+                        </div>
+                      );
+                    })() : null}
                   </CardContent>
 
                   <CardFooter className="border-t border-[#22304a] pt-4 flex-wrap">
@@ -2092,13 +2587,23 @@ export function RobotFlowView({
                               {sub.name}
                             </td>
                             <td className="py-2.5 px-2 capitalize text-slate-300">{sub.type}</td>
-                            <td className="py-2.5 px-2 text-slate-300">{sub.motor.vendor}</td>
-                            <td className="py-2.5 px-2 text-[#93c5fd]">{sub.motor.canId}</td>
                             <td className="py-2.5 px-2 text-slate-300">
-                              {sub.motor.currentLimitAmps}A
+                              {isLedSubsystem(sub) ? sub.leds.driver : sub.motor?.vendor}
+                            </td>
+                            <td className="py-2.5 px-2 text-[#93c5fd]">
+                              {isLedSubsystem(sub)
+                                ? sub.leds.driver === "candle"
+                                  ? sub.leds.canId ?? 30
+                                  : `PWM ${sub.leds.pwmPort ?? 0}`
+                                : sub.motor?.canId}
+                            </td>
+                            <td className="py-2.5 px-2 text-slate-300">
+                              {isLedSubsystem(sub)
+                                ? `${sub.leds.ledCount} LEDs`
+                                : `${sub.motor?.currentLimitAmps ?? 40}A`}
                             </td>
                             <td className="py-2.5 pl-2 capitalize text-slate-300">
-                              {sub.motor.neutralMode}
+                              {isLedSubsystem(sub) ? "—" : sub.motor?.neutralMode}
                             </td>
                           </tr>
                         ))}

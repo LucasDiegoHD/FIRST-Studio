@@ -23,7 +23,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useProject } from "@/context/project-context";
 import { generateSubsystemMermaid } from "@/lib/generator/mermaid";
-import type { SubsystemAction } from "@/lib/schema/ciprix-project";
+import {
+  getPrimaryMotorAction,
+  isMotorSubsystem,
+  type FsmState,
+  type SubsystemAction,
+} from "@/lib/schema/ciprix-project";
 import { CodeViewer } from "./code-viewer";
 import { BindingsPanel } from "./fsm/bindings-panel";
 import { RequestsPanel } from "./fsm/requests-panel";
@@ -35,20 +40,29 @@ type FsmInnerTab = "states" | "requests" | "bindings";
 function formatActionSummary(action: SubsystemAction): string {
   switch (action.type) {
     case "stop":
-      return "onEnter: stop()";
+      return "stop()";
     case "percentOutput":
-      return `onEnter: ${action.constantName} (${action.value})`;
+      return `${action.constantName} (${action.value})`;
     case "velocityRpm":
-      return `onEnter: ${action.constantName} (${action.value} RPM)`;
+      return `${action.constantName} (${action.value} RPM)`;
     case "positionDeg":
-      return `onEnter: ${action.constantName} (${action.value}°)`;
+      return `${action.constantName} (${action.value}°)`;
     case "positionRot":
-      return `onEnter: ${action.constantName} (${action.value} rot)`;
+      return `${action.constantName} (${action.value} rot)`;
     case "smartPositionDeg":
       return `SmartPos: ${action.constantName} (${action.value}°)`;
     case "smartPositionRot":
       return `SmartPos: ${action.constantName} (${action.value} rot)`;
   }
+}
+
+function formatStateActionsSummary(state: FsmState): string {
+  const primary = formatActionSummary(getPrimaryMotorAction(state));
+  const badges: string[] = [];
+  if (state.actions.some((a) => a.kind === "leds")) badges.push("LED");
+  if (state.actions.some((a) => a.kind === "log")) badges.push("LOG");
+  if (state.actions.some((a) => a.kind === "rumble")) badges.push("RUMBLE");
+  return badges.length > 0 ? `${primary} · +${badges.join("+")}` : primary;
 }
 
 type FsmStateNodeData = {
@@ -165,9 +179,14 @@ export function StatesView({
     }
   }, [focusRequest]);
 
+  const motorSubsystems = useMemo(
+    () => project.subsystems.filter(isMotorSubsystem),
+    [project.subsystems],
+  );
+
   const activeSub =
-    project.subsystems.find((s) => s.id === selectedSubsystemId) ??
-    project.subsystems[0] ??
+    motorSubsystems.find((s) => s.id === selectedSubsystemId) ??
+    motorSubsystems[0] ??
     null;
 
   const activeRequest =
@@ -209,7 +228,7 @@ export function StatesView({
         position: pos,
         data: {
           label: st.name,
-          actionLabel: formatActionSummary(st.onEnter),
+          actionLabel: formatStateActionsSummary(st),
           isInitial: st.name === activeSub.fsm.initialState,
           isActive: st.name === activeSimState,
           isSelected: activeStateObj?.name === st.name,
@@ -257,8 +276,11 @@ export function StatesView({
       };
     });
 
+    const sensorNameById = new Map((activeSub.sensors ?? []).map((s) => [s.id, s.name]));
+
     for (const st of activeSub.fsm.states) {
       for (const tr of st.transitions ?? []) {
+        const sName = tr.sensorId ? (sensorNameById.get(tr.sensorId) ?? tr.sensorId) : "sensor";
         const label =
           tr.trigger === "afterSeconds"
             ? `after ${tr.value ?? 0.5}s`
@@ -266,7 +288,11 @@ export function StatesView({
               ? "atGoal()"
               : tr.trigger === "stalled"
                 ? "stalled"
-                : `>${tr.value ?? 30}A`;
+                : tr.trigger === "sensorTrue"
+                  ? `${sName} == true`
+                  : tr.trigger === "sensorFalse"
+                    ? `${sName} == false`
+                    : `>${tr.value ?? 30}A`;
         list.push({
           id: `e-tr-${st.name}-${tr.id}`,
           source: `state-${st.name}`,
@@ -310,7 +336,7 @@ export function StatesView({
   const selectorActions = (
     <div className="flex flex-wrap items-center gap-2">
       <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-[#22304a] bg-[#0f1624] p-1">
-        {project.subsystems.map((sub) => (
+        {motorSubsystems.map((sub) => (
           <button
             key={sub.id}
             type="button"

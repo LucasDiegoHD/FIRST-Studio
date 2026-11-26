@@ -40,7 +40,8 @@ import {
   resolveShortcutAction,
   SHORTCUT_GUIDE,
 } from "@/lib/keyboard-shortcuts";
-import { CiprixProjectSchema, type SubsystemConfig } from "@/lib/schema/ciprix-project";
+import type { SubsystemConfig } from "@/lib/schema/ciprix-project";
+import { parseProjectWithMigration } from "@/lib/schema/migrations";
 import type { StudioTab } from "@/lib/validator";
 import { cn } from "@/lib/utils";
 import { CodeTab } from "./code-tab";
@@ -312,7 +313,10 @@ export function StudioShell({
     return () => clearTimeout(timer);
   }, [focusRequest, highlightField]);
 
-  const totalFsmStates = project.subsystems.reduce((sum, s) => sum + s.fsm.states.length, 0);
+  const totalFsmStates = project.subsystems.reduce(
+    (sum, s) => sum + (s.fsm?.states.length ?? 0),
+    0,
+  );
   const totalBindings =
     project.controls.pilotPriority.length + project.controls.copilotOverrides.length;
 
@@ -321,8 +325,8 @@ export function StudioShell({
     if (!file) return;
     try {
       const text = await file.text();
-      const parsed = CiprixProjectSchema.safeParse(JSON.parse(text));
-      if (!parsed.success) throw new Error("Invalid schema");
+      const parsed = parseProjectWithMigration(JSON.parse(text));
+      if (!parsed.ok) throw new Error("Invalid schema");
       loadProject(parsed.data);
       showToast(t("toast.loaded"));
     } catch {
@@ -1001,16 +1005,24 @@ export function StudioShell({
                   <div className="inline-flex flex-wrap items-center justify-center gap-1.5 rounded-lg border border-[#22304a] bg-[#131c2e] px-3 py-1.5 font-mono text-xs">
                     <span className="font-semibold text-white">{pendingDeleteSub.name}</span>
                     <span className="text-slate-500">·</span>
-                    <span className="text-[#93c5fd]">CAN {pendingDeleteSub.motor.canId}</span>
+                    <span className="text-[#93c5fd]">
+                      {pendingDeleteSub.leds
+                        ? pendingDeleteSub.leds.driver === "candle"
+                          ? `CAN ${pendingDeleteSub.leds.canId ?? 30}`
+                          : `PWM ${pendingDeleteSub.leds.pwmPort ?? 0}`
+                        : `CAN ${pendingDeleteSub.motor?.canId ?? 0}`}
+                    </span>
                     <span className="text-slate-500">·</span>
                     <span className="capitalize text-slate-300">{pendingDeleteSub.type}</span>
                     <span className="text-slate-500">·</span>
                     <span className="text-slate-400">
-                      {pendingDeleteSub.motor.vendor === "talonfx"
-                        ? "TalonFX"
-                        : pendingDeleteSub.motor.vendor === "sparkmax"
-                          ? "SparkMax"
-                          : "TalonSRX"}
+                      {pendingDeleteSub.leds
+                        ? pendingDeleteSub.leds.driver
+                        : pendingDeleteSub.motor?.vendor === "talonfx"
+                          ? "TalonFX"
+                          : pendingDeleteSub.motor?.vendor === "sparkmax"
+                            ? "SparkMax"
+                            : "TalonSRX"}
                     </span>
                   </div>
                 )}

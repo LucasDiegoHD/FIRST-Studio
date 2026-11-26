@@ -7,11 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
-import type { SubsystemConfig } from "@/lib/schema/ciprix-project";
+import type { MotorSubsystemConfig } from "@/lib/schema/ciprix-project";
 
-export function BindingsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
+export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }) {
   const { updateSubsystem, t } = useProject();
   const stateNames = subsystem.fsm.states.map((s) => s.name);
+
+  const patchFsm = (fn: (fsm: MotorSubsystemConfig["fsm"]) => MotorSubsystemConfig["fsm"]) => {
+    updateSubsystem(subsystem.id, (prev) =>
+      prev.fsm ? { ...prev, fsm: fn(prev.fsm) } : prev,
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -29,20 +35,17 @@ export function BindingsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
             );
             const fallbackReq = unbound ?? subsystem.fsm.requests[0] ?? "STOP";
             const fallbackState = stateNames[0] ?? subsystem.fsm.initialState;
-            updateSubsystem(subsystem.id, (prev) => ({
-              ...prev,
-              fsm: {
-                ...prev.fsm,
-                bindings: [
-                  ...prev.fsm.bindings,
-                  {
-                    request: fallbackReq,
-                    entryState: fallbackState,
-                    goalState: fallbackState,
-                    intermediateStates: [],
-                  },
-                ],
-              },
+            patchFsm((fsm) => ({
+              ...fsm,
+              bindings: [
+                ...fsm.bindings,
+                {
+                  request: fallbackReq,
+                  entryState: fallbackState,
+                  goalState: fallbackState,
+                  intermediateStates: [],
+                },
+              ],
             }));
           }}
         >
@@ -67,14 +70,11 @@ export function BindingsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
                     value={binding.request}
                     className="font-mono h-8 text-xs"
                     onChange={(e) =>
-                      updateSubsystem(subsystem.id, (prev) => ({
-                        ...prev,
-                        fsm: {
-                          ...prev.fsm,
-                          bindings: prev.fsm.bindings.map((b, i) =>
-                            i === idx ? { ...b, request: e.target.value } : b,
-                          ),
-                        },
+                      patchFsm((fsm) => ({
+                        ...fsm,
+                        bindings: fsm.bindings.map((b, i) =>
+                          i === idx ? { ...b, request: e.target.value } : b,
+                        ),
                       }))
                     }
                   >
@@ -94,14 +94,11 @@ export function BindingsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
                     value={binding.entryState}
                     className="font-mono h-8 text-xs"
                     onChange={(e) =>
-                      updateSubsystem(subsystem.id, (prev) => ({
-                        ...prev,
-                        fsm: {
-                          ...prev.fsm,
-                          bindings: prev.fsm.bindings.map((b, i) =>
-                            i === idx ? { ...b, entryState: e.target.value } : b,
-                          ),
-                        },
+                      patchFsm((fsm) => ({
+                        ...fsm,
+                        bindings: fsm.bindings.map((b, i) =>
+                          i === idx ? { ...b, entryState: e.target.value } : b,
+                        ),
                       }))
                     }
                   >
@@ -121,14 +118,11 @@ export function BindingsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
                     value={binding.goalState}
                     className="font-mono h-8 text-xs"
                     onChange={(e) =>
-                      updateSubsystem(subsystem.id, (prev) => ({
-                        ...prev,
-                        fsm: {
-                          ...prev.fsm,
-                          bindings: prev.fsm.bindings.map((b, i) =>
-                            i === idx ? { ...b, goalState: e.target.value } : b,
-                          ),
-                        },
+                      patchFsm((fsm) => ({
+                        ...fsm,
+                        bindings: fsm.bindings.map((b, i) =>
+                          i === idx ? { ...b, goalState: e.target.value } : b,
+                        ),
                       }))
                     }
                   >
@@ -147,12 +141,9 @@ export function BindingsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
                     className="h-8 w-8"
                     disabled={subsystem.fsm.bindings.length <= 1}
                     onClick={() =>
-                      updateSubsystem(subsystem.id, (prev) => ({
-                        ...prev,
-                        fsm: {
-                          ...prev.fsm,
-                          bindings: prev.fsm.bindings.filter((_, i) => i !== idx),
-                        },
+                      patchFsm((fsm) => ({
+                        ...fsm,
+                        bindings: fsm.bindings.filter((_, i) => i !== idx),
                       }))
                     }
                   >
@@ -174,21 +165,18 @@ export function BindingsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
                     <button
                       type="button"
                       onClick={() =>
-                        updateSubsystem(subsystem.id, (prev) => ({
-                          ...prev,
-                          fsm: {
-                            ...prev.fsm,
-                            bindings: prev.fsm.bindings.map((b, i) =>
-                              i === idx
-                                ? {
-                                    ...b,
-                                    intermediateStates: b.intermediateStates.filter(
-                                      (_, si) => si !== interIdx,
-                                    ),
-                                  }
-                                : b,
-                            ),
-                          },
+                        patchFsm((fsm) => ({
+                          ...fsm,
+                          bindings: fsm.bindings.map((b, i) =>
+                            i === idx
+                              ? {
+                                  ...b,
+                                  intermediateStates: b.intermediateStates.filter(
+                                    (_, si) => si !== interIdx,
+                                  ),
+                                }
+                              : b,
+                          ),
                         }))
                       }
                       className="text-slate-400 hover:text-white cursor-pointer"
@@ -203,19 +191,16 @@ export function BindingsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
                   onChange={(e) => {
                     const chosen = e.target.value;
                     if (!chosen) return;
-                    updateSubsystem(subsystem.id, (prev) => ({
-                      ...prev,
-                      fsm: {
-                        ...prev.fsm,
-                        bindings: prev.fsm.bindings.map((b, i) =>
-                          i === idx && !b.intermediateStates.includes(chosen)
-                            ? {
-                                ...b,
-                                intermediateStates: [...b.intermediateStates, chosen],
-                              }
-                            : b,
-                        ),
-                      },
+                    patchFsm((fsm) => ({
+                      ...fsm,
+                      bindings: fsm.bindings.map((b, i) =>
+                        i === idx && !b.intermediateStates.includes(chosen)
+                          ? {
+                              ...b,
+                              intermediateStates: [...b.intermediateStates, chosen],
+                            }
+                          : b,
+                      ),
                     }));
                   }}
                 >

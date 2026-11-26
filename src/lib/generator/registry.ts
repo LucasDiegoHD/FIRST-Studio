@@ -1,4 +1,5 @@
 import type { SubsystemConfig } from "../schema/ciprix-project";
+import { generateLedSubsystemFiles } from "./leds";
 import { generateSingleMotorSubsystem, type GeneratedFile } from "./subsystems/roller";
 
 export type SubsystemGenerator = (
@@ -16,6 +17,7 @@ export const SUBSYSTEM_GENERATORS: Record<SubsystemConfig["type"], SubsystemGene
   wrist: generateSingleMotorSubsystem,
   indexer: generateSingleMotorSubsystem,
   hood: generateSingleMotorSubsystem,
+  leds: generateLedSubsystemFiles,
   generic: generateSingleMotorSubsystem,
 };
 

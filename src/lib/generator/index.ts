@@ -1,8 +1,37 @@
 import type { CiprixProject } from "../schema/ciprix-project";
 import { generateCoreRobotFiles } from "./core/robot-files";
 import { JAVA_FILE_HEADER } from "./java-utils";
+import { generateLedArbiterFile } from "./leds";
 import { generateSubsystemFiles } from "./registry";
+import { generateRumbleArbiterFile } from "./rumble";
 import type { GeneratedFile } from "./subsystems/roller";
+
+export function projectUsesLedArbiter(project: CiprixProject): boolean {
+  if (project.subsystems.some((s) => s.type === "leds")) return true;
+  if (
+    project.subsystems.some((s) =>
+      s.fsm?.states.some((st) => st.actions.some((a) => a.kind === "leds")),
+    )
+  ) {
+    return true;
+  }
+  return Object.values(project.superstructure.stateEffects ?? {}).some((list) =>
+    list.some((e) => e.kind === "leds"),
+  );
+}
+
+export function projectUsesRumbleArbiter(project: CiprixProject): boolean {
+  if (
+    project.subsystems.some((s) =>
+      s.fsm?.states.some((st) => st.actions.some((a) => a.kind === "rumble")),
+    )
+  ) {
+    return true;
+  }
+  return Object.values(project.superstructure.stateEffects ?? {}).some((list) =>
+    list.some((e) => e.kind === "rumble"),
+  );
+}
 
 export function getRequiredVendordeps(project: CiprixProject): string[] {
   const deps = new Set<string>([
@@ -12,9 +41,14 @@ export function getRequiredVendordeps(project: CiprixProject): string[] {
   ]);
 
   for (const sub of project.subsystems) {
-    if (sub.motor.vendor === "talonfx") deps.add("Phoenix6-26.3.0.json");
-    if (sub.motor.vendor === "sparkmax") deps.add("REVLib.json");
-    if (sub.motor.vendor === "talonsrx") deps.add("Phoenix5-5.36.0.json");
+    if (sub.motor?.vendor === "talonfx") deps.add("Phoenix6-26.3.0.json");
+    if (sub.motor?.vendor === "sparkmax") deps.add("REVLib.json");
+    if (sub.motor?.vendor === "talonsrx") deps.add("Phoenix5-5.36.0.json");
+    if (sub.leds?.driver === "candle") deps.add("Phoenix6-26.3.0.json");
+    for (const sensor of sub.sensors ?? []) {
+      if (sensor.type === "canrange") deps.add("Phoenix6-26.3.0.json");
+      if (sensor.type === "lasercan") deps.add("libgrapplefrc2026.json");
+    }
   }
 
   return Array.from(deps).sort();
@@ -22,6 +56,13 @@ export function getRequiredVendordeps(project: CiprixProject): string[] {
 
 export function generateProjectFiles(project: CiprixProject): GeneratedFile[] {
   const files: GeneratedFile[] = [...generateCoreRobotFiles(project)];
+
+  if (projectUsesLedArbiter(project)) {
+    files.push(generateLedArbiterFile(project.project.packageName));
+  }
+  if (projectUsesRumbleArbiter(project)) {
+    files.push(generateRumbleArbiterFile(project.project.packageName));
+  }
 
   for (const subsystem of project.subsystems) {
     files.push(...generateSubsystemFiles(subsystem, project.project.packageName));

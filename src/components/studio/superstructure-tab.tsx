@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Lightbulb, Plus, ScrollText, Trash2, Vibrate } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,19 +9,51 @@ import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
 import { toUpperSnake } from "@/lib/generator/java-utils";
 import { generateSuperStructureMermaid } from "@/lib/generator/mermaid";
-import type { SuperTransition } from "@/lib/schema/ciprix-project";
+import {
+  isLedSubsystem,
+  isMotorSubsystem,
+  type ActionTiming,
+  type LedPattern,
+  type RumblePattern,
+  type SuperStateEffect,
+  type SuperTransition,
+} from "@/lib/schema/ciprix-project";
+import { RumblePreview } from "./fsm/rumble-preview";
 
 export function SuperStructureTab() {
-  const { project, updateProject, t } = useProject();
+  const { project, updateProject, locale, t } = useProject();
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [effectState, setEffectState] = useState(
+    project.superstructure.states[0] ?? "IDLE",
+  );
   const sup = project.superstructure;
+  const motorSubsystems = project.subsystems.filter(isMotorSubsystem);
+  const ledSubsystems = project.subsystems.filter(isLedSubsystem);
+  const sensorOwners = project.subsystems.filter((s) => (s.sensors?.length ?? 0) > 0);
+  const activeEffectState = sup.states.includes(effectState)
+    ? effectState
+    : (sup.states[0] ?? "IDLE");
+  const currentEffects = sup.stateEffects?.[activeEffectState] ?? [];
+
+  const updateEffectsForState = (stateName: string, nextList: SuperStateEffect[]) => {
+    updateProject((prev) => ({
+      ...prev,
+      superstructure: {
+        ...prev.superstructure,
+        stateEffects: {
+          ...(prev.superstructure.stateEffects ?? {}),
+          [stateName]: nextList,
+        },
+      },
+    }));
+  };
 
   const addRobotPair = () => {
     const idx = sup.states.length + 1;
     const req = `CUSTOM_REQ_${idx}`;
     const st = `CUSTOM_STATE_${idx}`;
     const defaultRow: Record<string, string> = {};
-    for (const sub of project.subsystems) {
+    for (const sub of motorSubsystems) {
       defaultRow[sub.id] = sub.fsm.initialRequest;
     }
 
@@ -60,7 +92,7 @@ export function SuperStructureTab() {
               <thead className="border-b border-[#22304a] bg-[#0f1624] text-slate-300">
                 <tr>
                   <th className="px-3.5 py-2.5 font-medium">RobotState</th>
-                  {project.subsystems.map((sub) => (
+                  {motorSubsystems.map((sub) => (
                     <th key={sub.id} className="px-3.5 py-2.5 font-medium">
                       {sub.name}Request
                     </th>
@@ -103,7 +135,7 @@ export function SuperStructureTab() {
                         }}
                       />
                     </td>
-                    {project.subsystems.map((sub) => {
+                    {motorSubsystems.map((sub) => {
                       const currentReq =
                         sup.stateActions[stateName]?.[sub.id] ?? sub.fsm.initialRequest;
                       return (
@@ -332,9 +364,62 @@ export function SuperStructureTab() {
                       </Button>
                     </div>
                   </div>
+                  {(tr.condition === "sensorTrue" || tr.condition === "sensorFalse") && (
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#22304a]/70">
+                      <Select
+                        value={tr.sensorOwnerId ?? sensorOwners[0]?.id ?? ""}
+                        className="h-7 font-mono text-[11px]"
+                        onChange={(e) => {
+                          const owner = sensorOwners.find((s) => s.id === e.target.value);
+                          updateProject((prev) => ({
+                            ...prev,
+                            superstructure: {
+                              ...prev.superstructure,
+                              transitions: (prev.superstructure.transitions ?? []).map((item, i) =>
+                                i === idx
+                                  ? {
+                                      ...item,
+                                      sensorOwnerId: e.target.value,
+                                      sensorId: owner?.sensors?.[0]?.id,
+                                    }
+                                  : item,
+                              ),
+                            },
+                          }));
+                        }}
+                      >
+                        {sensorOwners.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </Select>
+                      <Select
+                        value={tr.sensorId ?? ""}
+                        className="h-7 font-mono text-[11px]"
+                        onChange={(e) =>
+                          updateProject((prev) => ({
+                            ...prev,
+                            superstructure: {
+                              ...prev.superstructure,
+                              transitions: (prev.superstructure.transitions ?? []).map((item, i) =>
+                                i === idx ? { ...item, sensorId: e.target.value } : item,
+                              ),
+                            },
+                          }))
+                        }
+                      >
+                        {(sensorOwners.find((s) => s.id === tr.sensorOwnerId)?.sensors ?? []).map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
                   {tr.condition === "subsystemAtGoal" && (
                     <div className="flex flex-wrap gap-2 pt-1 border-t border-[#22304a]/70">
-                      {project.subsystems.map((sub) => {
+                      {motorSubsystems.map((sub) => {
                         const checked = (tr.subsystemIds ?? []).includes(sub.id);
                         return (
                           <label
@@ -363,6 +448,364 @@ export function SuperStructureTab() {
                           </label>
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-[#22304a] pt-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+                Efeitos Globais por RobotState (LEDs · Log · Rumble)
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Conectados no RobotContainer via <code className="font-mono text-[#93c5fd]">superStructure.inState(...)</code> sem acoplar subsistemas.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Select
+                value={activeEffectState}
+                className="h-8 w-40 font-mono text-xs"
+                onChange={(e) => setEffectState(e.target.value)}
+              >
+                {sup.states.map((st) => (
+                  <option key={st} value={st}>
+                    {st}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  updateEffectsForState(activeEffectState, [
+                    ...currentEffects,
+                    {
+                      id: `se-led-${Date.now().toString(36)}`,
+                      kind: "leds",
+                      when: "enter",
+                      ledSubsystemId: ledSubsystems[0]?.id ?? "leds",
+                      pattern: "solid",
+                      colorHex: "#3b82f6",
+                      periodSec: 0.5,
+                      priority: 40,
+                    },
+                  ])
+                }
+              >
+                <Lightbulb className="h-3.5 w-3.5 text-lime-300" />
+                + LED
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  updateEffectsForState(activeEffectState, [
+                    ...currentEffects,
+                    {
+                      id: `se-log-${Date.now().toString(36)}`,
+                      kind: "log",
+                      when: "enter",
+                      key: `${activeEffectState}Event`,
+                      level: "info",
+                      message: `RobotState -> ${activeEffectState}`,
+                      alertOnDriverStation: false,
+                    },
+                  ])
+                }
+              >
+                <ScrollText className="h-3.5 w-3.5 text-amber-300" />
+                + Log
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  updateEffectsForState(activeEffectState, [
+                    ...currentEffects,
+                    {
+                      id: `se-rumble-${Date.now().toString(36)}`,
+                      kind: "rumble",
+                      when: "enter",
+                      controller: "pilot",
+                      pattern: "lightConfirm",
+                      intensity: 0.6,
+                      seconds: 0.3,
+                      pulseCount: 2,
+                      priority: 40,
+                    },
+                  ])
+                }
+              >
+                <Vibrate className="h-3.5 w-3.5 text-cyan-300" />
+                + Rumble
+              </Button>
+            </div>
+          </div>
+
+          {currentEffects.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-[#22304a] bg-[#0b0f17] px-3 py-2 text-xs text-slate-400">
+              Nenhum efeito global em <span className="font-mono text-slate-200">{activeEffectState}</span>.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {currentEffects.map((eff, effIdx) => (
+                <div
+                  key={eff.id}
+                  className="space-y-2 rounded-lg border border-[#22304a] bg-[#0f1624] p-2.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] uppercase text-slate-200">
+                      {eff.kind}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <Select
+                        value={eff.when}
+                        className="h-7 w-28 font-mono text-[11px]"
+                        onChange={(e) =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.map((item, i) =>
+                              i === effIdx ? { ...item, when: e.target.value as ActionTiming } : item,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="enter">onEnter</option>
+                        <option value="periodic">onUpdate</option>
+                        <option value="exit">onExit</option>
+                      </Select>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        onClick={() =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.filter((_, i) => i !== effIdx),
+                          )
+                        }
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                      </Button>
+                    </div>
+                  </div>
+                  {eff.kind === "leds" && (
+                    <div className="grid grid-cols-4 gap-2">
+                      <Select
+                        value={eff.ledSubsystemId}
+                        className="h-8 font-mono text-xs"
+                        onChange={(e) =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.map((item, i) =>
+                              i === effIdx && item.kind === "leds"
+                                ? { ...item, ledSubsystemId: e.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        {ledSubsystems.length === 0 ? (
+                          <option value={eff.ledSubsystemId}>{eff.ledSubsystemId}</option>
+                        ) : (
+                          ledSubsystems.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.name}
+                            </option>
+                          ))
+                        )}
+                      </Select>
+                      <Select
+                        value={eff.pattern}
+                        className="h-8 font-mono text-xs"
+                        onChange={(e) =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.map((item, i) =>
+                              i === effIdx && item.kind === "leds"
+                                ? { ...item, pattern: e.target.value as LedPattern }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="solid">solid</option>
+                        <option value="blink">blink</option>
+                        <option value="breathe">breathe</option>
+                        <option value="rainbow">rainbow</option>
+                        <option value="progressBar">progressBar</option>
+                        <option value="alliance">alliance</option>
+                      </Select>
+                      <Input
+                        value={eff.colorHex}
+                        className="h-8 font-mono text-xs"
+                        onChange={(e) =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.map((item, i) =>
+                              i === effIdx && item.kind === "leds"
+                                ? { ...item, colorHex: e.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={eff.priority}
+                        className="h-8 font-mono text-xs"
+                        onChange={(e) =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.map((item, i) =>
+                              i === effIdx && item.kind === "leds"
+                                ? { ...item, priority: Math.min(100, Math.max(0, Number.parseInt(e.target.value || "40", 10) || 0)) }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+                  {eff.kind === "log" && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input
+                        value={eff.key}
+                        className="h-8 font-mono text-xs"
+                        onChange={(e) =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.map((item, i) =>
+                              i === effIdx && item.kind === "log" ? { ...item, key: e.target.value } : item,
+                            ),
+                          )
+                        }
+                      />
+                      <Select
+                        value={eff.level}
+                        className="h-8 font-mono text-xs"
+                        onChange={(e) =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.map((item, i) =>
+                              i === effIdx && item.kind === "log"
+                                ? { ...item, level: e.target.value as "info" | "warning" | "error" }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="info">INFO</option>
+                        <option value="warning">WARNING</option>
+                        <option value="error">ERROR</option>
+                      </Select>
+                      <Input
+                        value={eff.message}
+                        className="h-8 text-xs"
+                        onChange={(e) =>
+                          updateEffectsForState(
+                            activeEffectState,
+                            currentEffects.map((item, i) =>
+                              i === effIdx && item.kind === "log" ? { ...item, message: e.target.value } : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+                  {eff.kind === "rumble" && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-4 gap-2">
+                        <Select
+                          value={eff.controller}
+                          className="h-8 font-mono text-xs"
+                          onChange={(e) =>
+                            updateEffectsForState(
+                              activeEffectState,
+                              currentEffects.map((item, i) =>
+                                i === effIdx && item.kind === "rumble"
+                                  ? { ...item, controller: e.target.value as "pilot" | "copilot" | "both" }
+                                  : item,
+                              ),
+                            )
+                          }
+                        >
+                          <option value="pilot">Piloto</option>
+                          <option value="copilot">Copiloto</option>
+                          <option value="both">Ambos</option>
+                        </Select>
+                        <Select
+                          value={eff.pattern}
+                          className="h-8 font-mono text-xs"
+                          onChange={(e) =>
+                            updateEffectsForState(
+                              activeEffectState,
+                              currentEffects.map((item, i) =>
+                                i === effIdx && item.kind === "rumble"
+                                  ? { ...item, pattern: e.target.value as RumblePattern }
+                                  : item,
+                              ),
+                            )
+                          }
+                        >
+                          <option value="continuous">continuous</option>
+                          <option value="pulses">pulses</option>
+                          <option value="zigZag">zigZag</option>
+                          <option value="rampUp">rampUp</option>
+                          <option value="lightConfirm">lightConfirm</option>
+                          <option value="heavyWarning">heavyWarning</option>
+                        </Select>
+                        <Input
+                          type="number"
+                          step={0.05}
+                          min={0.05}
+                          max={5}
+                          value={eff.seconds}
+                          className="h-8 font-mono text-xs"
+                          onChange={(e) =>
+                            updateEffectsForState(
+                              activeEffectState,
+                              currentEffects.map((item, i) =>
+                                i === effIdx && item.kind === "rumble"
+                                  ? { ...item, seconds: Math.min(5, Math.max(0.05, Number.parseFloat(e.target.value || "0.3") || 0.3)) }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={eff.priority}
+                          className="h-8 font-mono text-xs"
+                          onChange={(e) =>
+                            updateEffectsForState(
+                              activeEffectState,
+                              currentEffects.map((item, i) =>
+                                i === effIdx && item.kind === "rumble"
+                                  ? { ...item, priority: Math.min(100, Math.max(0, Number.parseInt(e.target.value || "40", 10) || 0)) }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                      <RumblePreview
+                        pattern={eff.pattern}
+                        intensity={eff.intensity}
+                        lightIntensity={eff.lightIntensity}
+                        seconds={eff.seconds}
+                        pulseCount={eff.pulseCount}
+                        locale={locale}
+                      />
                     </div>
                   )}
                 </div>

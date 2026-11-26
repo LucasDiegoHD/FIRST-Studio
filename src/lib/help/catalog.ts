@@ -678,19 +678,31 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "INTAKING",
     },
   },
-  "subsystems.*.fsm.states.*.onEnter.type": {
+  "subsystems.*.fsm.states.*.actions.*.type": {
     pt: {
-      what: "Tipo de comando de motor executado ao entrar no estado.",
+      what: "Tipo de comando de motor executado nesta ação.",
       why: "Escolhe entre parar, usar potência aberta, RPM ou posição/SmartMotion.",
       typical: "percentOutput / velocityRpm",
     },
     en: {
-      what: "Motor control mode executed on state entry.",
+      what: "Motor control mode executed by this action.",
       why: "Chooses between stop, open-loop percent, RPM velocity, or position/SmartMotion.",
       typical: "percentOutput / velocityRpm",
     },
   },
-  "subsystems.*.fsm.states.*.onEnter.constantName": {
+  "subsystems.*.fsm.states.*.actions.*.when": {
+    pt: {
+      what: "Momento em que a ação executa (Ao entrar, Periódico 20ms ou Ao sair).",
+      why: "Permite combinar múltiplos efeitos sem precisar criar estados extras.",
+      typical: "enter / exit",
+    },
+    en: {
+      what: "Timing when the action runs (On enter, Periodic 20ms, or On exit).",
+      why: "Lets you compose multiple effects cleanly inside one state.",
+      typical: "enter / exit",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.constantName": {
     pt: {
       what: "Nome da constante Java criada em <Subsystem>Constants.",
       why: "Mantém os setpoints nomeados e ajustáveis em um só lugar.",
@@ -702,7 +714,7 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "INTAKE_OUTPUT",
     },
   },
-  "subsystems.*.fsm.states.*.onEnter.value": {
+  "subsystems.*.fsm.states.*.actions.*.value": {
     pt: {
       what: "Valor numérico do setpoint enviado ao motor nesse estado.",
       why: "Define potência (-1..1), RPM, graus ou rotações conforme o tipo da ação.",
@@ -712,6 +724,330 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       what: "Numeric setpoint sent to the motor in this state.",
       why: "Sets duty cycle (-1..1), RPM, degrees, or rotations depending on action type.",
       typical: "0.6 (pct) · 4500 (RPM)",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.ledSubsystemId": {
+    pt: {
+      what: "Subsistema de LEDs alvo desta ação.",
+      why: "Conectado pelo RobotContainer via trigger inState(), mantendo os subsistemas desacoplados.",
+      typical: "leds",
+    },
+    en: {
+      what: "Target LED subsystem for this action.",
+      why: "Wired inside RobotContainer via inState(), keeping subsystems decoupled.",
+      typical: "leds",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.pattern": {
+    pt: {
+      what: "Padrão visual ou háptico aplicado.",
+      why: "Escolhe entre animações de LED ou ondas de vibração no controle Xbox.",
+      typical: "blink / pulses",
+    },
+    en: {
+      what: "Visual LED pattern or Xbox haptic waveform.",
+      why: "Selects an LED animation or VibrateXboxController waveform.",
+      typical: "blink / pulses",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.colorHex": {
+    pt: {
+      what: "Cor principal em hexadecimal RGB.",
+      why: "Define a cor visível na fita de LED durante esse estado.",
+      typical: "#22c55e",
+    },
+    en: {
+      what: "Primary RGB hex color.",
+      why: "Sets the LED strip color active in this state.",
+      typical: "#22c55e",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.periodSec": {
+    pt: {
+      what: "Período completo do efeito em segundos.",
+      why: "Controla a velocidade de blink, breathe, arco-íris ou barra.",
+      typical: "0.5 s",
+    },
+    en: {
+      what: "Full cycle period of the LED animation in seconds.",
+      why: "Controls blink, breathe, rainbow, or progress speed.",
+      typical: "0.5 s",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.priority": {
+    pt: {
+      what: "Prioridade de arbitragem (0 a 100).",
+      why: "Quando vários estados tentam usar o mesmo LED ou controle, vence a maior prioridade.",
+      typical: "80 (alerta) · 20 (normal)",
+    },
+    en: {
+      what: "Arbitration priority (0 to 100).",
+      why: "Highest priority wins when multiple states request the same LED strip or controller.",
+      typical: "80 (alert) · 20 (normal)",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.key": {
+    pt: {
+      what: "Chave de telemetria AdvantageKit (Logger.recordOutput).",
+      why: "Aparece organizada em <Subsystem>/<Chave> no AdvantageScope.",
+      typical: "JamStatus",
+    },
+    en: {
+      what: "AdvantageKit telemetry key for Logger.recordOutput.",
+      why: "Logged under <Subsystem>/<Key> in AdvantageScope.",
+      typical: "JamStatus",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.level": {
+    pt: {
+      what: "Severidade do log e do PersistentAlert (INFO, WARNING, ERROR).",
+      why: "Destaca avisos e falhas críticas na Driver Station.",
+      typical: "warning / error",
+    },
+    en: {
+      what: "Severity for telemetry log and PersistentAlert.",
+      why: "Highlights warnings and critical faults on Driver Station.",
+      typical: "warning / error",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.message": {
+    pt: {
+      what: "Texto registrado no log e exibido no alerta da Driver Station.",
+      why: "Dá contexto imediato durante testes no pit ou na partida.",
+      typical: "Game piece jammed!",
+    },
+    en: {
+      what: "Text message logged and shown in Driver Station alerts.",
+      why: "Provides immediate context during pit testing or matches.",
+      typical: "Game piece jammed!",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.controller": {
+    pt: {
+      what: "Qual controle Xbox deve vibrar (Piloto, Copiloto ou Ambos).",
+      why: "Evita distrair quem não precisa daquele feedback tátil.",
+      typical: "pilot / both",
+    },
+    en: {
+      what: "Which Xbox controller receives haptic rumble.",
+      why: "Targets only the driver who needs that feedback.",
+      typical: "pilot / both",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.intensity": {
+    pt: {
+      what: "Força de vibração de 0.0 a 1.0.",
+      why: "Define o motor pesado/amplitude do VibrateXboxController.",
+      typical: "0.8",
+    },
+    en: {
+      what: "Vibration intensity from 0.0 to 1.0.",
+      why: "Sets amplitude for VibrateXboxController.",
+      typical: "0.8",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.seconds": {
+    pt: {
+      what: "Duração do padrão de vibração em segundos.",
+      why: "Deve ser curta e coerente com a duração esperada do estado.",
+      typical: "0.4 s",
+    },
+    en: {
+      what: "Rumble duration in seconds.",
+      why: "Keep short and aligned with expected state duration.",
+      typical: "0.4 s",
+    },
+  },
+  "subsystems.*.fsm.states.*.actions.*.pulseCount": {
+    pt: {
+      what: "Número de pulsos no padrão Pulses.",
+      why: "Ex.: 2 pulsos curtos confirmam captura de peça.",
+      typical: "2",
+    },
+    en: {
+      what: "Number of pulses for the Pulses pattern.",
+      why: "E.g. 2 crisp pulses confirm game-piece acquisition.",
+      typical: "2",
+    },
+  },
+  "subsystems.*.fsm.states.*.regularTimeSec.min": {
+    pt: {
+      what: "Tempo mínimo esperado no estado (Ciprix regularTime).",
+      why: "Ajuda a detectar transições prematuras anormais.",
+      typical: "0.1 s",
+    },
+    en: {
+      what: "Expected minimum dwell time (Ciprix regularTime).",
+      why: "Detects abnormally early state exits.",
+      typical: "0.1 s",
+    },
+  },
+  "subsystems.*.fsm.states.*.regularTimeSec.max": {
+    pt: {
+      what: "Tempo máximo esperado no estado antes de alerta (Ciprix regularTime).",
+      why: "Útil para monitorar estados que não deveriam demorar muito.",
+      typical: "2.0 s",
+    },
+    en: {
+      what: "Expected maximum dwell time before warning (Ciprix regularTime).",
+      why: "Monitors states that should finish quickly.",
+      typical: "2.0 s",
+    },
+  },
+  "subsystems.*.leds.driver": {
+    pt: {
+      what: "Driver físico da fita de LEDs: AddressableLED (PWM roboRIO) ou CTRE CANdle (CAN).",
+      why: "Define o código Java e se o Phoenix 6 é incluído para LEDs.",
+      typical: "addressableLed / candle",
+    },
+    en: {
+      what: "Physical LED controller: WPILib AddressableLED (PWM) or CTRE CANdle (CAN).",
+      why: "Controls generated Java driver and Phoenix 6 dependency.",
+      typical: "addressableLed / candle",
+    },
+  },
+  "subsystems.*.leds.pwmPort": {
+    pt: {
+      what: "Porta PWM da roboRIO (0 a 9) ligada ao fio de sinal da fita.",
+      why: "Cada barra de LEDs PWM precisa de uma porta exclusiva.",
+      typical: "0",
+    },
+    en: {
+      what: "roboRIO PWM port (0 to 9) wired to LED data line.",
+      why: "Each PWM LED strip requires a unique PWM port.",
+      typical: "0",
+    },
+  },
+  "subsystems.*.leds.ledCount": {
+    pt: {
+      what: "Quantidade total de LEDs endereçáveis.",
+      why: "Dimensiona o AddressableLEDBuffer ou o intervalo do CANdle.",
+      typical: "30 a 120",
+    },
+    en: {
+      what: "Total number of addressable LEDs.",
+      why: "Sizes AddressableLEDBuffer or CANdle range.",
+      typical: "30 to 120",
+    },
+  },
+  "subsystems.*.leds.canId": {
+    pt: {
+      what: "ID CAN do módulo CTRE CANdle.",
+      why: "Deve ser único no barramento CAN selecionado.",
+      typical: "30",
+    },
+    en: {
+      what: "CAN ID of the CTRE CANdle.",
+      why: "Must be unique on its CAN bus.",
+      typical: "30",
+    },
+  },
+  "subsystems.*.leds.canBus": {
+    pt: {
+      what: "Nome do barramento CAN do CANdle (vazio = rio).",
+      why: "Permite usar o barramento CANivore se o CANdle estiver nele.",
+      typical: "rio ou canivore",
+    },
+    en: {
+      what: "CAN bus name for CANdle (empty = rio).",
+      why: "Allows placing CANdle on a CANivore loop.",
+      typical: "rio or canivore",
+    },
+  },
+  "subsystems.*.sensors.*.name": {
+    pt: {
+      what: "Nome do sensor de presença usado no código Java (camelCase).",
+      why: "Gera o campo inputs.<nome> e o método is<Nome>Triggered().",
+      typical: "hasPiece",
+    },
+    en: {
+      what: "Presence sensor name used in Java getters/inputs.",
+      why: "Generates inputs.<name> and is<Name>Triggered().",
+      typical: "hasPiece",
+    },
+  },
+  "subsystems.*.sensors.*.type": {
+    pt: {
+      what: "Tipo do sensor: Beam Break DIO, CTRE CANrange ou LaserCAN.",
+      why: "LaserCAN adiciona automaticamente a vendordep libgrapplefrc2026.json.",
+      typical: "dio / canrange / lasercan",
+    },
+    en: {
+      what: "Sensor hardware type: DIO Beam Break, CTRE CANrange, or LaserCAN.",
+      why: "LaserCAN automatically includes libgrapplefrc2026.json vendordep.",
+      typical: "dio / canrange / lasercan",
+    },
+  },
+  "subsystems.*.sensors.*.channel": {
+    pt: {
+      what: "Porta DIO da roboRIO (0 a 25).",
+      why: "Conecta sensores digitais como beam break ou limit switch.",
+      typical: "0",
+    },
+    en: {
+      what: "roboRIO DIO channel (0 to 25).",
+      why: "Connects digital beam breaks or limit switches.",
+      typical: "0",
+    },
+  },
+  "subsystems.*.sensors.*.inverted": {
+    pt: {
+      what: "Inverte o booleano lido do canal DIO.",
+      why: "Sensores NPN/active-low ficam false quando detectam peça.",
+      typical: "true (NPN)",
+    },
+    en: {
+      what: "Inverts boolean reading from the DIO channel.",
+      why: "Active-low/NPN beam breaks read false when blocked.",
+      typical: "true (NPN)",
+    },
+  },
+  "subsystems.*.sensors.*.canId": {
+    pt: {
+      what: "ID CAN do sensor CANrange ou LaserCAN.",
+      why: "Não pode colidir com motores ou outros dispositivos CAN.",
+      typical: "20",
+    },
+    en: {
+      what: "CAN ID of the CANrange or LaserCAN.",
+      why: "Must not collide with motors or other CAN devices.",
+      typical: "20",
+    },
+  },
+  "subsystems.*.sensors.*.canBus": {
+    pt: {
+      what: "Barramento CAN do CANrange (vazio = rio).",
+      why: "Use o mesmo nome configurado no Tuner X.",
+      typical: "canivore",
+    },
+    en: {
+      what: "CAN bus name for CANrange (empty = rio).",
+      why: "Match the bus configured in Phoenix Tuner X.",
+      typical: "canivore",
+    },
+  },
+  "subsystems.*.sensors.*.thresholdMeters": {
+    pt: {
+      what: "Distância máxima em metros para considerar peça presente no CANrange.",
+      why: "Abaixo ou igual a esse valor, o sensor retorna true.",
+      typical: "0.20 m",
+    },
+    en: {
+      what: "Max distance in meters for CANrange detection.",
+      why: "Readings <= threshold return true.",
+      typical: "0.20 m",
+    },
+  },
+  "subsystems.*.sensors.*.thresholdMm": {
+    pt: {
+      what: "Distância máxima em milímetros para o LaserCAN detectar peça.",
+      why: "Apenas medições válidas <= limiar ativam o gatilho.",
+      typical: "150 mm",
+    },
+    en: {
+      what: "Max distance in millimeters for LaserCAN detection.",
+      why: "Valid measurements <= threshold trigger true.",
+      typical: "150 mm",
     },
   },
   "subsystems.*.fsm.states.*.timeoutAfterSec": {
@@ -824,6 +1160,54 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "pilot-pit-card.png",
     },
   },
+  "superstructure.stateEffects.*.*": {
+    pt: {
+      what: "Efeitos globais (LEDs, Log/Alerta, Rumble) disparados quando a SuperStructure entra ou sai deste RobotState.",
+      why: "Permite coordenar feedback visual e tátil do robô inteiro sem acoplar subsistemas.",
+      typical: "LED verde + rumble leve",
+    },
+    en: {
+      what: "Global effects (LEDs, Log/Alert, Rumble) triggered when SuperStructure enters or exits this RobotState.",
+      why: "Coordinates robot-wide visual/haptic feedback without coupling subsystems.",
+      typical: "Green LED + light confirm",
+    },
+  },
+  "controls.pilotPriority.*.source": {
+    pt: {
+      what: "Origem do gatilho na fila de prioridade do Piloto: Botão Xbox ou Sensor.",
+      why: "Permite automações reativas quando um sensor detecta peça ou limite.",
+      typical: "button / sensor",
+    },
+    en: {
+      what: "Trigger source in Pilot priority list: Xbox Button or Presence Sensor.",
+      why: "Enables reactive automation when a sensor detects a game piece.",
+      typical: "button / sensor",
+    },
+  },
+  "controls.pilotPriority.*.triggerThreshold": {
+    pt: {
+      what: "Porcentagem mínima (0.05 a 1.0) para acionar LT ou RT como botão.",
+      why: "Passa um double para leftTrigger(double) / rightTrigger(double) na WPILib.",
+      typical: "0.25 (25%) ou 0.50 (50%)",
+    },
+    en: {
+      what: "Minimum press percentage (0.05 to 1.0) to activate LT or RT.",
+      why: "Passes a double threshold to WPILib leftTrigger(double) / rightTrigger(double).",
+      typical: "0.25 (25%) or 0.50 (50%)",
+    },
+  },
+  "controls.copilotOverrides.*.triggerThreshold": {
+    pt: {
+      what: "Porcentagem mínima (0.05 a 1.0) para acionar LT ou RT no controle do Copiloto.",
+      why: "Ajusta sensibilidade do gatilho em copilot.leftTrigger(double) / rightTrigger(double).",
+      typical: "0.50 (50%)",
+    },
+    en: {
+      what: "Minimum press percentage (0.05 to 1.0) to trigger Copilot LT or RT.",
+      why: "Tunes trigger sensitivity passed to copilot.leftTrigger(double) / rightTrigger(double).",
+      typical: "0.50 (50%)",
+    },
+  },
 };
 
 export const REGISTERED_FIELD_PATHS = Object.keys(HELP_CATALOG);
@@ -835,6 +1219,9 @@ export function normalizeFieldPath(path: string): string {
   if (parts[0] === "subsystems" && parts.length >= 3) {
     if (parts[2] === "fsm") {
       if (parts[3] === "states" && parts.length >= 6) {
+        if (parts[5] === "actions" && parts.length >= 8) {
+          return `subsystems.*.fsm.states.*.actions.*.${parts.slice(7).join(".")}`;
+        }
         return `subsystems.*.fsm.states.*.${parts.slice(5).join(".")}`;
       }
       if (parts[3] === "requests" && parts.length >= 5) {
@@ -844,7 +1231,17 @@ export function normalizeFieldPath(path: string): string {
         return "subsystems.*.fsm.bindings.*";
       }
     }
+    if (parts[2] === "sensors" && parts.length >= 5) {
+      return `subsystems.*.sensors.*.${parts.slice(4).join(".")}`;
+    }
     return `subsystems.*.${parts.slice(2).join(".")}`;
+  }
+
+  if (parts[0] === "superstructure" && parts[1] === "stateEffects" && parts.length >= 4) {
+    const tail = parts.slice(4).join(".");
+    const mapped = `subsystems.*.fsm.states.*.actions.*.${tail}`;
+    if (tail && HELP_CATALOG[mapped]) return mapped;
+    return "superstructure.stateEffects.*.*";
   }
 
   if (parts[0] === "controls" && parts.length >= 4) {

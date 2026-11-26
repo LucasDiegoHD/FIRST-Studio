@@ -1,4 +1,13 @@
-import type { CiprixProject } from "../../schema/ciprix-project";
+import {
+  isLedSubsystem,
+  isMotorSubsystem,
+  type CiprixProject,
+  type LedPattern,
+  type RumblePattern,
+  type StateAction,
+  type SuperStateEffect,
+} from "../../schema/ciprix-project";
+import { projectUsesLedArbiter, projectUsesRumbleArbiter } from "../index";
 import {
   formatDouble,
   requestToCommandMethod,
@@ -7,7 +16,72 @@ import {
   toPascalCase,
   xboxButtonToJavaMethod,
 } from "../java-utils";
+import { getSensorGetterName } from "../sensors";
 import { getVendorIoClassName, type GeneratedFile } from "../subsystems/roller";
+
+function escapeJavaString(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, "\\n");
+}
+
+function hexToJavaColor(hex?: string): string {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return "Color.kBlack";
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `new Color(${r}, ${g}, ${b})`;
+}
+
+function ledPatternToJavaEnum(pattern: LedPattern): string {
+  switch (pattern) {
+    case "solid":
+      return "LedPattern.SOLID";
+    case "blink":
+      return "LedPattern.BLINK";
+    case "breathe":
+      return "LedPattern.BREATHE";
+    case "rainbow":
+      return "LedPattern.RAINBOW";
+    case "progressBar":
+      return "LedPattern.PROGRESS_BAR";
+    case "alliance":
+      return "LedPattern.ALLIANCE";
+  }
+}
+
+function renderRumbleSupplierExpr(
+  targetVar: string,
+  action: Extract<StateAction, { kind: "rumble" }> | Extract<SuperStateEffect, { kind: "rumble" }>,
+): string {
+  const pattern: RumblePattern = action.pattern;
+  switch (pattern) {
+    case "continuous":
+      return `() -> ${targetVar}.continuous(${formatDouble(action.intensity)}, ${formatDouble(action.lightIntensity ?? action.intensity)}, ${formatDouble(action.seconds)}, false)`;
+    case "pulses":
+      return `() -> ${targetVar}.pulses(${formatDouble(action.intensity)}, ${action.pulseCount ?? 3}, ${formatDouble(action.seconds)})`;
+    case "zigZag":
+      return `() -> ${targetVar}.zigZag(${formatDouble(action.intensity)}, ${formatDouble(action.seconds)})`;
+    case "rampUp":
+      return `() -> ${targetVar}.rampUp(${formatDouble(action.intensity)}, ${formatDouble(action.seconds)})`;
+    case "lightConfirm":
+      return `() -> ${targetVar}.lightConfirm()`;
+    case "heavyWarning":
+      return `() -> ${targetVar}.heavyWarning()`;
+  }
+}
+
+function controllerToJavaEnum(controller: "pilot" | "copilot" | "both"): string {
+  if (controller === "pilot") return "TargetController.PILOT";
+  if (controller === "copilot") return "TargetController.COPILOT";
+  return "TargetController.BOTH";
+}
+
+function renderLambdaBody(statements: string[], emptyFallback = "() -> {}"): string {
+  if (statements.length === 0) return emptyFallback;
+  if (statements.length === 1) {
+    return `() -> ${statements[0].replace(/;$/, "")}`;
+  }
+  return `() -> {\n${statements.map((s) => `              ${s}`).join("\n")}\n            }`;
+}
 
 export function generateCoreRobotFiles(project: CiprixProject): GeneratedFile[] {
   const pkg = project.project.packageName;
@@ -93,12 +167,16 @@ public class Robot extends CiprixRobot {
 }
 `;
 
-  // SuperStructure.java
-  const subInfos = project.subsystems.map((s) => {
+  // SuperStructure.java (only motor subsystems!)
+  const motorSubs = project.subsystems.filter(isMotorSubsystem);
+  const ledSubs = project.subsystems.filter(isLedSubsystem);
+
+  const subInfos = motorSubs.map((s) => {
     const className = toPascalCase(s.name);
     const varName = toCamelCase(className);
     const subPkg = toPackageSegment(s.name);
     const requestEnum = `${className}Request`;
+    const stateEnum = `${className}State`;
     const requestField = `${varName}Request`;
     return {
       sub: s,
@@ -106,37 +184,73 @@ public class Robot extends CiprixRobot {
       varName,
       subPkg,
       requestEnum,
+      stateEnum,
       requestField,
     };
   });
 
-  const superImports = subInfos
-    .flatMap((info) => [
-      `import ${pkg}.subsystems.${info.subPkg}.${info.className};`,
-      `import ${pkg}.subsystems.${info.subPkg}.${info.className}Constants.${info.requestEnum};`,
-    ])
-    .sort()
-    .join("\n");
-
-  const superFields = subInfos
-    .map(
-      (info) =>
-        `  private final ${info.className} ${info.varName};\n  private ${info.requestEnum} ${info.requestField} = ${info.requestEnum}.${info.sub.fsm.initialRequest};`,
-    )
-    .join("\n");
-
-  const ctorParams = subInfos.map((info) => `${info.className} ${info.varName}`).join(", ");
-  const ctorAssigns = subInfos.map((info) => `    this.${info.varName} = ${info.varName};`).join("\n");
-
   const subInfoById = new Map(subInfos.map((info) => [info.sub.id, info]));
+
+  const superImportsList = subInfos.flatMap((info) => [
+    `import ${pkg}.subsystems.${info.subPkg}.${info.className};`,
+    `import ${pkg}.subsystems.${info.subPkg}.${info.className}Constants.${info.requestEnum};`,
+  ]);
+
+  interface SuperAlert {
+    fieldName: string;
+    message: string;
+    level: "INFO" | "WARNING" | "ERROR";
+  }
+  const superAlerts: SuperAlert[] = [];
+  const seenSuperAlertFields = new Set<string>();
+  let superHasLogs = false;
+  let superHasAlerts = false;
 
   const superStates = project.superstructure.states
     .map((stateName) => {
       const actionsForState = project.superstructure.stateActions[stateName] ?? {};
-      const assignments = subInfos.map((info) => {
+      const enterStmts: string[] = subInfos.map((info) => {
         const targetReq = actionsForState[info.sub.id] ?? info.sub.fsm.initialRequest;
         return `${info.requestField} = ${info.requestEnum}.${targetReq};`;
       });
+      const periodicStmts: string[] = [];
+      const exitStmts: string[] = [];
+      const autoClearAlerts: string[] = [];
+
+      const effects = project.superstructure.stateEffects?.[stateName] ?? [];
+      for (const eff of effects) {
+        if (eff.kind !== "log") continue;
+        superHasLogs = true;
+        const targetList =
+          eff.when === "enter"
+            ? enterStmts
+            : eff.when === "periodic"
+              ? periodicStmts
+              : exitStmts;
+        targetList.push(
+          `Logger.recordOutput("SuperStructure/${escapeJavaString(eff.key)}", "${escapeJavaString(eff.message)}");`,
+        );
+        if (eff.alertOnDriverStation) {
+          superHasAlerts = true;
+          const fieldName = `${toCamelCase(`${stateName}_${eff.key}_${superAlerts.length}`)}Alert`;
+          if (!seenSuperAlertFields.has(fieldName)) {
+            seenSuperAlertFields.add(fieldName);
+            superAlerts.push({
+              fieldName,
+              message: eff.message,
+              level: eff.level.toUpperCase() as "INFO" | "WARNING" | "ERROR",
+            });
+          }
+          targetList.push(`${fieldName}.set(true);`);
+          if (eff.when !== "exit") {
+            autoClearAlerts.push(`${fieldName}.set(false);`);
+          }
+        }
+      }
+
+      for (const clearStmt of autoClearAlerts) {
+        if (!exitStmts.includes(clearStmt)) exitStmts.push(clearStmt);
+      }
 
       const localTransitions = (project.superstructure.transitions ?? []).filter(
         (tr) => tr.fromState === stateName,
@@ -145,9 +259,19 @@ public class Robot extends CiprixRobot {
         if (tr.condition === "afterSeconds") {
           return `\n        .transitionAfter(${formatDouble(tr.seconds ?? 1.0)}, RobotState.${tr.toState})`;
         }
+        if (tr.condition === "sensorTrue" || tr.condition === "sensorFalse") {
+          const info = tr.sensorOwnerId ? subInfoById.get(tr.sensorOwnerId) : undefined;
+          const sensor = info?.sub.sensors?.find((s) => s.id === tr.sensorId);
+          if (info && sensor) {
+            const call = `${info.varName}.${getSensorGetterName(sensor)}()`;
+            const expr = tr.condition === "sensorFalse" ? `!${call}` : call;
+            return `\n        .transitionTo(RobotState.${tr.toState}, () -> ${expr})`;
+          }
+          return `\n        .transitionTo(RobotState.${tr.toState}, () -> false)`;
+        }
         const ids =
           tr.condition === "allAtGoal"
-            ? project.subsystems.map((s) => s.id)
+            ? motorSubs.map((s) => s.id)
             : (tr.subsystemIds ?? []);
         const checks = ids
           .map((id) => subInfoById.get(id))
@@ -157,19 +281,57 @@ public class Robot extends CiprixRobot {
         return `\n        .transitionTo(RobotState.${tr.toState}, () -> ${condExpr})`;
       });
       const chainSuffix = trChains.join("");
+      const updateChain =
+        periodicStmts.length > 0
+          ? `\n        .onUpdate(${renderLambdaBody(periodicStmts)})`
+          : "";
+      const exitChain =
+        exitStmts.length > 0 ? `\n        .onExit(${renderLambdaBody(exitStmts)})` : "";
 
-      if (assignments.length === 0) {
+      if (enterStmts.length === 0 && !updateChain && !exitChain) {
         return `    generalFsm.state(RobotState.${stateName}).onEnter(() -> {})${chainSuffix};`;
       }
-      if (assignments.length === 1 && trChains.length === 0) {
-        return `    generalFsm.state(RobotState.${stateName}).onEnter(() -> ${assignments[0].replace(/;$/, "")});`;
+      if (enterStmts.length === 1 && !updateChain && !exitChain && trChains.length === 0) {
+        return `    generalFsm.state(RobotState.${stateName}).onEnter(() -> ${enterStmts[0].replace(/;$/, "")});`;
       }
-      if (assignments.length === 1) {
-        return `    generalFsm\n        .state(RobotState.${stateName})\n        .onEnter(() -> ${assignments[0].replace(/;$/, "")})${chainSuffix};`;
+      if (enterStmts.length === 1 && !updateChain && !exitChain) {
+        return `    generalFsm\n        .state(RobotState.${stateName})\n        .onEnter(() -> ${enterStmts[0].replace(/;$/, "")})${chainSuffix};`;
       }
-      return `    generalFsm\n        .state(RobotState.${stateName})\n        .onEnter(\n            () -> {\n${assignments.map((a) => `              ${a}`).join("\n")}\n            })${chainSuffix};`;
+      return `    generalFsm\n        .state(RobotState.${stateName})\n        .onEnter(\n            ${renderLambdaBody(enterStmts)})${updateChain}${exitChain}${chainSuffix};`;
     })
     .join("\n");
+
+  if (superHasAlerts) {
+    superImportsList.push("import org.ciprix.util.PersistentAlert;");
+  }
+  if (superHasLogs) {
+    superImportsList.push("import org.littletonrobotics.junction.Logger;");
+  }
+
+  const superImports = [
+    `import ${pkg}.Constants.RobotRequest;`,
+    `import ${pkg}.Constants.RobotState;`,
+    "import org.ciprix.interfaces.subsystem.SuperStructureBase;",
+    ...superImportsList,
+  ]
+    .sort()
+    .join("\n");
+
+  const superAlertFields = superAlerts.map(
+    (a) =>
+      `  private final PersistentAlert ${a.fieldName} =\n      new PersistentAlert("SuperStructure", "${escapeJavaString(a.message)}", PersistentAlert.Level.${a.level});`,
+  );
+
+  const superFields = [
+    ...superAlertFields,
+    ...subInfos.map(
+      (info) =>
+        `  private final ${info.className} ${info.varName};\n  private ${info.requestEnum} ${info.requestField} = ${info.requestEnum}.${info.sub.fsm.initialRequest};`,
+    ),
+  ].join("\n");
+
+  const ctorParams = subInfos.map((info) => `${info.className} ${info.varName}`).join(", ");
+  const ctorAssigns = subInfos.map((info) => `    this.${info.varName} = ${info.varName};`).join("\n");
 
   const superBindings = project.superstructure.bindings
     .map((b) => `    bindRequest(RobotRequest.${b.request}, RobotState.${b.entryState});`)
@@ -189,9 +351,7 @@ public class Robot extends CiprixRobot {
 
   const superStructureJava = `package ${pkg}.subsystems.superstructure;
 
-import ${pkg}.Constants.RobotRequest;
-import ${pkg}.Constants.RobotState;
-${superImports ? superImports + "\n" : ""}import org.ciprix.interfaces.subsystem.SuperStructureBase;
+${superImports}
 
 /** Overall robot state machine coordinating subsystems. */
 public class SuperStructure extends SuperStructureBase<RobotRequest, RobotState> {
@@ -211,11 +371,21 @@ ${superBindings}
 ${superGetters ? "\n" + superGetters + "\n" : ""}}
 `;
 
-  // SuperStructureCommands.java
-  const pilotEntries = project.controls.pilotPriority;
+  // SuperStructureCommands.java (continuous button or continuous sensor priorities)
+  const continuousPilotEntries = project.controls.pilotPriority.filter((entry) => {
+    if (entry.source !== "sensor") return Boolean(entry.button);
+    return entry.sensorTrigger === "whileTrue" || entry.sensorTrigger === "whileFalse" || !entry.sensorTrigger;
+  });
+  const edgeSensorEntries = project.controls.pilotPriority.filter(
+    (entry) =>
+      entry.source === "sensor" &&
+      (entry.sensorTrigger === "onTrue" || entry.sensorTrigger === "onFalse"),
+  );
+
   const usedParamNames = new Set<string>();
-  const pilotParams = pilotEntries.map((entry, idx) => {
-    const base = `${toCamelCase(entry.request)}Button`;
+  const pilotParams = continuousPilotEntries.map((entry, idx) => {
+    const suffix = entry.source === "sensor" ? "Sensor" : "Button";
+    const base = `${toCamelCase(entry.request)}${suffix}`;
     let paramName = base;
     if (usedParamNames.has(paramName)) {
       paramName = `${base}${idx + 1}`;
@@ -254,7 +424,7 @@ ${booleanSupplierImport}
 public final class SuperStructureCommands {
   private SuperStructureCommands() {}
 
-  /** Evaluates the pilot's button priorities every cycle and forwards the winning request. */
+  /** Evaluates the pilot's button and sensor priorities every cycle and forwards the winning request. */
   public static Command manageRequests(${manageParamsSignature}) {
     return Commands.run(
             () -> {
@@ -267,36 +437,142 @@ ${requestSelectionBody}
 }
 `;
 
-  // RobotContainer.java
-  const containerImports = [
-    `import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;`,
-    `import edu.wpi.first.wpilibj2.command.Command;`,
-    `import edu.wpi.first.wpilibj2.command.Commands;`,
-    `import edu.wpi.first.wpilibj2.command.button.CommandXboxController;`,
+  // RobotContainer.java (wires LEDs & Rumble triggers via inState — zero coupling inside subsystems!)
+  const usesLeds = projectUsesLedArbiter(project);
+  const usesRumble = projectUsesRumbleArbiter(project);
+  const usesTriggers =
+    edgeSensorEntries.length > 0;
+
+  const containerImportSet = new Set<string>([
+    "import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;",
+    "import edu.wpi.first.wpilibj2.command.Command;",
+    "import edu.wpi.first.wpilibj2.command.Commands;",
+    "import edu.wpi.first.wpilibj2.command.button.CommandXboxController;",
     `import ${pkg}.commands.SuperStructureCommands;`,
     `import ${pkg}.subsystems.superstructure.SuperStructure;`,
-    `import org.ciprix.CiprixSettings;`,
-    ...subInfos.flatMap((info) => {
-      const vendorIo = getVendorIoClassName(info.sub.name, info.sub.motor.vendor);
-      return [
-        `import ${pkg}.subsystems.${info.subPkg}.${info.className};`,
-        `import ${pkg}.subsystems.${info.subPkg}.${info.className}Commands;`,
-        `import ${pkg}.subsystems.${info.subPkg}.${info.className}IO;`,
-        `import ${pkg}.subsystems.${info.subPkg}.${info.className}IOSim;`,
-        `import ${pkg}.subsystems.${info.subPkg}.${vendorIo};`,
-      ];
-    }),
-  ];
+    "import org.ciprix.CiprixSettings;",
+  ]);
 
-  const subById = new Map(subInfos.map((info) => [info.sub.id, info]));
+  if (usesTriggers) {
+    containerImportSet.add("import edu.wpi.first.wpilibj2.command.button.Trigger;");
+  }
+
+  for (const info of subInfos) {
+    const vendorIo = getVendorIoClassName(info.sub.name, info.sub.motor.vendor);
+    containerImportSet.add(`import ${pkg}.subsystems.${info.subPkg}.${info.className};`);
+    containerImportSet.add(`import ${pkg}.subsystems.${info.subPkg}.${info.className}Commands;`);
+    containerImportSet.add(`import ${pkg}.subsystems.${info.subPkg}.${info.className}IO;`);
+    containerImportSet.add(`import ${pkg}.subsystems.${info.subPkg}.${info.className}IOSim;`);
+    containerImportSet.add(`import ${pkg}.subsystems.${info.subPkg}.${vendorIo};`);
+  }
+
+  const ledInfos = ledSubs.map((s) => {
+    const className = toPascalCase(s.name);
+    const varName = toCamelCase(className);
+    const subPkg = toPackageSegment(s.name);
+    containerImportSet.add(`import ${pkg}.subsystems.${subPkg}.${className};`);
+    return { sub: s, className, varName, subPkg };
+  });
+
+  if (usesLeds) {
+    containerImportSet.add("import edu.wpi.first.wpilibj.util.Color;");
+    containerImportSet.add(`import ${pkg}.subsystems.leds.LedArbiter;`);
+    containerImportSet.add(`import ${pkg}.subsystems.leds.LedArbiter.LedPattern;`);
+    containerImportSet.add(`import ${pkg}.subsystems.leds.LedArbiter.LedSpec;`);
+  }
+  if (usesRumble) {
+    containerImportSet.add(`import ${pkg}.subsystems.rumble.RumbleArbiter;`);
+    containerImportSet.add(`import ${pkg}.subsystems.rumble.RumbleArbiter.TargetController;`);
+  }
+
+  // Collect subsystem state LED / rumble trigger lines
+  const effectTriggerLines: string[] = [];
+  let needRobotStateImport = false;
+
+  for (const info of subInfos) {
+    for (const st of info.sub.fsm.states) {
+      for (const act of st.actions) {
+        if (act.kind === "leds") {
+          containerImportSet.add(
+            `import ${pkg}.subsystems.${info.subPkg}.${info.className}Constants.${info.stateEnum};`,
+          );
+          const secColor = act.secondaryColorHex ? hexToJavaColor(act.secondaryColorHex) : "null";
+          const specExpr = `new LedSpec(${ledPatternToJavaEnum(act.pattern)}, ${hexToJavaColor(act.colorHex)}, ${secColor}, ${formatDouble(act.periodSec)})`;
+          const ownerKey = `${info.sub.id}:${st.name}:${act.id}`;
+          if (act.when === "exit") {
+            effectTriggerLines.push(
+              `    ${info.varName}\n        .inState(${info.stateEnum}.${st.name})\n        .onFalse(\n            LedArbiter.holdEffect(\n                    ledArbiter, "${act.ledSubsystemId}", "${ownerKey}", ${act.priority}, ${specExpr})\n                .withTimeout(${formatDouble(Math.max(0.25, act.periodSec))}));`,
+            );
+          } else {
+            effectTriggerLines.push(
+              `    ${info.varName}\n        .inState(${info.stateEnum}.${st.name})\n        .whileTrue(\n            LedArbiter.holdEffect(\n                ledArbiter, "${act.ledSubsystemId}", "${ownerKey}", ${act.priority}, ${specExpr}));`,
+            );
+          }
+        } else if (act.kind === "rumble") {
+          containerImportSet.add(
+            `import ${pkg}.subsystems.${info.subPkg}.${info.className}Constants.${info.stateEnum};`,
+          );
+          const triggerMethod = act.when === "exit" ? "onFalse" : "onTrue";
+          const pilotExpr = renderRumbleSupplierExpr("rumbleArbiter.pilot()", act);
+          const copilotExpr = renderRumbleSupplierExpr("rumbleArbiter.copilot()", act);
+          effectTriggerLines.push(
+            `    ${info.varName}\n        .inState(${info.stateEnum}.${st.name})\n        .${triggerMethod}(\n            rumbleArbiter.trigger(\n                ${controllerToJavaEnum(act.controller)},\n                ${act.priority},\n                ${pilotExpr},\n                ${copilotExpr}));`,
+          );
+        }
+      }
+    }
+  }
+
+  for (const [stateName, effects] of Object.entries(project.superstructure.stateEffects ?? {})) {
+    for (const eff of effects) {
+      if (eff.kind === "leds") {
+        needRobotStateImport = true;
+        const secColor = eff.secondaryColorHex ? hexToJavaColor(eff.secondaryColorHex) : "null";
+        const specExpr = `new LedSpec(${ledPatternToJavaEnum(eff.pattern)}, ${hexToJavaColor(eff.colorHex)}, ${secColor}, ${formatDouble(eff.periodSec)})`;
+        const ownerKey = `super:${stateName}:${eff.id}`;
+        if (eff.when === "exit") {
+          effectTriggerLines.push(
+            `    superStructure\n        .inState(RobotState.${stateName})\n        .onFalse(\n            LedArbiter.holdEffect(\n                    ledArbiter, "${eff.ledSubsystemId}", "${ownerKey}", ${eff.priority}, ${specExpr})\n                .withTimeout(${formatDouble(Math.max(0.25, eff.periodSec))}));`,
+          );
+        } else {
+          effectTriggerLines.push(
+            `    superStructure\n        .inState(RobotState.${stateName})\n        .whileTrue(\n            LedArbiter.holdEffect(\n                ledArbiter, "${eff.ledSubsystemId}", "${ownerKey}", ${eff.priority}, ${specExpr}));`,
+          );
+        }
+      } else if (eff.kind === "rumble") {
+        needRobotStateImport = true;
+        const triggerMethod = eff.when === "exit" ? "onFalse" : "onTrue";
+        const pilotExpr = renderRumbleSupplierExpr("rumbleArbiter.pilot()", eff);
+        const copilotExpr = renderRumbleSupplierExpr("rumbleArbiter.copilot()", eff);
+        effectTriggerLines.push(
+          `    superStructure\n        .inState(RobotState.${stateName})\n        .${triggerMethod}(\n            rumbleArbiter.trigger(\n                ${controllerToJavaEnum(eff.controller)},\n                ${eff.priority},\n                ${pilotExpr},\n                ${copilotExpr}));`,
+        );
+      }
+    }
+  }
+
+  if (edgeSensorEntries.length > 0) {
+    containerImportSet.add(`import ${pkg}.Constants.RobotRequest;`);
+  }
+  if (needRobotStateImport) {
+    containerImportSet.add(`import ${pkg}.Constants.RobotState;`);
+  }
 
   const containerFields = [
+    ...(usesLeds ? ["  private final LedArbiter ledArbiter = new LedArbiter();"] : []),
+    ...(usesRumble ? ["  private final RumbleArbiter rumbleArbiter;"] : []),
+    ...ledInfos.map((info) => `  private final ${info.className} ${info.varName};`),
     ...subInfos.map((info) => `  private final ${info.className} ${info.varName};`),
     `  private final SuperStructure superStructure;`,
   ].join("\n");
 
-  const containerInits = subInfos
-    .map((info) => {
+  const containerInits = [
+    ...(usesRumble ? ["    rumbleArbiter = new RumbleArbiter(pilot, copilot);"] : []),
+    ...ledInfos.map(
+      (info) =>
+        `    ${info.varName} = new ${info.className}("${info.sub.id}", ledArbiter);`,
+    ),
+    ...subInfos.map((info) => {
       const vendorIo = getVendorIoClassName(info.sub.name, info.sub.motor.vendor);
       return `    ${info.varName} =
         new ${info.className}(
@@ -305,14 +581,37 @@ ${requestSelectionBody}
               case SIM -> new ${info.className}IOSim();
               case REPLAY -> new ${info.className}IO() {};
             });`;
-    })
-    .join("\n");
+    }),
+  ].join("\n");
 
   const superArgs = subInfos.map((info) => info.varName).join(", ");
   const pilotArgs = [
     "superStructure",
-    ...pilotParams.map((p) => `pilot.${xboxButtonToJavaMethod(p.button)}`),
+    ...pilotParams.map((p) => {
+      if (p.source === "sensor") {
+        const info = p.sensorOwnerId ? subInfoById.get(p.sensorOwnerId) : undefined;
+        const sensor = info?.sub.sensors?.find((s) => s.id === p.sensorId);
+        if (info && sensor) {
+          const getterCall = `${info.varName}.${getSensorGetterName(sensor)}()`;
+          return p.sensorTrigger === "whileFalse" ? `() -> !${getterCall}` : `() -> ${getterCall}`;
+        }
+        return "() -> false";
+      }
+      return `pilot.${xboxButtonToJavaMethod(p.button ?? "a", p.triggerThreshold)}`;
+    }),
   ].join(", ");
+
+  const edgeSensorTriggerLines = edgeSensorEntries
+    .map((entry) => {
+      const info = entry.sensorOwnerId ? subInfoById.get(entry.sensorOwnerId) : undefined;
+      const sensor = info?.sub.sensors?.find((s) => s.id === entry.sensorId);
+      if (!info || !sensor) return null;
+      const getterCall = `${info.varName}.${getSensorGetterName(sensor)}()`;
+      const method = entry.sensorTrigger === "onFalse" ? "onFalse" : "onTrue";
+      return `    new Trigger(() -> ${getterCall}).${method}(Commands.runOnce(() -> superStructure.setRequest(RobotRequest.${entry.request})));`;
+    })
+    .filter(Boolean)
+    .join("\n");
 
   const defaultCommands = subInfos
     .map(
@@ -323,10 +622,10 @@ ${requestSelectionBody}
 
   const copilotBindings = project.controls.copilotOverrides
     .map((ov) => {
-      const info = subById.get(ov.subsystemId);
+      const info = subInfoById.get(ov.subsystemId);
       if (!info) return null;
       const cmdMethod = requestToCommandMethod(ov.request);
-      return `    copilot.${xboxButtonToJavaMethod(ov.button)}.whileTrue(${info.className}Commands.${cmdMethod}(${info.varName}));`;
+      return `    copilot.${xboxButtonToJavaMethod(ov.button, ov.triggerThreshold)}.whileTrue(${info.className}Commands.${cmdMethod}(${info.varName}));`;
     })
     .filter(Boolean)
     .join("\n");
@@ -343,9 +642,14 @@ ${requestSelectionBody}
     ? "\n    // DriveContext stub enabled: integrate Phoenix Tuner X or YAGSL drivetrain here."
     : "";
 
+  const effectBlock =
+    effectTriggerLines.length > 0 ? "\n" + effectTriggerLines.join("\n") : "";
+
+  const edgeBlock = edgeSensorTriggerLines ? "\n" + edgeSensorTriggerLines : "";
+
   const robotContainerJava = `package ${pkg};
 
-${containerImports.sort().join("\n")}
+${Array.from(containerImportSet).sort().join("\n")}
 
 /** Robot structure: subsystems, driver and co-driver buttons, autonomous. */
 public class RobotContainer {
@@ -364,7 +668,7 @@ ${containerInits ? containerInits + "\n" : ""}    superStructure = new SuperStru
     superStructure.setDefaultCommand(
         SuperStructureCommands.manageRequests(${pilotArgs}));
 ${defaultCommands ? "\n" + defaultCommands : ""}
-${copilotBindings ? "\n" + copilotBindings : ""}
+${copilotBindings ? "\n" + copilotBindings : ""}${edgeBlock}${effectBlock}
 ${selfTests ? "\n" + selfTests : ""}${driveContextComment}
   }
 
@@ -374,18 +678,20 @@ ${selfTests ? "\n" + selfTests : ""}${driveContextComment}
 }
 `;
 
-  const wpilibPrefs = JSON.stringify(
-    {
-      enableCppIntellisense: false,
-      currentLanguage: "java",
-      projectYear: String(project.project.year),
-      teamNumber: project.project.teamNumber,
-    },
-    null,
-    4,
-  ) + "\n";
+  const wpilibPrefs =
+    JSON.stringify(
+      {
+        enableCppIntellisense: false,
+        currentLanguage: "java",
+        projectYear: String(project.project.year),
+        teamNumber: project.project.teamNumber,
+      },
+      null,
+      4,
+    ) + "\n";
 
-  const rootProjectName = project.project.name.replace(/[^A-Za-z0-9_-]/g, "-") || "first-robot";
+  const rootProjectName =
+    project.project.name.replace(/[^A-Za-z0-9_-]/g, "-") || "first-robot";
   const settingsGradle = `import org.gradle.internal.os.OperatingSystem
 
 pluginManagement {

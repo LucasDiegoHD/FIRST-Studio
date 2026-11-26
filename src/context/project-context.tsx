@@ -25,11 +25,11 @@ import {
   duplicateSubsystemWithDefaults,
 } from "@/lib/presets/skeleton";
 import {
-  CiprixProjectSchema,
   type CiprixProject,
   type SubsystemConfig,
   type SubsystemType,
 } from "@/lib/schema/ciprix-project";
+import { parseProjectWithMigration } from "@/lib/schema/migrations";
 import { validateProject, type StudioTab, type ValidationIssue } from "@/lib/validator";
 
 const STORAGE_KEY = "firstStudio_ciprixProject_v1";
@@ -102,8 +102,8 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = CiprixProjectSchema.safeParse(JSON.parse(raw));
-        if (parsed.success) {
+        const parsed = parseProjectWithMigration(JSON.parse(raw));
+        if (parsed.ok) {
           set(parsed.data, true);
           setSelectedSubsystemId(parsed.data.subsystems[0]?.id ?? null);
           setHasSavedProject(true);

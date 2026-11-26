@@ -1,9 +1,34 @@
-import type { SubsystemAction, SubsystemConfig } from "../../schema/ciprix-project";
-import { formatDouble, toPascalCase, toPackageSegment, toUpperSnake } from "../java-utils";
+import {
+  isMotorSubsystem,
+  type FsmState,
+  type SubsystemAction,
+  type SubsystemConfig,
+} from "../../schema/ciprix-project";
+import {
+  formatDouble,
+  toCamelCase,
+  toPackageSegment,
+  toPascalCase,
+  toUpperSnake,
+} from "../java-utils";
+import {
+  getSensorFieldName,
+  renderSensorGetters,
+  renderSensorInputsFields,
+  renderSensorRealDeclarations,
+  renderSensorRealImports,
+  renderSensorRealUpdates,
+  renderSensorSimDeclarations,
+  renderSensorSimUpdates,
+} from "../sensors";
 
 export interface GeneratedFile {
   path: string;
   content: string;
+}
+
+function escapeJavaString(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, "\\n");
 }
 
 function renderActionCall(constantsClass: string, action: SubsystemAction): string {
@@ -33,14 +58,16 @@ interface CollectedConstant {
 
 function collectActionConstants(subsystem: SubsystemConfig): CollectedConstant[] {
   const seen = new Map<string, CollectedConstant>();
-  for (const state of subsystem.fsm.states) {
-    if (state.onEnter.type !== "stop") {
-      const name = toUpperSnake(state.onEnter.constantName);
-      seen.set(name, { name, actionType: state.onEnter.type, value: state.onEnter.value });
-    }
-    if (state.onUpdate && state.onUpdate.type !== "stop") {
-      const name = toUpperSnake(state.onUpdate.constantName);
-      seen.set(name, { name, actionType: state.onUpdate.type, value: state.onUpdate.value });
+  for (const state of subsystem.fsm?.states ?? []) {
+    for (const stAction of state.actions) {
+      if (stAction.kind === "motor" && stAction.action.type !== "stop") {
+        const name = toUpperSnake(stAction.action.constantName);
+        seen.set(name, {
+          name,
+          actionType: stAction.action.type,
+          value: stAction.action.value,
+        });
+      }
     }
   }
   return Array.from(seen.values());
@@ -61,7 +88,10 @@ function renderConstantDeclaration(c: CollectedConstant): string {
   }
 }
 
-export function getVendorIoClassName(subsystemName: string, vendor: SubsystemConfig["motor"]["vendor"]): string {
+export function getVendorIoClassName(
+  subsystemName: string,
+  vendor: NonNullable<SubsystemConfig["motor"]>["vendor"],
+): string {
   const className = toPascalCase(subsystemName);
   switch (vendor) {
     case "talonfx":
@@ -73,10 +103,129 @@ export function getVendorIoClassName(subsystemName: string, vendor: SubsystemCon
   }
 }
 
+interface CollectedAlert {
+  fieldName: string;
+  key: string;
+  message: string;
+  level: "INFO" | "WARNING" | "ERROR";
+}
+
+function toAlertFieldName(stateName: string, key: string, idx: number): string {
+  const clean = toCamelCase(`${stateName}_${key}_${idx}`);
+  return `${clean}Alert`;
+}
+
+function renderLambdaBody(statements: string[], emptyFallback = "() -> {}"): string {
+  if (statements.length === 0) return emptyFallback;
+  if (statements.length === 1) {
+    return `() -> ${statements[0].replace(/;$/, "")}`;
+  }
+  return `() -> {\n${statements.map((s) => `              ${s}`).join("\n")}\n            }`;
+}
+
+function renderStateConfig(
+  state: FsmState,
+  className: string,
+  constantsClass: string,
+  stateEnum: string,
+  sensorFieldById: Map<string, string>,
+  alertFields: CollectedAlert[],
+  seenAlertKeys: Set<string>,
+): string {
+  const enterStmts: string[] = [];
+  const periodicStmts: string[] = [];
+  const exitStmts: string[] = [];
+  const autoClearAlerts: string[] = [];
+
+  for (const act of state.actions) {
+    if (act.kind === "leds" || act.kind === "rumble") {
+      // Decoupling: LEDs and rumble are wired in RobotContainer via sub.inState(...)
+      continue;
+    }
+    const targetList =
+      act.when === "enter" ? enterStmts : act.when === "periodic" ? periodicStmts : exitStmts;
+
+    if (act.kind === "motor") {
+      targetList.push(`${renderActionCall(constantsClass, act.action)};`);
+      continue;
+    }
+
+    if (act.kind === "log") {
+      const logKey = `${className}/${escapeJavaString(act.key)}`;
+      targetList.push(`Logger.recordOutput("${logKey}", "${escapeJavaString(act.message)}");`);
+      if (act.alertOnDriverStation) {
+        const fieldName = toAlertFieldName(state.name, act.key, alertFields.length);
+        if (!seenAlertKeys.has(fieldName)) {
+          seenAlertKeys.add(fieldName);
+          alertFields.push({
+            fieldName,
+            key: act.key,
+            message: act.message,
+            level: act.level.toUpperCase() as "INFO" | "WARNING" | "ERROR",
+          });
+        }
+        targetList.push(`${fieldName}.set(true);`);
+        if (act.when !== "exit") {
+          autoClearAlerts.push(`${fieldName}.set(false);`);
+        }
+      }
+    }
+  }
+
+  for (const clearStmt of autoClearAlerts) {
+    if (!exitStmts.includes(clearStmt)) {
+      exitStmts.push(clearStmt);
+    }
+  }
+
+  const enterLambda = renderLambdaBody(enterStmts);
+  const updateChain =
+    periodicStmts.length > 0 ? `\n        .onUpdate(${renderLambdaBody(periodicStmts)})` : "";
+  const exitChain =
+    exitStmts.length > 0 ? `\n        .onExit(${renderLambdaBody(exitStmts)})` : "";
+
+  const transitionChains = (state.transitions ?? [])
+    .map((tr) => {
+      if (tr.trigger === "afterSeconds") {
+        return `\n        .transitionAfter(${formatDouble(tr.value ?? 0.5)}, ${stateEnum}.${tr.targetState})`;
+      }
+      let cond = "true";
+      if (tr.trigger === "atSetpoint") {
+        cond = "inputs.motorInputs.atSetpoint";
+      } else if (tr.trigger === "stalled") {
+        cond = "inputs.motorInputs.stalled";
+      } else if (tr.trigger === "currentAbove") {
+        cond = `inputs.motorInputs.averageCurrentAmps >= ${formatDouble(tr.value ?? 25.0)}`;
+      } else if (tr.trigger === "sensorTrue") {
+        const sf = tr.sensorId ? sensorFieldById.get(tr.sensorId) : undefined;
+        cond = sf ? `inputs.${sf}` : "false";
+      } else if (tr.trigger === "sensorFalse") {
+        const sf = tr.sensorId ? sensorFieldById.get(tr.sensorId) : undefined;
+        cond = sf ? `!inputs.${sf}` : "false";
+      }
+      const deb = tr.debounceSec && tr.debounceSec > 0 ? `, ${formatDouble(tr.debounceSec)}` : "";
+      return `\n        .transitionTo(${stateEnum}.${tr.targetState}, () -> ${cond}${deb})`;
+    })
+    .join("");
+
+  const timeoutChain =
+    state.timeoutAfterSec !== undefined
+      ? `\n        .timeoutAfter(${formatDouble(state.timeoutAfterSec)})`
+      : "";
+
+  const regularTimeChain = state.regularTimeSec
+    ? `\n        .regularTime(${formatDouble(state.regularTimeSec.min)}, ${formatDouble(state.regularTimeSec.max)})`
+    : "";
+
+  return `    fsm.state(${stateEnum}.${state.name})\n        .onEnter(${enterLambda})${updateChain}${exitChain}${transitionChains}${timeoutChain}${regularTimeChain};`;
+}
+
 export function generateSingleMotorSubsystem(
   subsystem: SubsystemConfig,
   basePackage: string,
 ): GeneratedFile[] {
+  if (!isMotorSubsystem(subsystem)) return [];
+
   const className = toPascalCase(subsystem.name);
   const subPkg = toPackageSegment(subsystem.name);
   const pkgPrefix = basePackage.replace(/\./g, "/");
@@ -89,6 +238,12 @@ export function generateSingleMotorSubsystem(
   const ioInterface = `${className}IO`;
   const inputsAutoLogged = `${className}IOInputsAutoLogged`;
   const vendorClass = getVendorIoClassName(subsystem.name, subsystem.motor.vendor);
+  const sensors = subsystem.sensors ?? [];
+
+  const sensorFieldById = new Map<string, string>();
+  for (const s of sensors) {
+    sensorFieldById.set(s.id, getSensorFieldName(s));
+  }
 
   const actionConstants = collectActionConstants(subsystem);
   const constantLines =
@@ -124,7 +279,13 @@ export function generateSingleMotorSubsystem(
     unitImports.add(cl.limitUnit === "rot" ? "Rotations" : "Degrees");
   }
   if (cl && subsystem.type === "shooter") unitImports.add("RPM");
-  if (cl && (subsystem.type === "arm" || subsystem.type === "wrist" || subsystem.type === "hood" || subsystem.type === "turret")) {
+  if (
+    cl &&
+    (subsystem.type === "arm" ||
+      subsystem.type === "wrist" ||
+      subsystem.type === "hood" ||
+      subsystem.type === "turret")
+  ) {
     unitImports.add("Degrees");
   }
   if (cl && subsystem.type === "elevator") unitImports.add("Rotations");
@@ -245,6 +406,7 @@ ${subsystem.fsm.states.map((s) => `    ${s.name}`).join(",\n")}
   const followerInputsLine = hasFollower
     ? "\n    public MotorIOInputs followerInputs = new MotorIOInputs();"
     : "";
+  const sensorInputsLines = renderSensorInputsFields(sensors);
   const ioContent = `package ${fullSubPkg};
 
 import org.ciprix.interfaces.motor.advanced.MotorController;
@@ -257,7 +419,7 @@ import org.littletonrobotics.junction.AutoLog;
 public interface ${ioInterface} extends SubsystemIO<${inputsAutoLogged}> {
   @AutoLog
   class ${ioInterface}Inputs {
-    public MotorIOInputs motorInputs = new MotorIOInputs();${followerInputsLine}
+    public MotorIOInputs motorInputs = new MotorIOInputs();${followerInputsLine}${sensorInputsLines}
   }
 
   @Override
@@ -273,28 +435,37 @@ public interface ${ioInterface} extends SubsystemIO<${inputsAutoLogged}> {
   const busName = subsystem.motor.canBus.trim();
   const canBusArg = busName && busName !== "rio" ? `new CANBus("${busName}")` : "new CANBus()";
   const followerUpdateLine = hasFollower ? "\n    follower.updateInputs(inputs.followerInputs);" : "";
+  const sensorDeclLines = renderSensorRealDeclarations(sensors, canBusArg);
+  const sensorUpdateLines = renderSensorRealUpdates(sensors);
 
   let vendorContent = "";
   if (subsystem.motor.vendor === "talonfx") {
+    const sensorImports = renderSensorRealImports(sensors, true);
+    const importLines = [
+      "import com.ctre.phoenix6.CANBus;",
+      "import org.ciprix.interfaces.motor.MotorIOTalonFX;",
+      "import org.ciprix.interfaces.motor.advanced.MotorController;",
+      "import org.ciprix.interfaces.motor.advanced.MotorIO;",
+      ...sensorImports,
+    ]
+      .sort()
+      .join("\n");
     const followerDecl = hasFollower
       ? `\n  private final MotorIO follower =\n      new MotorIOTalonFX(\n          "${className}/Follower", ${constantsClass}.FOLLOWER_ID, ${canBusArg}, ${constantsClass}.FOLLOWER_CONFIG);`
       : "";
     vendorContent = `package ${fullSubPkg};
 
-import com.ctre.phoenix6.CANBus;
-import org.ciprix.interfaces.motor.MotorIOTalonFX;
-import org.ciprix.interfaces.motor.advanced.MotorController;
-import org.ciprix.interfaces.motor.advanced.MotorIO;
+${importLines}
 
 /** Real ${className} hardware using CTRE Talon FX. */
 public class ${vendorClass} implements ${ioInterface} {
   private final MotorIO motor =
       new MotorIOTalonFX(
-          "${className}/Motor", ${constantsClass}.MOTOR_ID, ${canBusArg}, ${constantsClass}.MOTOR_CONFIG);${followerDecl}
+          "${className}/Motor", ${constantsClass}.MOTOR_ID, ${canBusArg}, ${constantsClass}.MOTOR_CONFIG);${followerDecl}${sensorDeclLines}
 
   @Override
   public void updateInputs(${inputsAutoLogged} inputs) {
-    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}
+    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}${sensorUpdateLines}
   }
 
   @Override
@@ -304,23 +475,30 @@ public class ${vendorClass} implements ${ioInterface} {
 }
 `;
   } else if (subsystem.motor.vendor === "sparkmax") {
+    const sensorImports = renderSensorRealImports(sensors, false);
+    const importLines = [
+      "import org.ciprix.interfaces.motor.MotorIOSparkMax;",
+      "import org.ciprix.interfaces.motor.advanced.MotorController;",
+      "import org.ciprix.interfaces.motor.advanced.MotorIO;",
+      ...sensorImports,
+    ]
+      .sort()
+      .join("\n");
     const followerDecl = hasFollower
       ? `\n  private final MotorIO follower =\n      new MotorIOSparkMax("${className}/Follower", ${constantsClass}.FOLLOWER_ID, ${constantsClass}.FOLLOWER_CONFIG);`
       : "";
     vendorContent = `package ${fullSubPkg};
 
-import org.ciprix.interfaces.motor.MotorIOSparkMax;
-import org.ciprix.interfaces.motor.advanced.MotorController;
-import org.ciprix.interfaces.motor.advanced.MotorIO;
+${importLines}
 
 /** Real ${className} hardware using REV SPARK MAX. */
 public class ${vendorClass} implements ${ioInterface} {
   private final MotorIO motor =
-      new MotorIOSparkMax("${className}/Motor", ${constantsClass}.MOTOR_ID, ${constantsClass}.MOTOR_CONFIG);${followerDecl}
+      new MotorIOSparkMax("${className}/Motor", ${constantsClass}.MOTOR_ID, ${constantsClass}.MOTOR_CONFIG);${followerDecl}${sensorDeclLines}
 
   @Override
   public void updateInputs(${inputsAutoLogged} inputs) {
-    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}
+    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}${sensorUpdateLines}
   }
 
   @Override
@@ -330,23 +508,30 @@ public class ${vendorClass} implements ${ioInterface} {
 }
 `;
   } else {
+    const sensorImports = renderSensorRealImports(sensors, false);
+    const importLines = [
+      "import org.ciprix.interfaces.motor.MotorIOTalonSRX;",
+      "import org.ciprix.interfaces.motor.advanced.MotorController;",
+      "import org.ciprix.interfaces.motor.advanced.MotorIO;",
+      ...sensorImports,
+    ]
+      .sort()
+      .join("\n");
     const followerDecl = hasFollower
       ? `\n  private final MotorIO follower =\n      new MotorIOTalonSRX("${className}/Follower", ${constantsClass}.FOLLOWER_ID, ${constantsClass}.FOLLOWER_CONFIG);`
       : "";
     vendorContent = `package ${fullSubPkg};
 
-import org.ciprix.interfaces.motor.MotorIOTalonSRX;
-import org.ciprix.interfaces.motor.advanced.MotorController;
-import org.ciprix.interfaces.motor.advanced.MotorIO;
+${importLines}
 
 /** Real ${className} hardware using CTRE Talon SRX (Phoenix 5). */
 public class ${vendorClass} implements ${ioInterface} {
   private final MotorIO motor =
-      new MotorIOTalonSRX("${className}/Motor", ${constantsClass}.MOTOR_ID, ${constantsClass}.MOTOR_CONFIG);${followerDecl}
+      new MotorIOTalonSRX("${className}/Motor", ${constantsClass}.MOTOR_ID, ${constantsClass}.MOTOR_CONFIG);${followerDecl}${sensorDeclLines}
 
   @Override
   public void updateInputs(${inputsAutoLogged} inputs) {
-    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}
+    motor.updateInputs(inputs.motorInputs);${followerUpdateLine}${sensorUpdateLines}
   }
 
   @Override
@@ -415,24 +600,31 @@ public class ${vendorClass} implements ${ioInterface} {
               .withFriction(0.05, 0.0)`;
   }
 
+  const simSensorImport =
+    sensors.length > 0
+      ? "import org.littletonrobotics.junction.networktables.LoggedDashboardBoolean;\n"
+      : "";
+  const simSensorDecls = renderSensorSimDeclarations(sensors, className);
+  const simSensorUpdates = renderSensorSimUpdates(sensors);
+
   const simContent = `package ${fullSubPkg};
 
 import edu.wpi.first.math.system.plant.DCMotor;
 import org.ciprix.interfaces.motor.MotorIOSim;
 import org.ciprix.interfaces.motor.advanced.MotorController;
 import org.ciprix.sim.SimMechanism;
-
+${simSensorImport}
 /** Simulated ${className} matching the real motor configuration and telemetry name. */
 public class ${className}IOSim implements ${ioInterface} {
   private final MotorIOSim motor =
       ${simFactory}(
           "${className}/Motor",
           ${constantsClass}.MOTOR_CONFIG,
-          ${simMechanismExpr});
+          ${simMechanismExpr});${simSensorDecls}
 
   @Override
   public void updateInputs(${inputsAutoLogged} inputs) {
-    motor.updateInputs(inputs.motorInputs);
+    motor.updateInputs(inputs.motorInputs);${simSensorUpdates}
   }
 
   @Override
@@ -447,33 +639,21 @@ public class ${className}IOSim implements ${ioInterface} {
     ? `    fsm.securityState(${stateEnum}.${subsystem.fsm.securityState});\n\n`
     : "";
 
+  const alertFields: CollectedAlert[] = [];
+  const seenAlertKeys = new Set<string>();
+
   const stateConfigs = subsystem.fsm.states
-    .map((state) => {
-      const enterCall = renderActionCall(constantsClass, state.onEnter);
-      const updateChain = state.onUpdate
-        ? `\n        .onUpdate(() -> ${renderActionCall(constantsClass, state.onUpdate)})`
-        : "";
-      const transitionChains = (state.transitions ?? [])
-        .map((tr) => {
-          if (tr.trigger === "afterSeconds") {
-            return `\n        .transitionAfter(${formatDouble(tr.value ?? 0.5)}, ${stateEnum}.${tr.targetState})`;
-          }
-          const cond =
-            tr.trigger === "atSetpoint"
-              ? "inputs.motorInputs.atSetpoint"
-              : tr.trigger === "stalled"
-                ? "inputs.motorInputs.stalled"
-                : `inputs.motorInputs.averageCurrentAmps >= ${formatDouble(tr.value ?? 25.0)}`;
-          const deb = tr.debounceSec && tr.debounceSec > 0 ? `, ${formatDouble(tr.debounceSec)}` : "";
-          return `\n        .transitionTo(${stateEnum}.${tr.targetState}, () -> ${cond}${deb})`;
-        })
-        .join("");
-      const timeoutChain =
-        state.timeoutAfterSec !== undefined
-          ? `\n        .timeoutAfter(${formatDouble(state.timeoutAfterSec)})`
-          : "";
-      return `    fsm.state(${stateEnum}.${state.name})\n        .onEnter(() -> ${enterCall})${updateChain}${transitionChains}${timeoutChain};`;
-    })
+    .map((state) =>
+      renderStateConfig(
+        state,
+        className,
+        constantsClass,
+        stateEnum,
+        sensorFieldById,
+        alertFields,
+        seenAlertKeys,
+      ),
+    )
     .join("\n");
 
   const bindLines = subsystem.fsm.bindings
@@ -486,9 +666,39 @@ public class ${className}IOSim implements ${ioInterface} {
     })
     .join("\n");
 
-  const selfTestImports = subsystem.selfTest.enabled
-    ? "\nimport static edu.wpi.first.units.Units.RotationsPerSecond;\n"
+  const hasLogActions = subsystem.fsm.states.some((st) =>
+    st.actions.some((a) => a.kind === "log"),
+  );
+  const hasAlerts = alertFields.length > 0;
+
+  const extraSubImports: string[] = [
+    `import ${fullSubPkg}.${constantsClass}.${requestEnum};`,
+    `import ${fullSubPkg}.${constantsClass}.${stateEnum};`,
+    "import org.ciprix.annotations.AutoCommandFactory;",
+    "import org.ciprix.interfaces.subsystem.StateSubsystem;",
+  ];
+  if (hasAlerts) {
+    extraSubImports.push("import org.ciprix.util.PersistentAlert;");
+  }
+  if (hasLogActions) {
+    extraSubImports.push("import org.littletonrobotics.junction.Logger;");
+  }
+
+  const selfTestImport = subsystem.selfTest.enabled
+    ? "import static edu.wpi.first.units.Units.RotationsPerSecond;\n\n"
     : "";
+
+  const alertDeclarations =
+    alertFields.length > 0
+      ? "\n" +
+        alertFields
+          .map(
+            (a) =>
+              `  private final PersistentAlert ${a.fieldName} =\n      new PersistentAlert("${className}", "${escapeJavaString(a.message)}", PersistentAlert.Level.${a.level});`,
+          )
+          .join("\n") +
+        "\n"
+      : "";
 
   const selfTestBlock = subsystem.selfTest.enabled
     ? `
@@ -498,18 +708,17 @@ public class ${className}IOSim implements ${ioInterface} {
         .mustTurn(RotationsPerSecond.of(${formatDouble(subsystem.selfTest.minVelocityRps)}));`
     : "";
 
+  const sensorGetterMethods = renderSensorGetters(sensors);
+
   const subsystemContent = `package ${fullSubPkg};
-${selfTestImports}
-import ${fullSubPkg}.${constantsClass}.${requestEnum};
-import ${fullSubPkg}.${constantsClass}.${stateEnum};
-import org.ciprix.annotations.AutoCommandFactory;
-import org.ciprix.interfaces.subsystem.StateSubsystem;
+
+${selfTestImport}${extraSubImports.sort().join("\n")}
 
 /** ${className} subsystem generated by FIRST Studio. */
 @AutoCommandFactory(requestEnum = ${requestEnum}.class)
 public class ${className}
     extends StateSubsystem<${requestEnum}, ${stateEnum}, ${inputsAutoLogged}, ${ioInterface}> {
-
+${alertDeclarations}
   public ${className}(${ioInterface} io) {
     super(
         "Subsystems/${className}",
@@ -524,8 +733,7 @@ ${securityLine}${stateConfigs}
 
 ${bindLines}
     fsm.validateComplete();${selfTestBlock}
-  }
-}
+  }${sensorGetterMethods ? "\n" + sensorGetterMethods : "\n"}}
 `;
 
   return [

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Cog, Cpu, FileCode2, FolderOpen, Layers, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProject } from "@/context/project-context";
-import { CiprixProjectSchema } from "@/lib/schema/ciprix-project";
+import { parseProjectWithMigration } from "@/lib/schema/migrations";
 
 type DemoRequest = "IDLE" | "INTAKE" | "EJECT";
 const DEMO_ORDER: DemoRequest[] = ["INTAKE", "EJECT", "IDLE"];
@@ -76,8 +76,8 @@ export function LandingPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const parsed = CiprixProjectSchema.safeParse(JSON.parse(await file.text()));
-      if (!parsed.success) throw new Error("Invalid");
+      const parsed = parseProjectWithMigration(JSON.parse(await file.text()));
+      if (!parsed.ok) throw new Error("Invalid");
       loadProject(parsed.data);
       setLoadError(null);
       router.push("/studio");

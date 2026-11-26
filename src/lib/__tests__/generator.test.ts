@@ -6,7 +6,10 @@ import {
   createNewSubsystem,
   createSkeletonPreset,
 } from "../presets/skeleton";
-import { CiprixProjectSchema } from "../schema/ciprix-project";
+import {
+  CiprixProjectSchema,
+  isMotorSubsystem,
+} from "../schema/ciprix-project";
 import { validateProject } from "../validator";
 
 describe("FIRST Studio Ciprix generator", () => {
@@ -70,6 +73,7 @@ describe("FIRST Studio Ciprix generator", () => {
 
   it("supports sparkmax and talonsrx vendors", () => {
     const sparkProject = createSkeletonPreset();
+    if (!isMotorSubsystem(sparkProject.subsystems[0])) throw new Error("expected motor");
     sparkProject.subsystems[0].motor.vendor = "sparkmax";
     const sparkFiles = new Map(generateProjectFiles(sparkProject).map((f) => [f.path, f.content]));
 
@@ -82,6 +86,7 @@ describe("FIRST Studio Ciprix generator", () => {
     expect(getRequiredVendordeps(sparkProject)).toContain("REVLib.json");
 
     const srxProject = createSkeletonPreset();
+    if (!isMotorSubsystem(srxProject.subsystems[0])) throw new Error("expected motor");
     srxProject.subsystems[0].motor.vendor = "talonsrx";
     const srxFiles = new Map(generateProjectFiles(srxProject).map((f) => [f.path, f.content]));
 
@@ -98,6 +103,7 @@ describe("FIRST Studio Ciprix generator", () => {
     project.subsystems.push(second);
     project.controls.pilotPriority.push({
       id: "pilot-dup",
+      source: "button",
       button: "rightBumper",
       request: "INTAKE",
     });
@@ -112,6 +118,7 @@ describe("FIRST Studio Ciprix generator", () => {
     const project = createBlankPreset();
     for (const type of ["shooter", "arm", "elevator", "climber"] as const) {
       const created = createNewSubsystem(type, project.subsystems);
+      if (!isMotorSubsystem(created)) throw new Error("expected motor");
       project.subsystems.push(created);
       project.superstructure.stateActions.IDLE[created.id] = created.fsm.initialRequest;
     }
@@ -159,6 +166,7 @@ describe("FIRST Studio Ciprix generator", () => {
     const project = createBlankPreset();
     for (const type of ["turret", "wrist", "indexer", "hood"] as const) {
       const created = createNewSubsystem(type, project.subsystems);
+      if (!isMotorSubsystem(created)) throw new Error("expected motor");
       project.subsystems.push(created);
       project.superstructure.stateActions.IDLE[created.id] = created.fsm.initialRequest;
     }
@@ -189,7 +197,9 @@ describe("FIRST Studio Ciprix generator", () => {
 
   it("generates dual-motor follower code and detects duplicate follower CAN IDs", () => {
     const project = createSkeletonPreset();
-    project.subsystems[0].motor.follower = { enabled: true, canId: 15, inverted: true };
+    const first = project.subsystems[0];
+    if (!isMotorSubsystem(first)) throw new Error("expected motor");
+    first.motor.follower = { enabled: true, canId: 15, inverted: true };
     expect(validateProject(project)).toEqual([]);
 
     const files = new Map(generateProjectFiles(project).map((f) => [f.path, f.content]));
@@ -203,7 +213,7 @@ describe("FIRST Studio Ciprix generator", () => {
     const simJava = files.get("src/main/java/frc/robot/subsystems/roller/RollerIOSim.java")!;
     expect(simJava).toContain("DCMotor.getKrakenX60(2)");
 
-    project.subsystems[0].motor.follower = { enabled: true, canId: 10, inverted: false };
+    first.motor.follower = { enabled: true, canId: 10, inverted: false };
     const issues = validateProject(project);
     expect(issues.some((i) => i.id.startsWith("can-dup-follower"))).toBe(true);
   });

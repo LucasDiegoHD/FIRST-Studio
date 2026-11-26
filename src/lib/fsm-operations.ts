@@ -11,7 +11,7 @@ export function applyRenameSubsystemState(
   return {
     ...project,
     subsystems: project.subsystems.map((sub) => {
-      if (sub.id !== subsystemId) return sub;
+      if (sub.id !== subsystemId || !sub.fsm) return sub;
       return {
         ...sub,
         isDefaultTemplate: false,
@@ -63,7 +63,7 @@ export function applyRenameSubsystemRequest(
   return {
     ...project,
     subsystems: project.subsystems.map((sub) => {
-      if (sub.id !== subsystemId) return sub;
+      if (sub.id !== subsystemId || !sub.fsm) return sub;
       return {
         ...sub,
         isDefaultTemplate: false,

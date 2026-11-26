@@ -199,15 +199,60 @@ export const FIELD_META: Record<string, FieldMeta> = {
     section: { pt: "Estados", en: "States" },
     tab: "fsm",
   },
-  "subsystems.*.fsm.states.*.onEnter.constantName": {
+  "subsystems.*.fsm.states.*.actions.*.constantName": {
     fieldLabel: { pt: "Constante Java", en: "Java Constant" },
     section: { pt: "Estados", en: "States" },
     tab: "fsm",
   },
-  "subsystems.*.fsm.states.*.onEnter.value": {
+  "subsystems.*.fsm.states.*.actions.*.value": {
     fieldLabel: { pt: "Valor da Ação", en: "Action Value" },
     section: { pt: "Estados", en: "States" },
     tab: "fsm",
+  },
+  "subsystems.*.fsm.states.*.regularTimeSec.min": {
+    fieldLabel: { pt: "Tempo Mínimo", en: "Min Regular Time" },
+    section: { pt: "Estados", en: "States" },
+    tab: "fsm",
+  },
+  "subsystems.*.fsm.states.*.regularTimeSec.max": {
+    fieldLabel: { pt: "Tempo Máximo", en: "Max Regular Time" },
+    section: { pt: "Estados", en: "States" },
+    tab: "fsm",
+  },
+  "subsystems.*.leds.pwmPort": {
+    fieldLabel: { pt: "Porta PWM", en: "PWM Port" },
+    section: { pt: "Hardware LEDs", en: "LED Hardware" },
+    tab: "subsystems",
+    min: 0,
+    max: 9,
+  },
+  "subsystems.*.leds.ledCount": {
+    fieldLabel: { pt: "Quantidade de LEDs", en: "LED Count" },
+    section: { pt: "Hardware LEDs", en: "LED Hardware" },
+    tab: "subsystems",
+    min: 1,
+    max: 300,
+  },
+  "subsystems.*.leds.canId": {
+    fieldLabel: { pt: "ID CAN CANdle", en: "CANdle CAN ID" },
+    section: { pt: "Hardware LEDs", en: "LED Hardware" },
+    tab: "subsystems",
+    min: 0,
+    max: 62,
+  },
+  "subsystems.*.sensors.*.channel": {
+    fieldLabel: { pt: "Canal DIO", en: "DIO Channel" },
+    section: { pt: "Sensores", en: "Sensors" },
+    tab: "subsystems",
+    min: 0,
+    max: 25,
+  },
+  "subsystems.*.sensors.*.canId": {
+    fieldLabel: { pt: "CAN ID Sensor", en: "Sensor CAN ID" },
+    section: { pt: "Sensores", en: "Sensors" },
+    tab: "subsystems",
+    min: 0,
+    max: 62,
   },
   "subsystems.*.fsm.states.*.timeoutAfterSec": {
     fieldLabel: { pt: "Timeout (s)", en: "Timeout (s)" },
@@ -276,14 +321,14 @@ export function resolveZodPath(
       tab = "fsm";
       segs.push("fsm");
       if (rawPath[3] === "states" && typeof rawPath[4] === "number") {
-        const st = sub?.fsm.states[rawPath[4]];
+        const st = sub?.fsm?.states[rawPath[4]];
         stateName = st?.name;
         segs.push("states", st?.name ?? String(rawPath[4]), ...rawPath.slice(5).map(String));
       } else if (rawPath[3] === "requests" && typeof rawPath[4] === "number") {
-        const req = sub?.fsm.requests[rawPath[4]];
+        const req = sub?.fsm?.requests[rawPath[4]];
         segs.push("requests", req ?? String(rawPath[4]), ...rawPath.slice(5).map(String));
       } else if (rawPath[3] === "bindings" && typeof rawPath[4] === "number") {
-        const bind = sub?.fsm.bindings[rawPath[4]];
+        const bind = sub?.fsm?.bindings[rawPath[4]];
         segs.push("bindings", bind?.request ?? String(rawPath[4]));
       } else {
         segs.push(...rawPath.slice(3).map(String));

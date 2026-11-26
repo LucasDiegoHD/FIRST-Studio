@@ -72,6 +72,13 @@ const THEMES: Record<SubsystemType, SubsystemTheme> = {
     borderActive: "border-rose-400/80",
     fillBg: "bg-rose-500/10",
   },
+  leds: {
+    barBg: "bg-lime-400",
+    iconText: "text-lime-300",
+    badgeBg: "bg-lime-950/60 text-lime-200 border-lime-700/60",
+    borderActive: "border-lime-400/80",
+    fillBg: "bg-lime-500/10",
+  },
   generic: {
     barBg: "bg-slate-400",
     iconText: "text-slate-300",

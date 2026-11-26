@@ -115,7 +115,7 @@ const dictionaries = {
     "subsystems.smart_err": "Erro Permitido",
     "fsm.select_subsystem": "Subsistema",
     "fsm.no_subsystems": "Adicione ao menos um subsistema na etapa 1 para editar sua FSM.",
-    "fsm.states_title": "Estados e Ações (onEnter)",
+    "fsm.states_title": "Estados e Ações",
     "fsm.bindings_title": "Tabela bindRequest",
     "fsm.initial_state": "Estado Inicial",
     "fsm.initial_request": "Request Inicial",
@@ -204,6 +204,9 @@ const dictionaries = {
     "shortcuts.save": "Salvar ciprix-project.json",
     "shortcuts.export": "Exportar projeto .zip",
     "shortcuts.help": "Abrir guia de atalhos",
+    "subsystems.leds_title": "Hardware de LEDs",
+    "subsystems.sensors_title": "Sensores de Presença",
+    "subsystems.add_sensor": "Adicionar Sensor",
   },
   en: {
     "app.title": "FIRST Studio",
@@ -319,7 +322,7 @@ const dictionaries = {
     "subsystems.smart_err": "Allowed Error",
     "fsm.select_subsystem": "Subsystem",
     "fsm.no_subsystems": "Add at least one subsystem in Step 1 to edit its FSM.",
-    "fsm.states_title": "States & Actions (onEnter)",
+    "fsm.states_title": "States & Actions",
     "fsm.bindings_title": "bindRequest Table",
     "fsm.initial_state": "Initial State",
     "fsm.initial_request": "Initial Request",
@@ -408,6 +411,9 @@ const dictionaries = {
     "shortcuts.save": "Save ciprix-project.json",
     "shortcuts.export": "Export .zip project",
     "shortcuts.help": "Open shortcuts guide",
+    "subsystems.leds_title": "LED Hardware",
+    "subsystems.sensors_title": "Presence Sensors",
+    "subsystems.add_sensor": "Add Sensor",
   },
 } as const;
 

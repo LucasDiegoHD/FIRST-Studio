@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
 import { toUpperSnake } from "@/lib/generator/java-utils";
-import type { SubsystemConfig } from "@/lib/schema/ciprix-project";
+import type { MotorSubsystemConfig } from "@/lib/schema/ciprix-project";
 
 function RequestNameInput({
   subsystemId,
@@ -53,9 +53,15 @@ function RequestNameInput({
   );
 }
 
-export function RequestsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
+export function RequestsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }) {
   const { updateSubsystem, t } = useProject();
   const boundSet = new Set(subsystem.fsm.bindings.map((b) => b.request));
+
+  const patchFsm = (fn: (fsm: MotorSubsystemConfig["fsm"]) => MotorSubsystemConfig["fsm"]) => {
+    updateSubsystem(subsystem.id, (prev) =>
+      prev.fsm ? { ...prev, fsm: fn(prev.fsm) } : prev,
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -65,10 +71,7 @@ export function RequestsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
             className="font-mono h-8 text-xs"
             value={subsystem.fsm.initialRequest}
             onChange={(e) =>
-              updateSubsystem(subsystem.id, (prev) => ({
-                ...prev,
-                fsm: { ...prev.fsm, initialRequest: e.target.value },
-              }))
+              patchFsm((fsm) => ({ ...fsm, initialRequest: e.target.value }))
             }
           >
             {subsystem.fsm.requests.map((r) => (
@@ -90,12 +93,9 @@ export function RequestsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
           variant="outline"
           onClick={() => {
             const reqName = `REQUEST_${subsystem.fsm.requests.length + 1}`;
-            updateSubsystem(subsystem.id, (prev) => ({
-              ...prev,
-              fsm: {
-                ...prev.fsm,
-                requests: [...prev.fsm.requests, reqName],
-              },
+            patchFsm((fsm) => ({
+              ...fsm,
+              requests: [...fsm.requests, reqName],
             }));
           }}
         >
@@ -129,13 +129,10 @@ export function RequestsPanel({ subsystem }: { subsystem: SubsystemConfig }) {
                   variant="ghost"
                   disabled={subsystem.fsm.requests.length <= 1}
                   onClick={() =>
-                    updateSubsystem(subsystem.id, (prev) => ({
-                      ...prev,
-                      fsm: {
-                        ...prev.fsm,
-                        requests: prev.fsm.requests.filter((_, i) => i !== idx),
-                        bindings: prev.fsm.bindings.filter((b) => b.request !== req),
-                      },
+                    patchFsm((fsm) => ({
+                      ...fsm,
+                      requests: fsm.requests.filter((_, i) => i !== idx),
+                      bindings: fsm.bindings.filter((b) => b.request !== req),
                     }))
                   }
                 >

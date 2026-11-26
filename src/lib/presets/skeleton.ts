@@ -1,14 +1,38 @@
 import { toUpperSnake } from "../generator/java-utils";
-import type {
-  CiprixProject,
-  SubsystemConfig,
-  SubsystemType,
-  XboxButton,
+import {
+  isMotorSubsystem,
+  type CiprixProject,
+  type FsmState,
+  type FsmTransition,
+  type SubsystemAction,
+  type SubsystemConfig,
+  type SubsystemType,
+  type XboxButton,
 } from "../schema/ciprix-project";
+
+function mState(
+  subKey: string,
+  name: string,
+  action: SubsystemAction,
+  extras?: { transitions?: FsmTransition[]; timeoutAfterSec?: number },
+): FsmState {
+  return {
+    name,
+    actions: [
+      {
+        id: `act-${subKey}-${name.toLowerCase()}`,
+        kind: "motor",
+        when: "enter",
+        action,
+      },
+    ],
+    ...extras,
+  };
+}
 
 export function createSkeletonPreset(): CiprixProject {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     project: {
       name: "skeleton",
       teamNumber: 0,
@@ -40,26 +64,17 @@ export function createSkeletonPreset(): CiprixProject {
           initialState: "STOPPED",
           initialRequest: "STOP",
           states: [
-            {
-              name: "STOPPED",
-              onEnter: { type: "stop" },
-            },
-            {
-              name: "INTAKING",
-              onEnter: {
-                type: "percentOutput",
-                constantName: "INTAKE_OUTPUT",
-                value: 0.6,
-              },
-            },
-            {
-              name: "EJECTING",
-              onEnter: {
-                type: "percentOutput",
-                constantName: "EJECT_OUTPUT",
-                value: -0.5,
-              },
-            },
+            mState("roller", "STOPPED", { type: "stop" }),
+            mState("roller", "INTAKING", {
+              type: "percentOutput",
+              constantName: "INTAKE_OUTPUT",
+              value: 0.6,
+            }),
+            mState("roller", "EJECTING", {
+              type: "percentOutput",
+              constantName: "EJECT_OUTPUT",
+              value: -0.5,
+            }),
           ],
           requests: ["STOP", "INTAKE", "EJECT"],
           bindings: [
@@ -108,8 +123,8 @@ export function createSkeletonPreset(): CiprixProject {
     },
     controls: {
       pilotPriority: [
-        { id: "pilot-eject", button: "rightBumper", request: "EJECT" },
-        { id: "pilot-intake", button: "leftBumper", request: "INTAKE" },
+        { id: "pilot-eject", source: "button", button: "rightBumper", request: "EJECT" },
+        { id: "pilot-intake", source: "button", button: "leftBumper", request: "INTAKE" },
       ],
       copilotOverrides: [
         {
@@ -134,7 +149,7 @@ export function createSkeletonPreset(): CiprixProject {
 
 export function createBlankPreset(): CiprixProject {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     project: {
       name: "my-robot",
       teamNumber: 0,
@@ -178,8 +193,28 @@ const BASE_NAMES: Record<SubsystemType, string> = {
   wrist: "Wrist",
   indexer: "Indexer",
   hood: "Hood",
+  leds: "Leds",
   generic: "Motor",
 };
+
+function collectUsedCanIds(subsystems: SubsystemConfig[]): Set<number> {
+  const usedCanIds = new Set<number>();
+  for (const s of subsystems) {
+    if (s.motor) {
+      usedCanIds.add(s.motor.canId);
+      if (s.motor.follower?.enabled) usedCanIds.add(s.motor.follower.canId);
+    }
+    if (s.leds?.driver === "candle" && s.leds.canId !== undefined) {
+      usedCanIds.add(s.leds.canId);
+    }
+    for (const sensor of s.sensors ?? []) {
+      if (sensor.type === "canrange" || sensor.type === "lasercan") {
+        usedCanIds.add(sensor.canId);
+      }
+    }
+  }
+  return usedCanIds;
+}
 
 export function createNewSubsystem(
   type: SubsystemType,
@@ -187,11 +222,7 @@ export function createNewSubsystem(
 ): SubsystemConfig {
   const usedIds = new Set(existing.map((s) => s.id));
   const usedNames = new Set(existing.map((s) => s.name.toLowerCase()));
-  const usedCanIds = new Set<number>();
-  for (const s of existing) {
-    usedCanIds.add(s.motor.canId);
-    if (s.motor.follower?.enabled) usedCanIds.add(s.motor.follower.canId);
-  }
+  const usedCanIds = collectUsedCanIds(existing);
 
   const baseName = BASE_NAMES[type];
   let suffix = 1;
@@ -204,6 +235,28 @@ export function createNewSubsystem(
 
   const name = suffix === 1 ? baseName : `${baseName}${suffix}`;
   const id = suffix === 1 ? type : `${type}_${suffix}`;
+
+  if (type === "leds") {
+    const usedPwm = new Set(
+      existing
+        .filter((s) => s.type === "leds" && s.leds?.driver === "addressableLed")
+        .map((s) => s.leds?.pwmPort ?? 0),
+    );
+    let pwmPort = 0;
+    while (usedPwm.has(pwmPort) && pwmPort < 9) {
+      pwmPort++;
+    }
+    return {
+      id,
+      name,
+      type: "leds",
+      leds: {
+        driver: "addressableLed",
+        pwmPort,
+        ledCount: 30,
+      },
+    };
+  }
 
   let canId = 10;
   while (usedCanIds.has(canId) && canId < 62) {
@@ -229,15 +282,17 @@ export function createNewSubsystem(
         initialState: "STOPPED",
         initialRequest: "STOP",
         states: [
-          { name: "STOPPED", onEnter: { type: "stop" } },
-          {
-            name: "INTAKING",
-            onEnter: { type: "percentOutput", constantName: "INTAKE_OUTPUT", value: 0.6 },
-          },
-          {
-            name: "EJECTING",
-            onEnter: { type: "percentOutput", constantName: "EJECT_OUTPUT", value: -0.5 },
-          },
+          mState(id, "STOPPED", { type: "stop" }),
+          mState(id, "INTAKING", {
+            type: "percentOutput",
+            constantName: "INTAKE_OUTPUT",
+            value: 0.6,
+          }),
+          mState(id, "EJECTING", {
+            type: "percentOutput",
+            constantName: "EJECT_OUTPUT",
+            value: -0.5,
+          }),
         ],
         requests: ["STOP", "INTAKE", "EJECT"],
         bindings: [
@@ -271,19 +326,19 @@ export function createNewSubsystem(
         initialRequest: "STOP",
         securityState: "IDLE",
         states: [
-          { name: "IDLE", onEnter: { type: "stop" } },
-          {
-            name: "RAMPING",
-            onEnter: { type: "velocityRpm", constantName: "SHOOT_RPM", value: 4500 },
-            transitions: [
-              { id: "tr-ramp-ready", targetState: "READY", trigger: "atSetpoint", debounceSec: 0.1 },
-            ],
-            timeoutAfterSec: 3.0,
-          },
-          {
-            name: "READY",
-            onEnter: { type: "velocityRpm", constantName: "SHOOT_RPM", value: 4500 },
-          },
+          mState(id, "IDLE", { type: "stop" }),
+          mState(
+            id,
+            "RAMPING",
+            { type: "velocityRpm", constantName: "SHOOT_RPM", value: 4500 },
+            {
+              transitions: [
+                { id: "tr-ramp-ready", targetState: "READY", trigger: "atSetpoint", debounceSec: 0.1 },
+              ],
+              timeoutAfterSec: 3.0,
+            },
+          ),
+          mState(id, "READY", { type: "velocityRpm", constantName: "SHOOT_RPM", value: 4500 }),
         ],
         requests: ["STOP", "SHOOT"],
         bindings: [
@@ -327,18 +382,9 @@ export function createNewSubsystem(
         initialState: "STOWED",
         initialRequest: "STOW",
         states: [
-          {
-            name: "STOWED",
-            onEnter: { type: "positionDeg", constantName: "STOW_ANGLE", value: 0 },
-          },
-          {
-            name: "INTAKE",
-            onEnter: { type: "positionDeg", constantName: "INTAKE_ANGLE", value: 25 },
-          },
-          {
-            name: "SCORE",
-            onEnter: { type: "positionDeg", constantName: "SCORE_ANGLE", value: 85 },
-          },
+          mState(id, "STOWED", { type: "positionDeg", constantName: "STOW_ANGLE", value: 0 }),
+          mState(id, "INTAKE", { type: "positionDeg", constantName: "INTAKE_ANGLE", value: 25 }),
+          mState(id, "SCORE", { type: "positionDeg", constantName: "SCORE_ANGLE", value: 85 }),
         ],
         requests: ["STOW", "INTAKE", "SCORE"],
         bindings: [
@@ -383,18 +429,9 @@ export function createNewSubsystem(
         initialState: "BOTTOM",
         initialRequest: "HOME",
         states: [
-          {
-            name: "BOTTOM",
-            onEnter: { type: "positionRot", constantName: "BOTTOM_POS", value: 0 },
-          },
-          {
-            name: "MID",
-            onEnter: { type: "positionRot", constantName: "MID_POS", value: 2.5 },
-          },
-          {
-            name: "HIGH",
-            onEnter: { type: "positionRot", constantName: "HIGH_POS", value: 5.5 },
-          },
+          mState(id, "BOTTOM", { type: "positionRot", constantName: "BOTTOM_POS", value: 0 }),
+          mState(id, "MID", { type: "positionRot", constantName: "MID_POS", value: 2.5 }),
+          mState(id, "HIGH", { type: "positionRot", constantName: "HIGH_POS", value: 5.5 }),
         ],
         requests: ["HOME", "MID", "HIGH"],
         bindings: [
@@ -427,15 +464,9 @@ export function createNewSubsystem(
         initialState: "IDLE",
         initialRequest: "STOP",
         states: [
-          { name: "IDLE", onEnter: { type: "stop" } },
-          {
-            name: "EXTENDING",
-            onEnter: { type: "percentOutput", constantName: "EXTEND_OUTPUT", value: 0.7 },
-          },
-          {
-            name: "CLIMBING",
-            onEnter: { type: "percentOutput", constantName: "CLIMB_OUTPUT", value: -0.8 },
-          },
+          mState(id, "IDLE", { type: "stop" }),
+          mState(id, "EXTENDING", { type: "percentOutput", constantName: "EXTEND_OUTPUT", value: 0.7 }),
+          mState(id, "CLIMBING", { type: "percentOutput", constantName: "CLIMB_OUTPUT", value: -0.8 }),
         ],
         requests: ["STOP", "EXTEND", "CLIMB"],
         bindings: [
@@ -480,9 +511,9 @@ export function createNewSubsystem(
         initialState: "HOME",
         initialRequest: "HOME",
         states: [
-          { name: "HOME", onEnter: { type: "positionDeg", constantName: "HOME_ANGLE", value: 0 } },
-          { name: "LEFT", onEnter: { type: "positionDeg", constantName: "LEFT_ANGLE", value: -45 } },
-          { name: "RIGHT", onEnter: { type: "positionDeg", constantName: "RIGHT_ANGLE", value: 45 } },
+          mState(id, "HOME", { type: "positionDeg", constantName: "HOME_ANGLE", value: 0 }),
+          mState(id, "LEFT", { type: "positionDeg", constantName: "LEFT_ANGLE", value: -45 }),
+          mState(id, "RIGHT", { type: "positionDeg", constantName: "RIGHT_ANGLE", value: 45 }),
         ],
         requests: ["HOME", "LEFT", "RIGHT"],
         bindings: [
@@ -528,9 +559,9 @@ export function createNewSubsystem(
         initialState: "STOWED",
         initialRequest: "STOW",
         states: [
-          { name: "STOWED", onEnter: { type: "smartPositionDeg", constantName: "STOW_ANGLE", value: 0 } },
-          { name: "INTAKE", onEnter: { type: "smartPositionDeg", constantName: "INTAKE_ANGLE", value: 35 } },
-          { name: "SCORE", onEnter: { type: "smartPositionDeg", constantName: "SCORE_ANGLE", value: 100 } },
+          mState(id, "STOWED", { type: "smartPositionDeg", constantName: "STOW_ANGLE", value: 0 }),
+          mState(id, "INTAKE", { type: "smartPositionDeg", constantName: "INTAKE_ANGLE", value: 35 }),
+          mState(id, "SCORE", { type: "smartPositionDeg", constantName: "SCORE_ANGLE", value: 100 }),
         ],
         requests: ["STOW", "INTAKE", "SCORE"],
         bindings: [
@@ -570,26 +601,29 @@ export function createNewSubsystem(
         initialRequest: "STOP",
         securityState: "IDLE",
         states: [
-          { name: "IDLE", onEnter: { type: "stop" } },
-          {
-            name: "INDEXING",
-            onEnter: { type: "percentOutput", constantName: "INDEX_OUTPUT", value: 0.45 },
-            transitions: [
-              { id: "tr-idx-cur", targetState: "HOLDING", trigger: "currentAbove", value: 24 },
-            ],
-          },
-          { name: "HOLDING", onEnter: { type: "stop" } },
-          {
-            name: "FEEDING",
-            onEnter: { type: "percentOutput", constantName: "FEED_OUTPUT", value: 0.85 },
-          },
-          {
-            name: "UNJAMMING",
-            onEnter: { type: "percentOutput", constantName: "UNJAM_OUTPUT", value: -0.5 },
-            transitions: [
-              { id: "tr-idx-unjam", targetState: "IDLE", trigger: "afterSeconds", value: 0.4 },
-            ],
-          },
+          mState(id, "IDLE", { type: "stop" }),
+          mState(
+            id,
+            "INDEXING",
+            { type: "percentOutput", constantName: "INDEX_OUTPUT", value: 0.45 },
+            {
+              transitions: [
+                { id: "tr-idx-cur", targetState: "HOLDING", trigger: "currentAbove", value: 24 },
+              ],
+            },
+          ),
+          mState(id, "HOLDING", { type: "stop" }),
+          mState(id, "FEEDING", { type: "percentOutput", constantName: "FEED_OUTPUT", value: 0.85 }),
+          mState(
+            id,
+            "UNJAMMING",
+            { type: "percentOutput", constantName: "UNJAM_OUTPUT", value: -0.5 },
+            {
+              transitions: [
+                { id: "tr-idx-unjam", targetState: "IDLE", trigger: "afterSeconds", value: 0.4 },
+              ],
+            },
+          ),
         ],
         requests: ["STOP", "INDEX", "FEED", "UNJAM"],
         bindings: [
@@ -636,9 +670,9 @@ export function createNewSubsystem(
         initialState: "CLOSE",
         initialRequest: "CLOSE",
         states: [
-          { name: "CLOSE", onEnter: { type: "smartPositionDeg", constantName: "CLOSE_ANGLE", value: 15 } },
-          { name: "MID", onEnter: { type: "smartPositionDeg", constantName: "MID_ANGLE", value: 35 } },
-          { name: "FAR", onEnter: { type: "smartPositionDeg", constantName: "FAR_ANGLE", value: 55 } },
+          mState(id, "CLOSE", { type: "smartPositionDeg", constantName: "CLOSE_ANGLE", value: 15 }),
+          mState(id, "MID", { type: "smartPositionDeg", constantName: "MID_ANGLE", value: 35 }),
+          mState(id, "FAR", { type: "smartPositionDeg", constantName: "FAR_ANGLE", value: 55 }),
         ],
         requests: ["CLOSE", "MID", "FAR"],
         bindings: [
@@ -669,11 +703,8 @@ export function createNewSubsystem(
       initialState: "IDLE",
       initialRequest: "STOP",
       states: [
-        { name: "IDLE", onEnter: { type: "stop" } },
-        {
-          name: "RUNNING",
-          onEnter: { type: "percentOutput", constantName: "RUN_OUTPUT", value: 0.5 },
-        },
+        mState(id, "IDLE", { type: "stop" }),
+        mState(id, "RUNNING", { type: "percentOutput", constantName: "RUN_OUTPUT", value: 0.5 }),
       ],
       requests: ["STOP", "RUN"],
       bindings: [
@@ -691,7 +722,7 @@ export function createCompetitionPreset(): CiprixProject {
   const indexer = createNewSubsystem("indexer", [shooter, hood]);
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     project: {
       name: "competition-shooter",
       teamNumber: 9047,
@@ -733,8 +764,8 @@ export function createCompetitionPreset(): CiprixProject {
     },
     controls: {
       pilotPriority: [
-        { id: "pilot-shoot", button: "rightTrigger", request: "SHOOT" },
-        { id: "pilot-intake", button: "leftTrigger", request: "INTAKING" },
+        { id: "pilot-shoot", source: "button", button: "rightTrigger", request: "SHOOT" },
+        { id: "pilot-intake", source: "button", button: "leftTrigger", request: "INTAKING" },
       ],
       copilotOverrides: [
         { id: "cop-unjam", button: "x", subsystemId: indexer.id, request: "UNJAM" },
@@ -756,6 +787,7 @@ const PRIMARY_REQUEST_BY_TYPE: Record<SubsystemType, string> = {
   wrist: "SCORE",
   indexer: "FEED",
   hood: "FAR",
+  leds: "",
   generic: "RUN",
 };
 
@@ -806,6 +838,16 @@ export function addSubsystemWithDefaults(
     isDefaultTemplate: true,
   };
 
+  if (!isMotorSubsystem(created)) {
+    return {
+      createdId: created.id,
+      project: {
+        ...project,
+        subsystems: [...project.subsystems, created],
+      },
+    };
+  }
+
   const preferred = PRIMARY_REQUEST_BY_TYPE[type];
   const primaryReq = created.fsm.requests.includes(preferred)
     ? preferred
@@ -845,18 +887,21 @@ export function addSubsystemWithDefaults(
 
     const row: Record<string, string> = {};
     for (const sub of project.subsystems) {
-      row[sub.id] = sub.fsm.initialRequest;
+      if (sub.fsm) row[sub.id] = sub.fsm.initialRequest;
     }
     row[created.id] = primaryReq;
     nextStateActions[superName] = row;
   }
 
   const nextPilotPriority = [...project.controls.pilotPriority];
-  const usedPilotButtons = new Set(nextPilotPriority.map((p) => p.button));
+  const usedPilotButtons = new Set(
+    nextPilotPriority.filter((p) => p.source !== "sensor" && p.button).map((p) => p.button!),
+  );
   const freePilot = PILOT_BUTTON_ORDER.find((b) => !usedPilotButtons.has(b));
   if (superName && freePilot) {
     nextPilotPriority.push({
       id: `pilot-${created.id}-${Date.now().toString(36)}`,
+      source: "button",
       button: freePilot,
       request: superName,
     });
@@ -910,11 +955,7 @@ export function duplicateSubsystemWithDefaults(
   const source = project.subsystems[sourceIdx];
   const usedIds = new Set(project.subsystems.map((s) => s.id));
   const usedNames = new Set(project.subsystems.map((s) => s.name.toLowerCase()));
-  const usedCanIds = new Set<number>();
-  for (const s of project.subsystems) {
-    usedCanIds.add(s.motor.canId);
-    if (s.motor.follower?.enabled) usedCanIds.add(s.motor.follower.canId);
-  }
+  const usedCanIds = collectUsedCanIds(project.subsystems);
 
   const baseName = source.name.replace(/\d+$/, "") || BASE_NAMES[source.type];
   let suffix = 2;
@@ -927,29 +968,59 @@ export function duplicateSubsystemWithDefaults(
   const nextName = `${baseName}${suffix}`;
   const nextId = `${source.type}_${suffix}`;
 
-  let nextCanId = 10;
-  while (usedCanIds.has(nextCanId) && nextCanId < 62) {
-    nextCanId++;
-  }
-  usedCanIds.add(nextCanId);
-
   const clone: SubsystemConfig = structuredClone(source);
   clone.id = nextId;
   clone.name = nextName;
   clone.isDefaultTemplate = false;
-  clone.motor.canId = nextCanId;
 
-  if (clone.motor.follower?.enabled) {
-    let followerCanId = nextCanId + 1;
-    while (usedCanIds.has(followerCanId) && followerCanId < 62) {
-      followerCanId++;
+  if (clone.motor) {
+    let nextCanId = 10;
+    while (usedCanIds.has(nextCanId) && nextCanId < 62) {
+      nextCanId++;
     }
-    usedCanIds.add(followerCanId);
-    clone.motor.follower.canId = followerCanId;
+    usedCanIds.add(nextCanId);
+    clone.motor.canId = nextCanId;
+
+    if (clone.motor.follower?.enabled) {
+      let followerCanId = nextCanId + 1;
+      while (usedCanIds.has(followerCanId) && followerCanId < 62) {
+        followerCanId++;
+      }
+      usedCanIds.add(followerCanId);
+      clone.motor.follower.canId = followerCanId;
+    }
+  }
+
+  if (clone.leds) {
+    if (clone.leds.driver === "candle") {
+      let nextCanId = 30;
+      while (usedCanIds.has(nextCanId) && nextCanId < 62) nextCanId++;
+      usedCanIds.add(nextCanId);
+      clone.leds.canId = nextCanId;
+    } else {
+      const usedPwm = new Set(
+        project.subsystems
+          .filter((s) => s.type === "leds" && s.leds?.driver === "addressableLed")
+          .map((s) => s.leds?.pwmPort ?? 0),
+      );
+      let pwmPort = 0;
+      while (usedPwm.has(pwmPort) && pwmPort < 9) pwmPort++;
+      clone.leds.pwmPort = pwmPort;
+    }
   }
 
   const nextSubsystems = [...project.subsystems];
   nextSubsystems.splice(sourceIdx + 1, 0, clone);
+
+  if (!clone.fsm) {
+    return {
+      createdId: clone.id,
+      project: {
+        ...project,
+        subsystems: nextSubsystems,
+      },
+    };
+  }
 
   const nextStateActions: Record<string, Record<string, string>> = {};
   for (const stateName of project.superstructure.states) {

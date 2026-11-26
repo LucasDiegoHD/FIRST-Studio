@@ -1,5 +1,9 @@
-import { CiprixProjectSchema, type CiprixProject } from "./schema/ciprix-project";
-import { isValidJavaIdentifier, isValidPackageName } from "./generator/java-utils";
+import {
+  CiprixProjectSchema,
+  isMotorSubsystem,
+  type CiprixProject,
+} from "./schema/ciprix-project";
+import { isValidJavaIdentifier, isValidPackageName, toCamelCase } from "./generator/java-utils";
 import type { Locale } from "./i18n";
 import { formatZodIssue } from "./issue-messages";
 
@@ -17,6 +21,18 @@ export interface ValidationIssue {
   advanced?: boolean;
   stateName?: string;
   message: string;
+}
+
+interface RumbleEntryRecord {
+  id: string;
+  ownerId: string;
+  ownerLabel: string;
+  tab: StudioTab;
+  targetId?: string;
+  stateName?: string;
+  path: string;
+  controller: "pilot" | "copilot" | "both";
+  priority: number;
 }
 
 export function validateProject(
@@ -60,7 +76,13 @@ export function validateProject(
 
   const subsystemNames = new Set<string>();
   const canBuses = new Map<string, string>();
+  const pwmPorts = new Map<number, string>();
+  const dioChannels = new Map<number, string>();
   const subsystemById = new Map(project.subsystems.map((s) => [s.id, s]));
+  const ledSubIds = new Set(
+    project.subsystems.filter((s) => s.type === "leds").map((s) => s.id),
+  );
+  const rumbleEntries: RumbleEntryRecord[] = [];
 
   if (project.subsystems.length === 0) {
     issues.push({
@@ -122,6 +144,54 @@ export function validateProject(
       subsystemNames.add(lowerName);
     }
 
+    // LED subsystem checks
+    if (sub.type === "leds") {
+      if (sub.leds?.driver === "addressableLed") {
+        const port = sub.leds.pwmPort ?? 0;
+        const owner = pwmPorts.get(port);
+        if (owner) {
+          issues.push({
+            id: `led-pwm-dup-${sub.id}`,
+            severity: "error",
+            tab: "subsystems",
+            targetId: sub.id,
+            path: `subsystems.${sub.id}.leds.pwmPort`,
+            fieldLabel: locale === "pt" ? "Porta PWM" : "PWM Port",
+            message:
+              locale === "pt"
+                ? `Porta PWM ${port} duplicada entre ${owner} e ${sub.name}.`
+                : `Duplicate PWM port ${port} between ${owner} and ${sub.name}.`,
+          });
+        } else {
+          pwmPorts.set(port, sub.name);
+        }
+      } else if (sub.leds?.driver === "candle") {
+        const cId = sub.leds.canId ?? 30;
+        const cBus = `${(sub.leds.canBus ?? "").trim() || "rio"}:${cId}`;
+        const owner = canBuses.get(cBus);
+        if (owner) {
+          issues.push({
+            id: `led-can-dup-${sub.id}`,
+            severity: "error",
+            tab: "subsystems",
+            targetId: sub.id,
+            path: `subsystems.${sub.id}.leds.canId`,
+            fieldLabel: locale === "pt" ? "ID CAN CANdle" : "CANdle CAN ID",
+            message:
+              locale === "pt"
+                ? `CAN ID ${cId} duplicado em ${sub.name} e ${owner}.`
+                : `Duplicate CAN ID ${cId} between ${sub.name} and ${owner}.`,
+          });
+        } else {
+          canBuses.set(cBus, sub.name);
+        }
+      }
+      continue;
+    }
+
+    if (!isMotorSubsystem(sub)) continue;
+
+    // Motor CAN ID checks
     const busKey = `${sub.motor.canBus.trim() || "rio"}:${sub.motor.canId}`;
     const existingOwner = canBuses.get(busKey);
     if (existingOwner) {
@@ -163,6 +233,88 @@ export function validateProject(
       }
     }
 
+    // Sensor checks
+    const sensorIds = new Set<string>();
+    const sensorJavaNames = new Set<string>();
+    for (const sensor of sub.sensors ?? []) {
+      sensorIds.add(sensor.id);
+      const jName = toCamelCase(sensor.name);
+      if (!sensor.name.trim() || sensorJavaNames.has(jName)) {
+        issues.push({
+          id: `sensor-name-${sub.id}-${sensor.id}`,
+          severity: "error",
+          tab: "subsystems",
+          targetId: sub.id,
+          path: `subsystems.${sub.id}.sensors.${sensor.id}.name`,
+          fieldLabel: locale === "pt" ? "Nome do Sensor" : "Sensor Name",
+          message:
+            locale === "pt"
+              ? `Nome de sensor inválido ou duplicado em ${sub.name}: "${sensor.name}".`
+              : `Invalid or duplicate sensor name in ${sub.name}: "${sensor.name}".`,
+        });
+      } else {
+        sensorJavaNames.add(jName);
+      }
+
+      if (sensor.type === "dio") {
+        const owner = dioChannels.get(sensor.channel);
+        if (owner) {
+          issues.push({
+            id: `sensor-dio-dup-${sub.id}-${sensor.id}`,
+            severity: "error",
+            tab: "subsystems",
+            targetId: sub.id,
+            path: `subsystems.${sub.id}.sensors.${sensor.id}.channel`,
+            fieldLabel: locale === "pt" ? "Canal DIO" : "DIO Channel",
+            message:
+              locale === "pt"
+                ? `Canal DIO ${sensor.channel} duplicado entre ${owner} e ${sub.name}.${sensor.name}.`
+                : `Duplicate DIO channel ${sensor.channel} between ${owner} and ${sub.name}.${sensor.name}.`,
+          });
+        } else {
+          dioChannels.set(sensor.channel, `${sub.name}.${sensor.name}`);
+        }
+      } else if (sensor.type === "canrange") {
+        const sBusKey = `${sensor.canBus.trim() || "rio"}:${sensor.canId}`;
+        const owner = canBuses.get(sBusKey);
+        if (owner) {
+          issues.push({
+            id: `sensor-can-dup-${sub.id}-${sensor.id}`,
+            severity: "error",
+            tab: "subsystems",
+            targetId: sub.id,
+            path: `subsystems.${sub.id}.sensors.${sensor.id}.canId`,
+            fieldLabel: "CAN ID",
+            message:
+              locale === "pt"
+                ? `CAN ID ${sensor.canId} do sensor ${sensor.name} em ${sub.name} conflita com ${owner}.`
+                : `Sensor ${sensor.name} CAN ID ${sensor.canId} in ${sub.name} conflicts with ${owner}.`,
+          });
+        } else {
+          canBuses.set(sBusKey, `${sub.name}.${sensor.name}`);
+        }
+      } else if (sensor.type === "lasercan") {
+        const sBusKey = `rio:${sensor.canId}`;
+        const owner = canBuses.get(sBusKey);
+        if (owner) {
+          issues.push({
+            id: `sensor-can-dup-${sub.id}-${sensor.id}`,
+            severity: "error",
+            tab: "subsystems",
+            targetId: sub.id,
+            path: `subsystems.${sub.id}.sensors.${sensor.id}.canId`,
+            fieldLabel: "CAN ID",
+            message:
+              locale === "pt"
+                ? `CAN ID ${sensor.canId} do LaserCAN ${sensor.name} conflita com ${owner} no barramento rio.`
+                : `LaserCAN ${sensor.name} CAN ID ${sensor.canId} conflicts with ${owner} on bus rio.`,
+          });
+        } else {
+          canBuses.set(sBusKey, `${sub.name}.${sensor.name}`);
+        }
+      }
+    }
+
     const stateSet = new Set(sub.fsm.states.map((s) => s.name));
     const requestSet = new Set(sub.fsm.requests);
 
@@ -179,17 +331,97 @@ export function validateProject(
           message: `Estado "${st.name}" em ${sub.name} não é um identificador Java válido.`,
         });
       }
-      if (st.onEnter.type !== "stop" && !isValidJavaIdentifier(st.onEnter.constantName)) {
+
+      if (st.regularTimeSec && st.regularTimeSec.min >= st.regularTimeSec.max) {
         issues.push({
-          id: `fsm-const-invalid-${sub.id}-${st.name}`,
+          id: `fsm-regtime-${sub.id}-${st.name}`,
           severity: "error",
           tab: "fsm",
           targetId: sub.id,
-          path: `subsystems.${sub.id}.fsm.states.${st.name}.onEnter.constantName`,
-          fieldLabel: locale === "pt" ? "Constante Java" : "Java Constant",
+          path: `subsystems.${sub.id}.fsm.states.${st.name}.regularTimeSec.min`,
+          fieldLabel: locale === "pt" ? "Tempo Esperado" : "Regular Time",
           stateName: st.name,
-          message: `Constante "${st.onEnter.constantName}" em ${sub.name}.${st.name} inválida.`,
+          message:
+            locale === "pt"
+              ? `Em ${sub.name}.${st.name}, tempo mínimo esperado deve ser menor que o máximo.`
+              : `In ${sub.name}.${st.name}, regularTime min must be less than max.`,
         });
+      }
+
+      for (const act of st.actions) {
+        if (act.kind === "motor") {
+          if (act.action.type !== "stop" && !isValidJavaIdentifier(act.action.constantName)) {
+            issues.push({
+              id: `fsm-const-invalid-${sub.id}-${st.name}-${act.id}`,
+              severity: "error",
+              tab: "fsm",
+              targetId: sub.id,
+              path: `subsystems.${sub.id}.fsm.states.${st.name}.actions.${act.id}.constantName`,
+              fieldLabel: locale === "pt" ? "Constante Java" : "Java Constant",
+              stateName: st.name,
+              message: `Constante "${act.action.constantName}" em ${sub.name}.${st.name} inválida.`,
+            });
+          }
+        } else if (act.kind === "leds") {
+          if (!ledSubIds.has(act.ledSubsystemId)) {
+            issues.push({
+              id: `fsm-led-missing-${sub.id}-${st.name}-${act.id}`,
+              severity: "error",
+              tab: "fsm",
+              targetId: sub.id,
+              path: `subsystems.${sub.id}.fsm.states.${st.name}.actions.${act.id}.ledSubsystemId`,
+              fieldLabel: locale === "pt" ? "Subsistema de LEDs" : "LED Subsystem",
+              stateName: st.name,
+              message:
+                locale === "pt"
+                  ? `${sub.name}.${st.name} aponta para um subsistema de LEDs inexistente.`
+                  : `${sub.name}.${st.name} targets a missing LED subsystem.`,
+            });
+          }
+        } else if (act.kind === "rumble") {
+          if (act.when === "periodic") {
+            issues.push({
+              id: `rumble-periodic-${sub.id}-${st.name}-${act.id}`,
+              severity: "warning",
+              tab: "fsm",
+              targetId: sub.id,
+              path: `subsystems.${sub.id}.fsm.states.${st.name}.actions.${act.id}.when`,
+              fieldLabel: locale === "pt" ? "Momento do Rumble" : "Rumble Timing",
+              stateName: st.name,
+              message:
+                locale === "pt"
+                  ? `Rumble em ${sub.name}.${st.name} usa "periodic" (dispara todo ciclo de 20ms). Prefira "Ao entrar" ou "Ao sair".`
+                  : `Rumble in ${sub.name}.${st.name} uses "periodic". Prefer "enter" or "exit".`,
+            });
+          }
+          const maxExpected = st.timeoutAfterSec ?? st.regularTimeSec?.max;
+          if (maxExpected !== undefined && act.seconds > maxExpected) {
+            issues.push({
+              id: `rumble-duration-${sub.id}-${st.name}-${act.id}`,
+              severity: "warning",
+              tab: "fsm",
+              targetId: sub.id,
+              path: `subsystems.${sub.id}.fsm.states.${st.name}.actions.${act.id}.seconds`,
+              fieldLabel: locale === "pt" ? "Duração Rumble (s)" : "Rumble Duration (s)",
+              stateName: st.name,
+              message:
+                locale === "pt"
+                  ? `Rumble em ${sub.name}.${st.name} (${act.seconds}s) dura mais que o tempo/timeout do estado (${maxExpected}s).`
+                  : `Rumble in ${sub.name}.${st.name} (${act.seconds}s) outlasts state regularTime/timeout (${maxExpected}s).`,
+            });
+          }
+          rumbleEntries.push({
+            id: act.id,
+            ownerId: `${sub.id}:${st.name}`,
+            ownerLabel: `${sub.name}.${st.name}`,
+            tab: "fsm",
+            targetId: sub.id,
+            stateName: st.name,
+            path: `subsystems.${sub.id}.fsm.states.${st.name}.actions.${act.id}.priority`,
+            controller: act.controller,
+            priority: act.priority,
+          });
+        }
       }
     }
 
@@ -290,6 +522,24 @@ export function validateProject(
           });
         } else {
           reachableStates.add(tr.targetState);
+        }
+        if (
+          (tr.trigger === "sensorTrue" || tr.trigger === "sensorFalse") &&
+          (!tr.sensorId || !sensorIds.has(tr.sensorId))
+        ) {
+          issues.push({
+            id: `fsm-tr-sensor-${sub.id}-${st.name}-${tr.id}`,
+            severity: "error",
+            tab: "fsm",
+            targetId: sub.id,
+            path: `subsystems.${sub.id}.fsm.states.${st.name}.name`,
+            fieldLabel: locale === "pt" ? "Sensor da Transição" : "Transition Sensor",
+            stateName: st.name,
+            message:
+              locale === "pt"
+                ? `Transição por sensor em ${sub.name}.${st.name} referencia sensor inexistente.`
+                : `Sensor transition in ${sub.name}.${st.name} references a missing sensor.`,
+          });
         }
       }
       if (st.timeoutAfterSec !== undefined) {
@@ -399,6 +649,95 @@ export function validateProject(
         message: `Transição da SuperStructure (${tr.fromState} -> ${tr.toState}) aponta para estado inexistente.`,
       });
     }
+    if (tr.condition === "sensorTrue" || tr.condition === "sensorFalse") {
+      const owner = tr.sensorOwnerId ? subsystemById.get(tr.sensorOwnerId) : undefined;
+      const hasSensor = owner?.sensors?.some((s) => s.id === tr.sensorId);
+      if (!owner || !hasSensor) {
+        issues.push({
+          id: `super-tr-sensor-${tr.id}`,
+          severity: "error",
+          tab: "superstructure",
+          path: `superstructure.transitions.${tr.id}`,
+          message:
+            locale === "pt"
+              ? `Intertravamento por sensor (${tr.fromState} -> ${tr.toState}) referencia sensor inexistente.`
+              : `Sensor interlock (${tr.fromState} -> ${tr.toState}) references a missing sensor.`,
+        });
+      }
+    }
+  }
+
+  for (const [stateName, effects] of Object.entries(project.superstructure.stateEffects ?? {})) {
+    for (const eff of effects) {
+      if (eff.kind === "leds" && !ledSubIds.has(eff.ledSubsystemId)) {
+        issues.push({
+          id: `super-led-missing-${stateName}-${eff.id}`,
+          severity: "error",
+          tab: "superstructure",
+          path: `superstructure.stateEffects.${stateName}.${eff.id}.ledSubsystemId`,
+          message:
+            locale === "pt"
+              ? `Efeito de LED em SuperStructure.${stateName} aponta para LED inexistente.`
+              : `LED effect in SuperStructure.${stateName} targets a missing LED subsystem.`,
+        });
+      } else if (eff.kind === "rumble") {
+        if (eff.when === "periodic") {
+          issues.push({
+            id: `rumble-periodic-super-${stateName}-${eff.id}`,
+            severity: "warning",
+            tab: "superstructure",
+            path: `superstructure.stateEffects.${stateName}.${eff.id}.when`,
+            message:
+              locale === "pt"
+                ? `Rumble em SuperStructure.${stateName} usa "periodic". Prefira "Ao entrar" ou "Ao sair".`
+                : `Rumble in SuperStructure.${stateName} uses "periodic". Prefer "enter" or "exit".`,
+          });
+        }
+        rumbleEntries.push({
+          id: eff.id,
+          ownerId: `super:${stateName}`,
+          ownerLabel: `SuperStructure.${stateName}`,
+          tab: "superstructure",
+          path: `superstructure.stateEffects.${stateName}.${eff.id}.priority`,
+          controller: eff.controller,
+          priority: eff.priority,
+        });
+      }
+    }
+  }
+
+  // Rumble priority conflicts on same controller across distinct owners
+  const rumbleSlotMap = new Map<string, RumbleEntryRecord[]>();
+  for (const entry of rumbleEntries) {
+    const slots: ("pilot" | "copilot")[] =
+      entry.controller === "both" ? ["pilot", "copilot"] : [entry.controller];
+    for (const slot of slots) {
+      const key = `${slot}:${entry.priority}`;
+      const list = rumbleSlotMap.get(key) ?? [];
+      list.push(entry);
+      rumbleSlotMap.set(key, list);
+    }
+  }
+  for (const [slotKey, list] of rumbleSlotMap.entries()) {
+    const distinctOwners = new Set(list.map((e) => e.ownerId));
+    if (distinctOwners.size > 1) {
+      const [slot, prio] = slotKey.split(":");
+      const first = list[0];
+      const names = Array.from(new Set(list.map((e) => e.ownerLabel))).join(" vs ");
+      issues.push({
+        id: `rumble-priority-conflict-${slotKey}`,
+        severity: "warning",
+        tab: first.tab,
+        targetId: first.targetId,
+        stateName: first.stateName,
+        path: first.path,
+        fieldLabel: locale === "pt" ? "Prioridade Rumble" : "Rumble Priority",
+        message:
+          locale === "pt"
+            ? `Prioridade ${prio} de rumble repetida no controle "${slot}" (${names}). Ajuste as prioridades para evitar empates.`
+            : `Duplicate rumble priority ${prio} on "${slot}" controller (${names}). Adjust priorities to avoid ties.`,
+      });
+    }
   }
 
   // Controls checks
@@ -413,23 +752,52 @@ export function validateProject(
         message: `Piloto referencia RobotRequest inexistente "${entry.request}".`,
       });
     }
-    if (pilotButtons.has(entry.button)) {
-      issues.push({
-        id: `pilot-btn-dup-${entry.id}`,
-        severity: "error",
-        tab: "controls",
-        path: `controls.pilotPriority.${entry.id}.button`,
-        message: `Botão "${entry.button}" duplicado no controle do piloto.`,
-      });
+    if (entry.source === "sensor") {
+      const owner = entry.sensorOwnerId ? subsystemById.get(entry.sensorOwnerId) : undefined;
+      const hasSensor = owner?.sensors?.some((s) => s.id === entry.sensorId);
+      if (!owner || !hasSensor) {
+        issues.push({
+          id: `pilot-sensor-${entry.id}`,
+          severity: "error",
+          tab: "controls",
+          path: `controls.pilotPriority.${entry.id}.sensorId`,
+          message:
+            locale === "pt"
+              ? `Automação por sensor na fila do piloto referencia sensor inexistente.`
+              : `Sensor automation in pilot queue references a missing sensor.`,
+        });
+      }
     } else {
-      pilotButtons.add(entry.button);
+      const btn = entry.button;
+      if (!btn) {
+        issues.push({
+          id: `pilot-btn-missing-${entry.id}`,
+          severity: "error",
+          tab: "controls",
+          path: `controls.pilotPriority.${entry.id}.button`,
+          message:
+            locale === "pt"
+              ? `Entrada de botão sem botão configurado no controle do piloto.`
+              : `Button entry missing button on pilot controller.`,
+        });
+      } else if (pilotButtons.has(btn)) {
+        issues.push({
+          id: `pilot-btn-dup-${entry.id}`,
+          severity: "error",
+          tab: "controls",
+          path: `controls.pilotPriority.${entry.id}.button`,
+          message: `Botão "${btn}" duplicado no controle do piloto.`,
+        });
+      } else {
+        pilotButtons.add(btn);
+      }
     }
   }
 
   const copilotButtons = new Set<string>();
   for (const entry of project.controls.copilotOverrides) {
     const sub = subsystemById.get(entry.subsystemId);
-    if (!sub) {
+    if (!sub || !isMotorSubsystem(sub)) {
       issues.push({
         id: `copilot-sub-${entry.id}`,
         severity: "error",

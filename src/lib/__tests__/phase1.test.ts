@@ -128,6 +128,7 @@ describe("Phase 1 usability and foundation", () => {
 
     const renamedState = applyRenameSubsystemState(comp, shooterId, "READY", "AT_SPEED");
     const shooterAfterState = renamedState.subsystems[0];
+    if (!shooterAfterState.fsm) throw new Error("expected fsm");
     expect(shooterAfterState.fsm.states.some((s) => s.name === "AT_SPEED")).toBe(true);
     expect(
       shooterAfterState.fsm.states
@@ -146,9 +147,11 @@ describe("Phase 1 usability and foundation", () => {
       "UNJAM",
       "CLEAR_JAM",
     );
-    expect(renamedReq.subsystems[2].fsm.requests).toContain("CLEAR_JAM");
+    const idxSub = renamedReq.subsystems[2];
+    if (!idxSub.fsm) throw new Error("expected fsm");
+    expect(idxSub.fsm.requests).toContain("CLEAR_JAM");
     expect(
-      renamedReq.subsystems[2].fsm.bindings.some((b) => b.request === "CLEAR_JAM"),
+      idxSub.fsm.bindings.some((b) => b.request === "CLEAR_JAM"),
     ).toBe(true);
     expect(
       renamedReq.controls.copilotOverrides.some((ov) => ov.request === "CLEAR_JAM"),
@@ -187,6 +190,7 @@ describe("Phase 1 usability and foundation", () => {
     const project = createSkeletonPreset();
     project.controls.pilotPriority.push({
       id: "pilot-ls",
+      source: "button",
       button: "leftStick",
       request: "INTAKE",
     });
@@ -213,14 +217,15 @@ describe("Phase 1 usability and foundation", () => {
 
   it("duplicates a subsystem with unique name, id, and CAN IDs (including follower) and 0 errors", () => {
     const project = createSkeletonPreset();
+    if (!project.subsystems[0].motor) throw new Error("expected motor");
     project.subsystems[0].motor.follower = { enabled: true, canId: 11, inverted: false };
     const res = duplicateSubsystemWithDefaults(project, "roller");
     expect(res).not.toBeNull();
     expect(res?.project.subsystems.length).toBe(2);
     expect(res?.project.subsystems[1].id).toBe("roller_2");
     expect(res?.project.subsystems[1].name).toBe("Roller2");
-    expect(res?.project.subsystems[1].motor.canId).not.toBe(10);
-    expect(res?.project.subsystems[1].motor.follower?.canId).not.toBe(11);
+    expect(res?.project.subsystems[1].motor?.canId).not.toBe(10);
+    expect(res?.project.subsystems[1].motor?.follower?.canId).not.toBe(11);
     expect(validateProject(res!.project)).toEqual([]);
   });
 });

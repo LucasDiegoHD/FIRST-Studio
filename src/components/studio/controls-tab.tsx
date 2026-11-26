@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Code2, Cog, Gamepad2, ImageDown, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Code2, Cog, Gamepad2, ImageDown, Plus, Radar, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,18 @@ import { Hint } from "@/components/ui/hint";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
 import { requestToCommandMethod, toPascalCase } from "@/lib/generator/java-utils";
-import type { SubsystemAction, XboxButton } from "@/lib/schema/ciprix-project";
+import {
+  getPrimaryMotorAction,
+  isMotorSubsystem,
+  type SubsystemAction,
+  type XboxButton,
+} from "@/lib/schema/ciprix-project";
 import { CodeViewer } from "./code-viewer";
 import { XboxControllerSvg, type MappedButtonInfo } from "./xbox-svg";
+
+function isAnalogTrigger(btn?: XboxButton): boolean {
+  return btn === "leftTrigger" || btn === "rightTrigger";
+}
 
 function formatReaction(action: SubsystemAction | undefined): { label: string; dir: number } {
   if (!action || action.type === "stop") return { label: "0%", dir: 0 };
@@ -149,15 +158,23 @@ export function ControlsTab() {
     const map = new Map<XboxButton, MappedButtonInfo>();
     if (port === "pilot") {
       project.controls.pilotPriority.forEach((p, idx) => {
-        if (!map.has(p.button)) {
-          map.set(p.button, { label: p.request, priority: idx + 1 });
+        if (p.source !== "sensor" && p.button && !map.has(p.button)) {
+          const thr =
+            isAnalogTrigger(p.button) && p.triggerThreshold !== undefined
+              ? ` (${Math.round(p.triggerThreshold * 100)}%)`
+              : "";
+          map.set(p.button, { label: `${p.request}${thr}`, priority: idx + 1 });
         }
       });
     } else {
       for (const ov of project.controls.copilotOverrides) {
         if (!map.has(ov.button)) {
           const sub = project.subsystems.find((s) => s.id === ov.subsystemId);
-          map.set(ov.button, { label: `${sub?.name ?? "?"}.${ov.request}` });
+          const thr =
+            isAnalogTrigger(ov.button) && ov.triggerThreshold !== undefined
+              ? ` (${Math.round(ov.triggerThreshold * 100)}%)`
+              : "";
+          map.set(ov.button, { label: `${sub?.name ?? "?"}.${ov.request}${thr}` });
         }
       }
     }
@@ -177,7 +194,9 @@ export function ControlsTab() {
 
   const quickBindPilot = (request: string) => {
     updateProject((prev) => {
-      const existingIdx = prev.controls.pilotPriority.findIndex((p) => p.button === selectedButton);
+      const existingIdx = prev.controls.pilotPriority.findIndex(
+        (p) => p.source !== "sensor" && p.button === selectedButton,
+      );
       if (existingIdx >= 0) {
         return {
           ...prev,
@@ -195,7 +214,7 @@ export function ControlsTab() {
           ...prev.controls,
           pilotPriority: [
             ...prev.controls.pilotPriority,
-            { id: `pilot-${Date.now()}`, button: selectedButton, request },
+            { id: `pilot-${Date.now()}`, source: "button", button: selectedButton, request },
           ],
         },
       };
@@ -231,14 +250,25 @@ export function ControlsTab() {
     });
   };
 
+  const motorSubsystems = useMemo(
+    () => project.subsystems.filter(isMotorSubsystem),
+    [project.subsystems],
+  );
+  const sensorOwners = useMemo(
+    () => project.subsystems.filter((s) => (s.sensors?.length ?? 0) > 0),
+    [project.subsystems],
+  );
+
   const liveReaction = useMemo(() => {
     if (port === "pilot") {
-      const pilotMatch = project.controls.pilotPriority.find((p) => p.button === selectedButton);
+      const pilotMatch = project.controls.pilotPriority.find(
+        (p) => p.source !== "sensor" && p.button === selectedButton,
+      );
       if (!pilotMatch) return null;
       const robotState =
         project.superstructure.bindings.find((b) => b.request === pilotMatch.request)?.entryState ??
         project.superstructure.initialState;
-      const firstSub = project.subsystems[0];
+      const firstSub = motorSubsystems[0];
       if (!firstSub) {
         return { summary: `${pilotMatch.request} → ${robotState}`, pct: 0 };
       }
@@ -249,7 +279,7 @@ export function ControlsTab() {
         firstSub.fsm.bindings.find((b) => b.request === subReq)?.goalState ??
         firstSub.fsm.initialState;
       const stObj = firstSub.fsm.states.find((s) => s.name === stName);
-      const reaction = formatReaction(stObj?.onEnter);
+      const reaction = formatReaction(getPrimaryMotorAction(stObj));
       return {
         summary: `${pilotMatch.request} → ${firstSub.name}: ${stName} (${reaction.label})`,
         pct: reaction.dir,
@@ -258,29 +288,29 @@ export function ControlsTab() {
 
     const copilotMatch = project.controls.copilotOverrides.find((ov) => ov.button === selectedButton);
     if (!copilotMatch) return null;
-    const sub = project.subsystems.find((s) => s.id === copilotMatch.subsystemId);
+    const sub = motorSubsystems.find((s) => s.id === copilotMatch.subsystemId);
     if (!sub) return null;
     const stName =
       sub.fsm.bindings.find((b) => b.request === copilotMatch.request)?.goalState ??
       sub.fsm.initialState;
     const stObj = sub.fsm.states.find((s) => s.name === stName);
-    const reaction = formatReaction(stObj?.onEnter);
+    const reaction = formatReaction(getPrimaryMotorAction(stObj));
     return {
       summary: `${sub.name}.${copilotMatch.request} → ${stName} (${reaction.label})`,
       pct: reaction.dir,
     };
-  }, [port, selectedButton, project]);
+  }, [port, selectedButton, project, motorSubsystems]);
 
   const copilotChoices = useMemo(
     () =>
-      project.subsystems.flatMap((sub) =>
+      motorSubsystems.flatMap((sub) =>
         sub.fsm.requests.map((req) => ({
           subsystemId: sub.id,
           subsystemName: sub.name,
           request: req,
         })),
       ),
-    [project.subsystems],
+    [motorSubsystems],
   );
 
   const previewFile = useMemo(() => {
@@ -290,7 +320,9 @@ export function ControlsTab() {
   }, [port, generatedFiles]);
 
   const selectedBtnMeta = XBOX_BUTTONS.find((b) => b.value === selectedButton);
-  const currentPilotRule = project.controls.pilotPriority.find((p) => p.button === selectedButton);
+  const currentPilotRule = project.controls.pilotPriority.find(
+    (p) => p.source !== "sensor" && p.button === selectedButton,
+  );
   const currentCopilotRule = project.controls.copilotOverrides.find(
     (ov) => ov.button === selectedButton,
   );
@@ -465,6 +497,38 @@ export function ControlsTab() {
                 </CardTitle>
               </div>
               <div className="flex items-center gap-2">
+                {port === "pilot" && sensorOwners.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2.5 text-xs"
+                    onClick={() => {
+                      const firstOwner = sensorOwners[0];
+                      const firstSensor = firstOwner?.sensors?.[0];
+                      if (!firstOwner || !firstSensor) return;
+                      updateProject((prev) => ({
+                        ...prev,
+                        controls: {
+                          ...prev.controls,
+                          pilotPriority: [
+                            ...prev.controls.pilotPriority,
+                            {
+                              id: `pilot-sensor-${Date.now().toString(36)}`,
+                              source: "sensor",
+                              sensorOwnerId: firstOwner.id,
+                              sensorId: firstSensor.id,
+                              sensorTrigger: "whileTrue",
+                              request: prev.superstructure.requests[0] ?? "IDLE",
+                            },
+                          ],
+                        },
+                      }));
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5 text-cyan-300" />
+                    Sensor
+                  </Button>
+                )}
                 <Badge variant="outline">
                   {port === "pilot" ? "prioridade" : "whileTrue()"}
                 </Badge>
@@ -488,110 +552,251 @@ export function ControlsTab() {
                   </p>
                 ) : (
                   <div className="space-y-2.5">
-                    {project.controls.pilotPriority.map((rule, idx) => (
-                      <div
-                        key={rule.id}
-                        onClick={() => setSelectedButton(rule.button)}
-                        onMouseEnter={() => setHoveredButton(rule.button)}
-                        onMouseLeave={() => setHoveredButton(null)}
-                        className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
-                          selectedButton === rule.button
-                            ? "border-[#60a5fa] bg-[#19253d]"
-                            : hoveredButton === rule.button
-                              ? "border-[#3b6bb5] bg-[#152036]"
-                              : "border-[#22304a] bg-[#0f1624] hover:border-[#3b6bb5]"
-                        }`}
-                      >
-                        <span className="rounded bg-[#142c4f] px-2 py-0.5 font-mono text-[11px] text-[#93c5fd]">
-                          #{idx + 1}
-                        </span>
-                        <Select
-                          className="w-24 h-8 font-mono text-xs"
-                          value={rule.button}
-                          onChange={(e) =>
-                            updateProject((prev) => ({
-                              ...prev,
-                              controls: {
-                                ...prev.controls,
-                                pilotPriority: prev.controls.pilotPriority.map((item) =>
-                                  item.id === rule.id
-                                    ? { ...item, button: e.target.value as XboxButton }
-                                    : item,
-                                ),
-                              },
-                            }))
-                          }
-                        >
-                          {XBOX_BUTTONS.map((btn) => (
-                            <option key={btn.value} value={btn.value}>
-                              {btn.label}
-                            </option>
-                          ))}
-                        </Select>
-                        <span className="font-mono text-xs text-slate-500">→</span>
-                        <Select
-                          className="flex-1 font-mono h-8 text-xs"
-                          value={rule.request}
-                          onChange={(e) =>
-                            updateProject((prev) => ({
-                              ...prev,
-                              controls: {
-                                ...prev.controls,
-                                pilotPriority: prev.controls.pilotPriority.map((item) =>
-                                  item.id === rule.id ? { ...item, request: e.target.value } : item,
-                                ),
-                              },
-                            }))
-                          }
-                        >
-                          {project.superstructure.requests.map((req) => (
-                            <option key={req} value={req}>
-                              {req}
-                            </option>
-                          ))}
-                        </Select>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled={idx === 0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            movePilot(idx, -1);
+                    {project.controls.pilotPriority.map((rule, idx) => {
+                      const isSensor = rule.source === "sensor";
+                      const ruleButton = rule.button ?? "a";
+                      const selectedOwner = sensorOwners.find((s) => s.id === rule.sensorOwnerId);
+                      return (
+                        <div
+                          key={rule.id}
+                          onClick={() => {
+                            if (!isSensor && rule.button) setSelectedButton(rule.button);
                           }}
-                        >
-                          <ArrowUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled={idx === project.controls.pilotPriority.length - 1}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            movePilot(idx, 1);
+                          onMouseEnter={() => {
+                            if (!isSensor && rule.button) setHoveredButton(rule.button);
                           }}
+                          onMouseLeave={() => setHoveredButton(null)}
+                          className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
+                            !isSensor && selectedButton === rule.button
+                              ? "border-[#60a5fa] bg-[#19253d]"
+                              : !isSensor && hoveredButton === rule.button
+                                ? "border-[#3b6bb5] bg-[#152036]"
+                                : "border-[#22304a] bg-[#0f1624] hover:border-[#3b6bb5]"
+                          }`}
                         >
-                          <ArrowDown className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateProject((prev) => ({
-                              ...prev,
-                              controls: {
-                                ...prev.controls,
-                                pilotPriority: prev.controls.pilotPriority.filter(
-                                  (p) => p.id !== rule.id,
-                                ),
-                              },
-                            }));
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-rose-400" />
-                        </Button>
-                      </div>
-                    ))}
+                          <span className="rounded bg-[#142c4f] px-2 py-0.5 font-mono text-[11px] text-[#93c5fd]">
+                            #{idx + 1}
+                          </span>
+                          {isSensor ? (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex flex-1 flex-wrap items-center gap-1.5"
+                            >
+                              <Radar className="h-3.5 w-3.5 text-cyan-300 shrink-0" />
+                              <Select
+                                className="h-8 w-28 font-mono text-[11px]"
+                                value={rule.sensorOwnerId ?? ""}
+                                onChange={(e) => {
+                                  const nextOwner = sensorOwners.find(
+                                    (s) => s.id === e.target.value,
+                                  );
+                                  updateProject((prev) => ({
+                                    ...prev,
+                                    controls: {
+                                      ...prev.controls,
+                                      pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                        item.id === rule.id
+                                          ? {
+                                              ...item,
+                                              sensorOwnerId: e.target.value,
+                                              sensorId: nextOwner?.sensors?.[0]?.id,
+                                            }
+                                          : item,
+                                      ),
+                                    },
+                                  }));
+                                }}
+                              >
+                                {sensorOwners.map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Select
+                                className="h-8 w-28 font-mono text-[11px]"
+                                value={rule.sensorId ?? ""}
+                                onChange={(e) =>
+                                  updateProject((prev) => ({
+                                    ...prev,
+                                    controls: {
+                                      ...prev.controls,
+                                      pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                        item.id === rule.id
+                                          ? { ...item, sensorId: e.target.value }
+                                          : item,
+                                      ),
+                                    },
+                                  }))
+                                }
+                              >
+                                {(selectedOwner?.sensors ?? []).map((sen) => (
+                                  <option key={sen.id} value={sen.id}>
+                                    {sen.name}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Select
+                                className="h-8 w-24 font-mono text-[11px]"
+                                value={rule.sensorTrigger ?? "whileTrue"}
+                                onChange={(e) =>
+                                  updateProject((prev) => ({
+                                    ...prev,
+                                    controls: {
+                                      ...prev.controls,
+                                      pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                        item.id === rule.id
+                                          ? {
+                                              ...item,
+                                              sensorTrigger: e.target.value as
+                                                | "whileTrue"
+                                                | "onTrue"
+                                                | "whileFalse"
+                                                | "onFalse",
+                                            }
+                                          : item,
+                                      ),
+                                    },
+                                  }))
+                                }
+                              >
+                                <option value="whileTrue">whileTrue</option>
+                                <option value="onTrue">onTrue</option>
+                                <option value="whileFalse">whileFalse</option>
+                                <option value="onFalse">onFalse</option>
+                              </Select>
+                            </div>
+                          ) : (
+                            <Select
+                              className="w-24 h-8 font-mono text-xs"
+                              value={ruleButton}
+                              onChange={(e) => {
+                                const nextBtn = e.target.value as XboxButton;
+                                updateProject((prev) => ({
+                                  ...prev,
+                                  controls: {
+                                    ...prev.controls,
+                                    pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                      item.id === rule.id
+                                        ? {
+                                            ...item,
+                                            button: nextBtn,
+                                            triggerThreshold: isAnalogTrigger(nextBtn)
+                                              ? item.triggerThreshold
+                                              : undefined,
+                                          }
+                                        : item,
+                                    ),
+                                  },
+                                }));
+                              }}
+                            >
+                              {XBOX_BUTTONS.map((btn) => (
+                                <option key={btn.value} value={btn.value}>
+                                  {btn.label}
+                                </option>
+                              ))}
+                            </Select>
+                          )}
+                          <span className="font-mono text-xs text-slate-500">→</span>
+                          <Select
+                            className="flex-1 min-w-[90px] font-mono h-8 text-xs"
+                            value={rule.request}
+                            onChange={(e) =>
+                              updateProject((prev) => ({
+                                ...prev,
+                                controls: {
+                                  ...prev.controls,
+                                  pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                    item.id === rule.id ? { ...item, request: e.target.value } : item,
+                                  ),
+                                },
+                              }))
+                            }
+                          >
+                            {project.superstructure.requests.map((req) => (
+                              <option key={req} value={req}>
+                                {req}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={idx === 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              movePilot(idx, -1);
+                            }}
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={idx === project.controls.pilotPriority.length - 1}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              movePilot(idx, 1);
+                            }}
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateProject((prev) => ({
+                                ...prev,
+                                controls: {
+                                  ...prev.controls,
+                                  pilotPriority: prev.controls.pilotPriority.filter(
+                                    (p) => p.id !== rule.id,
+                                  ),
+                                },
+                              }));
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                          </Button>
+                          {!isSensor && isAnalogTrigger(ruleButton) && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex basis-full items-center gap-2 border-t border-[#22304a]/70 pt-2 mt-0.5 text-[11px] text-slate-300"
+                            >
+                              <span className="font-mono text-[10px] uppercase text-slate-400 shrink-0">
+                                Gatilho ≥
+                              </span>
+                              <input
+                                type="range"
+                                min={5}
+                                max={100}
+                                step={5}
+                                value={Math.round((rule.triggerThreshold ?? 0.5) * 100)}
+                                onChange={(e) => {
+                                  const thr = Math.round(Number.parseInt(e.target.value, 10)) / 100;
+                                  updateProject((prev) => ({
+                                    ...prev,
+                                    controls: {
+                                      ...prev.controls,
+                                      pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                        item.id === rule.id ? { ...item, triggerThreshold: thr } : item,
+                                      ),
+                                    },
+                                  }));
+                                }}
+                                className="flex-1"
+                              />
+                              <span className="w-20 text-right font-mono text-[11px] text-[#93c5fd] shrink-0">
+                                {Math.round((rule.triggerThreshold ?? 0.5) * 100)}% (
+                                {(rule.triggerThreshold ?? 0.5).toFixed(2)})
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )
               ) : project.controls.copilotOverrides.length === 0 ? (
@@ -601,7 +806,7 @@ export function ControlsTab() {
               ) : (
                 <div className="space-y-2.5">
                   {project.controls.copilotOverrides.map((ov) => {
-                    const sub = project.subsystems.find((s) => s.id === ov.subsystemId);
+                    const sub = motorSubsystems.find((s) => s.id === ov.subsystemId);
                     const subClass = sub ? toPascalCase(sub.name) : "Subsystem";
                     const cmdSig = `${subClass}Commands.${requestToCommandMethod(ov.request)}(...)`;
                     return (
@@ -622,19 +827,26 @@ export function ControlsTab() {
                           <Select
                             className="w-24 h-8 font-mono text-xs"
                             value={ov.button}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const nextBtn = e.target.value as XboxButton;
                               updateProject((prev) => ({
                                 ...prev,
                                 controls: {
                                   ...prev.controls,
                                   copilotOverrides: prev.controls.copilotOverrides.map((item) =>
                                     item.id === ov.id
-                                      ? { ...item, button: e.target.value as XboxButton }
+                                      ? {
+                                          ...item,
+                                          button: nextBtn,
+                                          triggerThreshold: isAnalogTrigger(nextBtn)
+                                            ? item.triggerThreshold
+                                            : undefined,
+                                        }
                                       : item,
                                   ),
                                 },
-                              }))
-                            }
+                              }));
+                            }}
                           >
                             {XBOX_BUTTONS.map((btn) => (
                               <option key={btn.value} value={btn.value}>
@@ -646,7 +858,7 @@ export function ControlsTab() {
                             className="flex-1 h-8 text-xs"
                             value={ov.subsystemId}
                             onChange={(e) => {
-                              const nextSub = project.subsystems.find(
+                              const nextSub = motorSubsystems.find(
                                 (s) => s.id === e.target.value,
                               );
                               updateProject((prev) => ({
@@ -666,7 +878,7 @@ export function ControlsTab() {
                               }));
                             }}
                           >
-                            {project.subsystems.map((s) => (
+                            {motorSubsystems.map((s) => (
                               <option key={s.id} value={s.id}>
                                 {s.name}
                               </option>
@@ -713,6 +925,40 @@ export function ControlsTab() {
                           </Button>
                         </div>
                         <p className="font-mono text-[11px] text-slate-400">{cmdSig}</p>
+                        {isAnalogTrigger(ov.button) && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-2 border-t border-[#22304a]/70 pt-2 text-[11px] text-slate-300"
+                          >
+                            <span className="font-mono text-[10px] uppercase text-slate-400 shrink-0">
+                              Gatilho ≥
+                            </span>
+                            <input
+                              type="range"
+                              min={5}
+                              max={100}
+                              step={5}
+                              value={Math.round((ov.triggerThreshold ?? 0.5) * 100)}
+                              onChange={(e) => {
+                                const thr = Math.round(Number.parseInt(e.target.value, 10)) / 100;
+                                updateProject((prev) => ({
+                                  ...prev,
+                                  controls: {
+                                    ...prev.controls,
+                                    copilotOverrides: prev.controls.copilotOverrides.map((item) =>
+                                      item.id === ov.id ? { ...item, triggerThreshold: thr } : item,
+                                    ),
+                                  },
+                                }));
+                              }}
+                              className="flex-1"
+                            />
+                            <span className="w-20 text-right font-mono text-[11px] text-[#93c5fd] shrink-0">
+                              {Math.round((ov.triggerThreshold ?? 0.5) * 100)}% (
+                              {(ov.triggerThreshold ?? 0.5).toFixed(2)})
+                            </span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

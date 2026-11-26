@@ -70,7 +70,16 @@ export function formatDouble(value: number): string {
   return text.includes(".") ? text : `${text}.0`;
 }
 
-export function xboxButtonToJavaMethod(button: XboxButton): string {
+export function xboxButtonToJavaMethod(
+  button: XboxButton,
+  triggerThreshold?: number,
+): string {
+  if (
+    (button === "leftTrigger" || button === "rightTrigger") &&
+    triggerThreshold !== undefined
+  ) {
+    return `${button}(${formatDouble(triggerThreshold)})`;
+  }
   return `${button}()`;
 }
 

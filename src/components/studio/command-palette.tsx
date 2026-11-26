@@ -114,28 +114,38 @@ export function CommandPalette({
     ];
 
     for (const sub of project.subsystems) {
+      const hwHint =
+        sub.type === "leds" && sub.leds
+          ? sub.leds.driver === "candle"
+            ? `CANdle CAN ${sub.leds.canId ?? 30}`
+            : `PWM ${sub.leds.pwmPort ?? 0}`
+          : sub.motor
+            ? `CAN ${sub.motor.canId}`
+            : sub.type;
       list.push({
         id: `sub-hw-${sub.id}`,
         group: t("nav.subsystems"),
         label: `${sub.name} — Hardware`,
-        hint: `CAN ${sub.motor.canId}`,
+        hint: hwHint,
         icon: <Cpu className="h-3.5 w-3.5" />,
         run: () => {
           setSelectedSubsystemId(sub.id);
           setActiveTab("subsystems");
         },
       });
-      list.push({
-        id: `sub-fsm-${sub.id}`,
-        group: t("nav.subsystems"),
-        label: `${sub.name} — FSM`,
-        hint: `${sub.fsm.states.length} states`,
-        icon: <GitBranch className="h-3.5 w-3.5" />,
-        run: () => {
-          setSelectedSubsystemId(sub.id);
-          setActiveTab("fsm");
-        },
-      });
+      if (sub.fsm) {
+        list.push({
+          id: `sub-fsm-${sub.id}`,
+          group: t("nav.subsystems"),
+          label: `${sub.name} — FSM`,
+          hint: `${sub.fsm.states.length} states`,
+          icon: <GitBranch className="h-3.5 w-3.5" />,
+          run: () => {
+            setSelectedSubsystemId(sub.id);
+            setActiveTab("fsm");
+          },
+        });
+      }
     }
 
     for (const file of generatedFiles) {
