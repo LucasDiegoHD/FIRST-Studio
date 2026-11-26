@@ -1,14 +1,31 @@
 "use client";
 
-import React, { useMemo } from "react";
-import { Download, FileCode2, Folder } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Download, FileCode2, Folder, FolderOpen, FolderSync, Rocket, Unlink } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useProject } from "@/context/project-context";
 import { getRequiredVendordeps } from "@/lib/generator";
+import {
+  applyFolderSyncPlan,
+  clearDirectoryHandle,
+  ensureReadWritePermission,
+  isFileSystemAccessSupported,
+  loadDirectoryHandle,
+  pickLocalDirectory,
+  prepareFolderSyncPlan,
+  readTextFile,
+  saveDirectoryHandle,
+  type ConflictResolution,
+  type FolderSyncPlan,
+  type NativeDirectoryHandle,
+} from "@/lib/local-folder";
+import { parseProjectWithMigration } from "@/lib/schema/migrations";
+import { BridgeDeployPanel } from "./bridge-deploy-panel";
 import { CodeViewer } from "./code-viewer";
+import { LocalSyncDialog } from "./local-sync-dialog";
 
 interface TreeNode {
   folders: Record<string, TreeNode>;
@@ -103,8 +120,37 @@ export function CodeTab({
   onDownloadZip: () => void;
   exporting: boolean;
 }) {
-  const { project, generatedFiles, selectedFilePath, setSelectedFilePath, issues, t } =
-    useProject();
+  const {
+    project,
+    generatedFiles,
+    selectedFilePath,
+    setSelectedFilePath,
+    loadProject,
+    issues,
+    t,
+  } = useProject();
+
+  const [fsSupported, setFsSupported] = useState(false);
+  const [dirHandle, setDirHandle] = useState<NativeDirectoryHandle | null>(null);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
+  const [syncPlan, setSyncPlan] = useState<FolderSyncPlan | null>(null);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [showBridge, setShowBridge] = useState(false);
+  const [folderFeedback, setFolderFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supported = isFileSystemAccessSupported();
+    setFsSupported(supported);
+    if (!supported) return;
+
+    void loadDirectoryHandle().then(async (saved) => {
+      if (!saved) return;
+      setDirHandle(saved);
+      const granted = await ensureReadWritePermission(saved, false);
+      setNeedsReconnect(!granted);
+    });
+  }, []);
 
   const fileMap = useMemo(
     () => new Map(generatedFiles.map((f) => [f.path, f.content])),
@@ -125,23 +171,214 @@ export function CodeTab({
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const vendordeps = useMemo(() => getRequiredVendordeps(project), [project]);
 
+  const ensureActiveHandle = async (): Promise<NativeDirectoryHandle | null> => {
+    const target = dirHandle ?? (await pickLocalDirectory());
+    const ok = await ensureReadWritePermission(target, true);
+    if (!ok) {
+      setFolderFeedback("Permissão de leitura/escrita negada para a pasta.");
+      return null;
+    }
+    await saveDirectoryHandle(target);
+    setDirHandle(target);
+    setNeedsReconnect(false);
+    return target;
+  };
+
+  const handleConnectFolder = async () => {
+    setFolderFeedback(null);
+    try {
+      const picked =
+        dirHandle && needsReconnect ? dirHandle : await pickLocalDirectory();
+      const ok = await ensureReadWritePermission(picked, true);
+      if (!ok) {
+        setFolderFeedback("Permissão negada pelo navegador.");
+        return;
+      }
+      await saveDirectoryHandle(picked);
+      setDirHandle(picked);
+      setNeedsReconnect(false);
+
+      const jsonText = await readTextFile(picked, "ciprix-project.json");
+      if (jsonText) {
+        setFolderFeedback(
+          `Pasta "${picked.name}" conectada (contém ciprix-project.json — clique em Abrir ou Salvar).`,
+        );
+      } else {
+        setFolderFeedback(
+          `Pasta "${picked.name}" conectada. Clique em "Salvar na pasta" para gravar o projeto.`,
+        );
+      }
+    } catch {
+      // Cancelled by user
+    }
+  };
+
+  const handleLoadFromFolder = async () => {
+    setFolderFeedback(null);
+    try {
+      const handle = await ensureActiveHandle();
+      if (!handle) return;
+      const jsonText = await readTextFile(handle, "ciprix-project.json");
+      if (!jsonText) {
+        setFolderFeedback(`Nenhum ciprix-project.json encontrado em "${handle.name}".`);
+        return;
+      }
+      const parsed = parseProjectWithMigration(JSON.parse(jsonText));
+      if (!parsed.ok) {
+        setFolderFeedback("Arquivo ciprix-project.json inválido nesta pasta.");
+        return;
+      }
+      loadProject(parsed.data);
+      setFolderFeedback(`Projeto carregado de "${handle.name}".`);
+    } catch (err) {
+      setFolderFeedback(
+        err instanceof Error ? err.message : "Falha ao abrir projeto da pasta.",
+      );
+    }
+  };
+
+  const handleOpenSyncDialog = async () => {
+    setFolderFeedback(null);
+    try {
+      const handle = await ensureActiveHandle();
+      if (!handle) return;
+      const plan = await prepareFolderSyncPlan(handle, project);
+      setSyncPlan(plan);
+      setSyncDialogOpen(true);
+    } catch (err) {
+      setFolderFeedback(
+        err instanceof Error ? err.message : "Falha ao preparar sincronização.",
+      );
+    }
+  };
+
+  const handleConfirmSync = async (
+    resolutions: Record<string, ConflictResolution>,
+  ) => {
+    if (!dirHandle || !syncPlan) return;
+    setSyncing(true);
+    try {
+      const res = await applyFolderSyncPlan(
+        dirHandle,
+        project.project.name,
+        syncPlan,
+        resolutions,
+      );
+      setSyncDialogOpen(false);
+      setFolderFeedback(
+        `Sincronizado em "${dirHandle.name}": ${res.writtenCount} gravados` +
+          (res.preservedCustomFileCount > 0
+            ? `, ${res.preservedCustomFileCount} com blocos custom preservados`
+            : "") +
+          (res.skippedConflicts > 0 ? `, ${res.skippedConflicts} mantidos do disco.` : "."),
+      );
+    } catch (err) {
+      setFolderFeedback(err instanceof Error ? err.message : "Erro ao gravar na pasta.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleDisconnectFolder = async () => {
+    await clearDirectoryHandle();
+    setDirHandle(null);
+    setNeedsReconnect(false);
+    setFolderFeedback(null);
+  };
+
+  const handleAutoSyncBeforeBridge = async (): Promise<boolean> => {
+    if (!dirHandle) return true;
+    const plan = await prepareFolderSyncPlan(dirHandle, project);
+    const hasConflict = plan.entries.some((e) => e.status === "conflict");
+    if (hasConflict) {
+      setSyncPlan(plan);
+      setSyncDialogOpen(true);
+      return false;
+    }
+    await applyFolderSyncPlan(dirHandle, project.project.name, plan, {});
+    return true;
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Exportar Projeto"
         description="Revise os arquivos Ciprix 2026.3.0 gerados e baixe o projeto pronto para WPILib."
         actions={
-          <Button
-            size="md"
-            variant="primary"
-            onClick={onDownloadZip}
-            disabled={exporting || errorCount > 0}
-          >
-            <Download className="h-4 w-4" />
-            {exporting ? t("header.exporting") : t("code.download_zip")}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {fsSupported && (
+              <>
+                {!dirHandle || needsReconnect ? (
+                  <Button size="sm" variant="outline" onClick={() => void handleConnectFolder()}>
+                    <FolderOpen className="h-4 w-4 text-[#60a5fa]" />
+                    {dirHandle && needsReconnect
+                      ? `Reconectar ${dirHandle.name}`
+                      : "Conectar pasta local"}
+                  </Button>
+                ) : (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => void handleLoadFromFolder()}>
+                      <FolderOpen className="h-4 w-4 text-slate-300" />
+                      Abrir ({dirHandle.name})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={errorCount > 0}
+                      onClick={() => void handleOpenSyncDialog()}
+                    >
+                      <FolderSync className="h-4 w-4 text-emerald-300" />
+                      Salvar na pasta
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="Desconectar pasta local"
+                      onClick={() => void handleDisconnectFolder()}
+                    >
+                      <Unlink className="h-4 w-4 text-slate-400" />
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+
+            <Button
+              size="sm"
+              variant={showBridge ? "secondary" : "outline"}
+              disabled={errorCount > 0}
+              onClick={() => setShowBridge((v) => !v)}
+            >
+              <Rocket className="h-4 w-4 text-cyan-300" />
+              Enviar ao Robô (Bridge)
+            </Button>
+
+            <Button
+              size="md"
+              variant="primary"
+              onClick={onDownloadZip}
+              disabled={exporting || errorCount > 0}
+            >
+              <Download className="h-4 w-4" />
+              {exporting ? t("header.exporting") : t("code.download_zip")}
+            </Button>
+          </div>
         }
       />
+
+      {folderFeedback && (
+        <div className="rounded-lg border border-[#3b6bb5]/60 bg-[#131c2e] px-4 py-2.5 text-xs text-slate-200">
+          {folderFeedback}
+        </div>
+      )}
+
+      {showBridge && (
+        <BridgeDeployPanel
+          project={project}
+          hasLocalFolder={Boolean(dirHandle && !needsReconnect)}
+          onSyncLocalBeforeRun={handleAutoSyncBeforeBridge}
+        />
+      )}
 
       {/* Metrics Strip Card */}
       <Card className="px-5 py-4">
@@ -176,6 +413,15 @@ export function CodeTab({
         </div>
         <CodeViewer filePath={activePath} content={activeContent} className="flex-1 min-w-0" />
       </Card>
+
+      <LocalSyncDialog
+        open={syncDialogOpen}
+        onOpenChange={setSyncDialogOpen}
+        folderName={dirHandle?.name ?? "local"}
+        plan={syncPlan}
+        applying={syncing}
+        onConfirm={handleConfirmSync}
+      />
     </div>
   );
 }
