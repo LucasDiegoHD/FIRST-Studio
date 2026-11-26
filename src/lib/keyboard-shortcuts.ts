@@ -9,6 +9,7 @@ export type ShortcutAction =
   | "saveJson"
   | "exportZip"
   | "deleteSubsystem"
+  | "duplicateSubsystem"
   | "prevSubsystem"
   | "nextSubsystem"
   | "moveSubsystemLeft"
@@ -75,6 +76,15 @@ export function resolveShortcutAction(
     if (key === "z") return input.shiftKey ? "redo" : "undo";
     if (key === "y" && !input.shiftKey) return "redo";
     if (key === "e" && !input.shiftKey) return "exportZip";
+    if (
+      key === "d" &&
+      !input.shiftKey &&
+      ctx.activeRoute === "studio" &&
+      ctx.currentStep === "robot" &&
+      ctx.hasSelectedSubsystem
+    ) {
+      return "duplicateSubsystem";
+    }
     return null;
   }
 
@@ -124,6 +134,7 @@ export const SHORTCUT_GUIDE: { keys: string[]; labelKey: TranslationKey }[] = [
   { keys: ["Ctrl", "Z"], labelKey: "shortcuts.undo" },
   { keys: ["Ctrl", "Y"], labelKey: "shortcuts.redo" },
   { keys: ["Backspace"], labelKey: "shortcuts.delete_sub" },
+  { keys: ["Ctrl", "D"], labelKey: "shortcuts.duplicate_sub" },
   { keys: ["←", "→"], labelKey: "shortcuts.switch_sub" },
   { keys: ["Alt", "← / →"], labelKey: "shortcuts.reorder_sub" },
   { keys: ["Alt", "1–4"], labelKey: "shortcuts.switch_tabs" },

@@ -34,6 +34,7 @@ describe("Studio keyboard shortcuts", () => {
     expect(resolveShortcutAction(keyEvent("y", { ctrlKey: true }), BASE_CTX)).toBe("redo");
     expect(resolveShortcutAction(keyEvent("s", { ctrlKey: true }), BASE_CTX)).toBe("saveJson");
     expect(resolveShortcutAction(keyEvent("e", { ctrlKey: true }), BASE_CTX)).toBe("exportZip");
+    expect(resolveShortcutAction(keyEvent("d", { ctrlKey: true }), BASE_CTX)).toBe("duplicateSubsystem");
     expect(resolveShortcutAction(keyEvent("?"), BASE_CTX)).toBe("shortcutsHelp");
   });
 

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { computeChangedLineIndices } from "../../components/studio/code-viewer";
 import {
   applyRenameSubsystemRequest,
   applyRenameSubsystemState,
@@ -17,6 +18,7 @@ import {
   createBlankPreset,
   createCompetitionPreset,
   createSkeletonPreset,
+  duplicateSubsystemWithDefaults,
 } from "../presets/skeleton";
 import { validateProject } from "../validator";
 
@@ -179,5 +181,46 @@ describe("Phase 1 usability and foundation", () => {
     };
     const issuesAfterEdit = validateProject(step2.project, "pt");
     expect(issuesAfterEdit.some((i) => i.id === "sub-basic-defaults-shooter")).toBe(false);
+  });
+
+  it("supports leftStick and rightStick Xbox buttons in schema, validator, and RobotContainer.java", () => {
+    const project = createSkeletonPreset();
+    project.controls.pilotPriority.push({
+      id: "pilot-ls",
+      button: "leftStick",
+      request: "INTAKE",
+    });
+    project.controls.copilotOverrides.push({
+      id: "copilot-rs",
+      button: "rightStick",
+      subsystemId: "roller",
+      request: "EJECT",
+    });
+
+    expect(validateProject(project)).toEqual([]);
+    const container = generateProjectFiles(project).find((f) =>
+      f.path.endsWith("RobotContainer.java"),
+    )?.content;
+    expect(container).toContain("pilot.leftStick()");
+    expect(container).toContain("copilot.rightStick()");
+  });
+
+  it("computes changed line indices for live CodeViewer diff highlighting", () => {
+    const prev = "package frc.robot;\npublic class Roller {\n  int id = 10;\n}";
+    const next = "package frc.robot;\npublic class Roller {\n  int id = 14;\n}";
+    expect(computeChangedLineIndices(prev, next)).toEqual([2]);
+  });
+
+  it("duplicates a subsystem with unique name, id, and CAN IDs (including follower) and 0 errors", () => {
+    const project = createSkeletonPreset();
+    project.subsystems[0].motor.follower = { enabled: true, canId: 11, inverted: false };
+    const res = duplicateSubsystemWithDefaults(project, "roller");
+    expect(res).not.toBeNull();
+    expect(res?.project.subsystems.length).toBe(2);
+    expect(res?.project.subsystems[1].id).toBe("roller_2");
+    expect(res?.project.subsystems[1].name).toBe("Roller2");
+    expect(res?.project.subsystems[1].motor.canId).not.toBe(10);
+    expect(res?.project.subsystems[1].motor.follower?.canId).not.toBe(11);
+    expect(validateProject(res!.project)).toEqual([]);
   });
 });

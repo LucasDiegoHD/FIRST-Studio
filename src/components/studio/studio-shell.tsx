@@ -82,6 +82,7 @@ export function StudioShell({
     focusIssue,
     highlightField,
     loadProject,
+    duplicateSubsystem,
     removeSubsystem,
     reorderSubsystems,
     resetToSkeleton,
@@ -111,13 +112,33 @@ export function StudioShell({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [pendingDeleteSub, setPendingDeleteSub] = useState<SubsystemConfig | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [toastMsg, setToastMsg] = useState<{ text: string; tone: "ok" | "err" } | null>(null);
+  const [toastMsg, setToastMsg] = useState<{
+    text: string;
+    tone: "ok" | "err";
+    canUndoAction?: boolean;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = useCallback((text: string, tone: "ok" | "err" = "ok") => {
-    setToastMsg({ text, tone });
-    setTimeout(() => setToastMsg(null), 3000);
-  }, []);
+  const showToast = useCallback(
+    (text: string, tone: "ok" | "err" = "ok", canUndoAction = false) => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToastMsg({ text, tone, canUndoAction });
+      toastTimerRef.current = setTimeout(
+        () => setToastMsg(null),
+        canUndoAction ? 4000 : 3000,
+      );
+    },
+    [],
+  );
+
+  const handleDuplicateSubsystem = useCallback(
+    (sub: SubsystemConfig) => {
+      duplicateSubsystem(sub.id);
+      showToast(t("toast.duplicated"), "ok", true);
+    },
+    [duplicateSubsystem, showToast, t],
+  );
 
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const currentStep = tabToStep(activeTab);
@@ -214,6 +235,9 @@ export function StudioShell({
         case "deleteSubsystem":
           if (selectedSub) setPendingDeleteSub(selectedSub);
           break;
+        case "duplicateSubsystem":
+          if (selectedSub) handleDuplicateSubsystem(selectedSub);
+          break;
         case "prevSubsystem":
         case "nextSubsystem": {
           if (!selectedSub || project.subsystems.length <= 1) break;
@@ -249,6 +273,7 @@ export function StudioShell({
     errorCount,
     exporting,
     handleDownloadZip,
+    handleDuplicateSubsystem,
     handleSaveJson,
     navigateToTab,
     paletteOpen,
@@ -650,21 +675,30 @@ export function StudioShell({
                   className="z-50 w-56 rounded-lg border border-[#2c3f61] bg-[#131c2e] py-1.5 shadow-2xl text-[13px]"
                 >
                   <DropdownMenu.Item
-                    onSelect={resetToSkeleton}
+                    onSelect={() => {
+                      resetToSkeleton();
+                      showToast(t("header.preset_skeleton"), "ok", true);
+                    }}
                     className="flex items-center justify-between px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
                   >
                     <span>{t("header.preset_skeleton")}</span>
                     <span className="font-mono text-[10px] text-[#93c5fd]">Roller</span>
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
-                    onSelect={resetToCompetition}
+                    onSelect={() => {
+                      resetToCompetition();
+                      showToast("Competition", "ok", true);
+                    }}
                     className="flex items-center justify-between px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
                   >
                     <span>Competition</span>
                     <span className="font-mono text-[10px] text-emerald-400">Shooter · Hood</span>
                   </DropdownMenu.Item>
                   <DropdownMenu.Item
-                    onSelect={resetToBlank}
+                    onSelect={() => {
+                      resetToBlank();
+                      showToast(t("header.preset_blank"), "ok", true);
+                    }}
                     className="flex items-center justify-between px-3 py-2 text-slate-200 outline-none hover:bg-[#19253d] cursor-pointer"
                   >
                     <span>{t("header.preset_blank")}</span>
@@ -916,6 +950,7 @@ export function StudioShell({
                     onGoToStates={() => setActiveTab("fsm")}
                     onGoToControls={() => setActiveTab("controls")}
                     onRequestDeleteSubsystem={(sub) => setPendingDeleteSub(sub)}
+                    onDuplicateSubsystem={handleDuplicateSubsystem}
                   />
                 )}
                 {currentStep === "states" && (
@@ -952,46 +987,71 @@ export function StudioShell({
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-[#0b0f17]/80 backdrop-blur-xs animate-fade-in" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-rose-700/70 bg-[#0f1624] p-5 shadow-2xl space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-rose-700/60 bg-rose-950/60 text-rose-400">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1 space-y-1">
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[90vw] max-w-[360px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-[#2c3f61] bg-[#0f1624] shadow-2xl">
+            <div className="h-1 w-full bg-rose-500/90" />
+            <div className="p-5 space-y-4">
+              <div className="flex flex-col items-center text-center space-y-2.5">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/15 text-rose-400">
+                  <Trash2 className="h-5 w-5" />
+                </div>
                 <Dialog.Title className="font-headline text-base font-semibold text-white">
-                  {t("confirm.delete_sub_title")}{" "}
-                  {pendingDeleteSub && (
-                    <span className="font-mono text-rose-300">{pendingDeleteSub.name}</span>
-                  )}
+                  {t("confirm.delete_sub_title")}
                 </Dialog.Title>
+                {pendingDeleteSub && (
+                  <div className="inline-flex flex-wrap items-center justify-center gap-1.5 rounded-lg border border-[#22304a] bg-[#131c2e] px-3 py-1.5 font-mono text-xs">
+                    <span className="font-semibold text-white">{pendingDeleteSub.name}</span>
+                    <span className="text-slate-500">·</span>
+                    <span className="text-[#93c5fd]">CAN {pendingDeleteSub.motor.canId}</span>
+                    <span className="text-slate-500">·</span>
+                    <span className="capitalize text-slate-300">{pendingDeleteSub.type}</span>
+                    <span className="text-slate-500">·</span>
+                    <span className="text-slate-400">
+                      {pendingDeleteSub.motor.vendor === "talonfx"
+                        ? "TalonFX"
+                        : pendingDeleteSub.motor.vendor === "sparkmax"
+                          ? "SparkMax"
+                          : "TalonSRX"}
+                    </span>
+                  </div>
+                )}
                 <Dialog.Description className="text-xs leading-relaxed text-slate-300">
                   {t("confirm.delete_sub_desc")}
                 </Dialog.Description>
-                <p className="font-mono text-[11px] text-slate-400">{t("confirm.undo_hint")}</p>
+                <p className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <kbd className="rounded border border-[#2c3f61] bg-[#131c2e] px-1.5 py-0.5 font-mono text-[10px] text-[#93c5fd]">
+                    Ctrl+Z
+                  </kbd>
+                  <span>{t("confirm.undo_hint")}</span>
+                </p>
               </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-[#22304a] pt-3">
-              <Button
-                variant="outline"
-                size="sm"
-                autoFocus
-                onClick={() => setPendingDeleteSub(null)}
-              >
-                {t("confirm.cancel")}
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => {
-                  if (!pendingDeleteSub) return;
-                  removeSubsystem(pendingDeleteSub.id);
-                  setPendingDeleteSub(null);
-                  showToast(t("toast.deleted"));
-                }}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                {t("confirm.delete")}
-              </Button>
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  autoFocus
+                  className="w-full justify-between px-3"
+                  onClick={() => setPendingDeleteSub(null)}
+                >
+                  <span>{t("confirm.cancel")}</span>
+                  <kbd className="rounded border border-[#253552] bg-[#0b0f17] px-1 py-0.5 font-mono text-[10px] text-slate-400">
+                    Esc
+                  </kbd>
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    if (!pendingDeleteSub) return;
+                    removeSubsystem(pendingDeleteSub.id);
+                    setPendingDeleteSub(null);
+                    showToast(t("toast.deleted"), "ok", true);
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t("confirm.delete")}
+                </Button>
+              </div>
             </div>
           </Dialog.Content>
         </Dialog.Portal>
@@ -1047,13 +1107,25 @@ export function StudioShell({
       {toastMsg && (
         <div
           className={cn(
-            "fixed bottom-6 right-6 z-50 rounded-lg border px-4 py-2.5 text-[13px] shadow-2xl animate-toast-in",
+            "fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-lg border px-4 py-2.5 text-[13px] shadow-2xl animate-toast-in",
             toastMsg.tone === "ok"
               ? "border-[#3b6bb5] bg-[#131c2e] text-white"
               : "border-rose-700/70 bg-rose-950/90 text-rose-200",
           )}
         >
-          {toastMsg.text}
+          <span>{toastMsg.text}</span>
+          {toastMsg.canUndoAction && canUndo && (
+            <button
+              type="button"
+              onClick={() => {
+                undo();
+                setToastMsg(null);
+              }}
+              className="rounded border border-[#3b6bb5] bg-[#142c4f] px-2 py-0.5 font-mono text-xs font-semibold text-[#93c5fd] hover:bg-[#1d3f70] hover:text-white cursor-pointer"
+            >
+              {t("toast.undo_action")}
+            </button>
+          )}
         </div>
       )}
     </div>

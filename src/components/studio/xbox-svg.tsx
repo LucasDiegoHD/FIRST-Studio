@@ -21,6 +21,8 @@ const CALLOUTS: Record<XboxButton, CalloutAnchor> = {
   rightTrigger: { bx: 515, by: 50, lx: 615, ly: 44, align: "start" },
   leftBumper: { bx: 222, by: 88, lx: 130, ly: 96, align: "end" },
   rightBumper: { bx: 538, by: 88, lx: 630, ly: 96, align: "start" },
+  leftStick: { bx: 256, by: 184, lx: 130, ly: 138, align: "end" },
+  rightStick: { bx: 446, by: 254, lx: 630, ly: 340, align: "start" },
   povUp: { bx: 314, by: 230, lx: 130, ly: 176, align: "end" },
   povLeft: { bx: 288, by: 256, lx: 130, ly: 224, align: "end" },
   povRight: { bx: 340, by: 256, lx: 130, ly: 272, align: "end" },
@@ -39,12 +41,14 @@ export function XboxControllerSvg({
   hoveredButton,
   onSelectButton,
   onHoverButton,
+  svgRef,
 }: {
   mappedButtons: Map<XboxButton, MappedButtonInfo>;
   selectedButton: XboxButton;
   hoveredButton: XboxButton | null;
   onSelectButton: (button: XboxButton) => void;
   onHoverButton: (button: XboxButton | null) => void;
+  svgRef?: React.RefObject<SVGSVGElement | null>;
 }) {
   const buttonVisual = (btn: XboxButton) => {
     const isSelected = selectedButton === btn;
@@ -79,7 +83,7 @@ export function XboxControllerSvg({
   });
 
   return (
-    <svg viewBox="0 0 760 430" className="w-full max-w-[680px] select-none">
+    <svg ref={svgRef} viewBox="0 0 760 430" className="w-full max-w-[680px] select-none">
       <defs>
         <radialGradient id="ambientHalo" cx="50%" cy="48%" r="48%">
           <stop offset="0%" stopColor="#142c4f" stopOpacity="0.65" />
@@ -234,18 +238,24 @@ export function XboxControllerSvg({
         <line x1="420" y1="186" x2="432" y2="186" stroke="#cbd5e1" strokeWidth="1.4" strokeLinecap="round" />
       </g>
 
-      {/* Left Analog Stick */}
-      <g>
+      {/* Left Analog Stick (LS / L3) */}
+      <g {...bindEvents("leftStick")}>
         <circle cx="256" cy="184" r="32" fill="#05070c" stroke="#1b2538" strokeWidth="1.5" />
-        <circle cx="256" cy="184" r="24" fill="url(#stickGrad)" stroke="#2b3c59" strokeWidth="1.4" />
+        <circle cx="256" cy="184" r="24" {...buttonVisual("leftStick")} />
         <circle cx="256" cy="184" r="15" fill="none" stroke="#1d2b44" strokeWidth="1" />
+        <text x="256" y="188" textAnchor="middle" fill="#cbd5e1" fontSize="10" fontWeight="700" fontFamily="monospace">
+          LS
+        </text>
       </g>
 
-      {/* Right Analog Stick */}
-      <g>
+      {/* Right Analog Stick (RS / R3) */}
+      <g {...bindEvents("rightStick")}>
         <circle cx="446" cy="254" r="32" fill="#05070c" stroke="#1b2538" strokeWidth="1.5" />
-        <circle cx="446" cy="254" r="24" fill="url(#stickGrad)" stroke="#2b3c59" strokeWidth="1.4" />
+        <circle cx="446" cy="254" r="24" {...buttonVisual("rightStick")} />
         <circle cx="446" cy="254" r="15" fill="none" stroke="#1d2b44" strokeWidth="1" />
+        <text x="446" y="258" textAnchor="middle" fill="#cbd5e1" fontSize="10" fontWeight="700" fontFamily="monospace">
+          RS
+        </text>
       </g>
 
       {/* Faceted Circular Dish D-Pad */}

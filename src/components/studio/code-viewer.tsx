@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Highlight, Prism, type PrismTheme } from "prism-react-renderer";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,18 @@ function resolveLanguage(filePath: string): string {
   return "clike";
 }
 
+export function computeChangedLineIndices(prevContent: string, nextContent: string): number[] {
+  const prevLines = prevContent.split("\n");
+  const nextLines = nextContent.split("\n");
+  const changed: number[] = [];
+  for (let i = 0; i < nextLines.length; i++) {
+    if (nextLines[i] !== prevLines[i]) {
+      changed.push(i);
+    }
+  }
+  return changed;
+}
+
 export function CodeViewer({
   filePath,
   content,
@@ -44,6 +56,42 @@ export function CodeViewer({
 }) {
   const { t } = useProject();
   const [copied, setCopied] = useState(false);
+  const [changedLines, setChangedLines] = useState<Set<number>>(() => new Set());
+  const prevRef = useRef<{ filePath: string; content: string } | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = { filePath, content };
+
+    if (!prev || prev.filePath !== filePath) {
+      setChangedLines(new Set());
+      return;
+    }
+
+    if (prev.content === content) return;
+
+    const indices = computeChangedLineIndices(prev.content, content);
+    if (indices.length === 0) return;
+
+    setChangedLines(new Set(indices));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setChangedLines(new Set());
+    }, 1500);
+
+    const firstEl = scrollContainerRef.current?.querySelector<HTMLElement>(
+      `[data-code-line="${indices[0]}"]`,
+    );
+    firstEl?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [filePath, content]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const handleCopy = async () => {
     if (!content) return;
@@ -65,22 +113,33 @@ export function CodeViewer({
           </Button>
         </div>
       )}
-      <div className="flex-1 overflow-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto">
         <Highlight theme={studioCodeTheme} code={content.trimEnd()} language={language}>
           {({ tokens, getLineProps, getTokenProps }) => (
             <pre className="p-3 font-mono text-[12px] leading-[1.6] bg-[#090e18]">
-              {tokens.map((line, i) => (
-                <div key={i} {...getLineProps({ line })} className="table-row">
-                  <span className="table-cell w-8 select-none pr-3 text-right text-[#475266]">
-                    {i + 1}
-                  </span>
-                  <span className="table-cell">
-                    {line.map((token, key) => (
-                      <span key={key} {...getTokenProps({ token })} />
-                    ))}
-                  </span>
-                </div>
-              ))}
+              {tokens.map((line, i) => {
+                const isChanged = changedLines.has(i);
+                const lineProps = getLineProps({ line });
+                return (
+                  <div
+                    key={i}
+                    data-code-line={i}
+                    {...lineProps}
+                    className={`table-row transition-colors duration-500 ${
+                      isChanged ? "bg-emerald-500/20 shadow-[inset_2px_0_0_0_#34d399]" : ""
+                    }`}
+                  >
+                    <span className="table-cell w-8 select-none pr-3 text-right text-[#475266]">
+                      {i + 1}
+                    </span>
+                    <span className="table-cell">
+                      {line.map((token, key) => (
+                        <span key={key} {...getTokenProps({ token })} />
+                      ))}
+                    </span>
+                  </div>
+                );
+              })}
             </pre>
           )}
         </Highlight>

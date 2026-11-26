@@ -772,6 +772,8 @@ const PILOT_BUTTON_ORDER: XboxButton[] = [
   "povDown",
   "povLeft",
   "povRight",
+  "leftStick",
+  "rightStick",
   "start",
   "back",
 ];
@@ -789,6 +791,8 @@ const COPILOT_BUTTON_ORDER: XboxButton[] = [
   "povDown",
   "povLeft",
   "povRight",
+  "leftStick",
+  "rightStick",
   "start",
   "back",
 ];
@@ -891,6 +895,78 @@ export function addSubsystemWithDefaults(
       controls: {
         pilotPriority: nextPilotPriority,
         copilotOverrides: nextCopilotOverrides,
+      },
+    },
+  };
+}
+
+export function duplicateSubsystemWithDefaults(
+  project: CiprixProject,
+  sourceId: string,
+): { project: CiprixProject; createdId: string } | null {
+  const sourceIdx = project.subsystems.findIndex((s) => s.id === sourceId);
+  if (sourceIdx === -1) return null;
+
+  const source = project.subsystems[sourceIdx];
+  const usedIds = new Set(project.subsystems.map((s) => s.id));
+  const usedNames = new Set(project.subsystems.map((s) => s.name.toLowerCase()));
+  const usedCanIds = new Set<number>();
+  for (const s of project.subsystems) {
+    usedCanIds.add(s.motor.canId);
+    if (s.motor.follower?.enabled) usedCanIds.add(s.motor.follower.canId);
+  }
+
+  const baseName = source.name.replace(/\d+$/, "") || BASE_NAMES[source.type];
+  let suffix = 2;
+  while (
+    usedNames.has(`${baseName}${suffix}`.toLowerCase()) ||
+    usedIds.has(`${source.type}_${suffix}`)
+  ) {
+    suffix++;
+  }
+  const nextName = `${baseName}${suffix}`;
+  const nextId = `${source.type}_${suffix}`;
+
+  let nextCanId = 10;
+  while (usedCanIds.has(nextCanId) && nextCanId < 62) {
+    nextCanId++;
+  }
+  usedCanIds.add(nextCanId);
+
+  const clone: SubsystemConfig = structuredClone(source);
+  clone.id = nextId;
+  clone.name = nextName;
+  clone.isDefaultTemplate = false;
+  clone.motor.canId = nextCanId;
+
+  if (clone.motor.follower?.enabled) {
+    let followerCanId = nextCanId + 1;
+    while (usedCanIds.has(followerCanId) && followerCanId < 62) {
+      followerCanId++;
+    }
+    usedCanIds.add(followerCanId);
+    clone.motor.follower.canId = followerCanId;
+  }
+
+  const nextSubsystems = [...project.subsystems];
+  nextSubsystems.splice(sourceIdx + 1, 0, clone);
+
+  const nextStateActions: Record<string, Record<string, string>> = {};
+  for (const stateName of project.superstructure.states) {
+    nextStateActions[stateName] = {
+      ...(project.superstructure.stateActions[stateName] ?? {}),
+      [clone.id]: clone.fsm.initialRequest,
+    };
+  }
+
+  return {
+    createdId: clone.id,
+    project: {
+      ...project,
+      subsystems: nextSubsystems,
+      superstructure: {
+        ...project.superstructure,
+        stateActions: nextStateActions,
       },
     },
   };

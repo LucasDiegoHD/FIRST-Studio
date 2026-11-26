@@ -12,6 +12,8 @@ export const XboxButtonSchema = z.enum([
   "rightBumper",
   "leftTrigger",
   "rightTrigger",
+  "leftStick",
+  "rightStick",
   "povUp",
   "povDown",
   "povLeft",

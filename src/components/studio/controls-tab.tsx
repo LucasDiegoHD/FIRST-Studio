@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Code2, Cog, Gamepad2, Trash2 } from "lucide-react";
+import React, { useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, Code2, Cog, Gamepad2, ImageDown, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Hint } from "@/components/ui/hint";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
 import { requestToCommandMethod, toPascalCase } from "@/lib/generator/java-utils";
@@ -40,6 +41,8 @@ const XBOX_BUTTONS: { value: XboxButton; label: string; fullName: string }[] = [
   { value: "rightBumper", label: "RB", fullName: "Right Bumper" },
   { value: "leftTrigger", label: "LT", fullName: "Left Trigger" },
   { value: "rightTrigger", label: "RT", fullName: "Right Trigger" },
+  { value: "leftStick", label: "LS", fullName: "Left Stick Click (L3)" },
+  { value: "rightStick", label: "RS", fullName: "Right Stick Click (R3)" },
   { value: "povUp", label: "D-Up", fullName: "D-Pad Up" },
   { value: "povDown", label: "D-Down", fullName: "D-Pad Down" },
   { value: "povLeft", label: "D-Left", fullName: "D-Pad Left" },
@@ -54,6 +57,93 @@ export function ControlsTab() {
   const [selectedButton, setSelectedButton] = useState<XboxButton>("rightBumper");
   const [hoveredButton, setHoveredButton] = useState<XboxButton | null>(null);
   const [showJava, setShowJava] = useState(false);
+  const [exportingCard, setExportingCard] = useState(false);
+  const xboxSvgRef = useRef<SVGSVGElement | null>(null);
+
+  const handleExportPitCard = async () => {
+    const svgEl = xboxSvgRef.current;
+    if (!svgEl) return;
+    setExportingCard(true);
+    try {
+      const cloned = svgEl.cloneNode(true) as SVGSVGElement;
+      cloned.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      const xml = new XMLSerializer().serializeToString(cloned);
+      const svgBlob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+      const svgUrl = URL.createObjectURL(svgBlob);
+
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = svgUrl;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 1520;
+      canvas.height = 980;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(svgUrl);
+        return;
+      }
+
+      ctx.fillStyle = "#0b0f17";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "#0f1624";
+      ctx.fillRect(0, 0, canvas.width, 96);
+      ctx.strokeStyle = "#22304a";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 96);
+      ctx.lineTo(canvas.width, 96);
+      ctx.stroke();
+
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "bold 30px sans-serif";
+      const roleLabel = port === "pilot" ? "PILOTO (XBOX 0)" : "COPILOTO (XBOX 1)";
+      ctx.fillText(
+        `${project.project.name || "FIRST Studio"} #${project.project.teamNumber} · ${roleLabel}`,
+        48,
+        58,
+      );
+      ctx.fillStyle = "#93c5fd";
+      ctx.font = "18px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText("FIRST Studio · Ciprix 2026.3.0", canvas.width - 48, 56);
+      ctx.textAlign = "left";
+
+      ctx.drawImage(img, 80, 120, 1360, 770);
+      URL.revokeObjectURL(svgUrl);
+
+      const summary = Array.from(mappedButtons.entries())
+        .map(([btn, info]) => {
+          const short = XBOX_BUTTONS.find((b) => b.value === btn)?.label ?? btn;
+          return `${short}: ${info.label}`;
+        })
+        .join("   |   ");
+
+      ctx.fillStyle = "#0f1624";
+      ctx.fillRect(0, 908, canvas.width, 72);
+      ctx.strokeStyle = "#22304a";
+      ctx.beginPath();
+      ctx.moveTo(0, 908);
+      ctx.lineTo(canvas.width, 908);
+      ctx.stroke();
+
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "16px monospace";
+      ctx.fillText(summary || "Sem botões mapeados", 48, 950, canvas.width - 96);
+
+      const pngUrl = canvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = pngUrl;
+      a.download = `${project.project.name || "first-studio"}-${port}-pit-card.png`;
+      a.click();
+    } finally {
+      setExportingCard(false);
+    }
+  };
 
   const mappedButtons = useMemo(() => {
     const map = new Map<XboxButton, MappedButtonInfo>();
@@ -254,18 +344,34 @@ export function ControlsTab() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
         {/* Left Interactive Stage: Xbox Series X + Quick-Bind Dock */}
         <Card className="xl:col-span-7 overflow-hidden bg-studio-glow">
-          <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-[#22304a] bg-[#0f1624]/80 py-4">
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b border-[#22304a] bg-[#0f1624]/80 py-4">
             <CardTitle className="text-lg">
               {port === "pilot" ? "Controle do Piloto (Port 0)" : "Controle do Copiloto (Port 1)"}
             </CardTitle>
-            <Badge variant="outline">
-              {port === "pilot" ? "SuperStructureCommands" : "@AutoCommandFactory"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleExportPitCard}
+                  disabled={exportingCard}
+                  className="h-8 px-2.5 text-xs"
+                >
+                  <ImageDown className="h-3.5 w-3.5" />
+                  <span>{exportingCard ? t("controls.pit_card_exporting") : t("controls.pit_card")}</span>
+                </Button>
+                <Hint hintKey="btn.pit_card" />
+              </div>
+              <Badge variant="outline">
+                {port === "pilot" ? "SuperStructureCommands" : "@AutoCommandFactory"}
+              </Badge>
+            </div>
           </CardHeader>
 
           <CardContent className="space-y-5 p-6">
             <div className="flex items-center justify-center py-2">
               <XboxControllerSvg
+                svgRef={xboxSvgRef}
                 mappedButtons={mappedButtons}
                 selectedButton={selectedButton}
                 hoveredButton={hoveredButton}

@@ -802,6 +802,18 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "robot.zip",
     },
   },
+  "btn.pit_card": {
+    pt: {
+      what: "Exporta o mapa visual do controle Xbox como imagem PNG.",
+      why: "Gera um cartão pronto para imprimir ou deixar na Driver Station durante os jogos no pit e na arena.",
+      typical: "pilot-pit-card.png",
+    },
+    en: {
+      what: "Exports the visual Xbox controller layout as a PNG image.",
+      why: "Creates a printable driver reference card to keep at the Driver Station during matches.",
+      typical: "pilot-pit-card.png",
+    },
+  },
 };
 
 export const REGISTERED_FIELD_PATHS = Object.keys(HELP_CATALOG);

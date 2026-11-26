@@ -22,6 +22,7 @@ import {
   createBlankPreset,
   createCompetitionPreset,
   createSkeletonPreset,
+  duplicateSubsystemWithDefaults,
 } from "@/lib/presets/skeleton";
 import {
   CiprixProjectSchema,
@@ -66,6 +67,7 @@ interface ProjectContextValue {
   resetToBlank: () => void;
   resetToCompetition: () => void;
   addSubsystem: (type: SubsystemType) => void;
+  duplicateSubsystem: (id: string) => void;
   removeSubsystem: (id: string) => void;
   reorderSubsystems: (orderedIds: string[]) => void;
   updateSubsystem: (id: string, updater: (prev: SubsystemConfig) => SubsystemConfig) => void;
@@ -161,6 +163,20 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       let createdId = "";
       set((prev) => {
         const res = addSubsystemWithDefaults(prev, type);
+        createdId = res.createdId;
+        return res.project;
+      });
+      if (createdId) setSelectedSubsystemId(createdId);
+    },
+    [set],
+  );
+
+  const duplicateSubsystem = useCallback(
+    (id: string) => {
+      let createdId = "";
+      set((prev) => {
+        const res = duplicateSubsystemWithDefaults(prev, id);
+        if (!res) return prev;
         createdId = res.createdId;
         return res.project;
       });
@@ -291,6 +307,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     resetToBlank,
     resetToCompetition,
     addSubsystem,
+    duplicateSubsystem,
     removeSubsystem,
     reorderSubsystems,
     updateSubsystem,

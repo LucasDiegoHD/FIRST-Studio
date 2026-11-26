@@ -26,6 +26,7 @@ import {
   Blocks,
   Cog,
   Compass,
+  Copy,
   Cpu,
   FastForward,
   Gamepad2,
@@ -50,6 +51,7 @@ import { Switch } from "@/components/ui/switch";
 import { UnitInput } from "@/components/ui/unit-input";
 import { useProject } from "@/context/project-context";
 import { toPackageSegment } from "@/lib/generator/java-utils";
+import { getSubsystemTheme } from "@/lib/subsystem-theme";
 import type {
   MotorVendor,
   SubsystemAction,
@@ -283,6 +285,7 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
       : subsystem.motor.vendor === "sparkmax"
         ? "SparkMax"
         : "TalonSRX";
+  const theme = getSubsystemTheme(subsystem.type);
 
   return (
     <div
@@ -297,6 +300,7 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
               : "border-[#253552] bg-[#131c2e] hover:border-[#3b6bb5]"
       }`}
     >
+      <div className={`h-1 w-full ${errorCount > 0 ? "bg-rose-500" : theme.barBg}`} />
       <Handle type="target" position={Position.Left} />
       <div className="flex items-center justify-between border-b border-[#22304a] bg-[#142c4f]/75 px-3 py-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -307,13 +311,13 @@ function SubsystemFlowNode({ data }: NodeProps<Node<SubsystemNodeData>>) {
               subsystem.type === "shooter" ||
               subsystem.type === "indexer"
                 ? activeDir > 0
-                  ? "text-[#93c5fd] animate-motor-cw"
+                  ? `${theme.iconText} animate-motor-cw`
                   : activeDir < 0
-                    ? "text-[#93c5fd] animate-motor-ccw"
-                    : "text-slate-400"
+                    ? `${theme.iconText} animate-motor-ccw`
+                    : theme.iconText
                 : activeDir !== 0
-                  ? "text-[#93c5fd]"
-                  : "text-slate-400"
+                  ? theme.iconText
+                  : theme.iconText
             }`}
           />
           <span className="truncate font-headline text-[13px] font-semibold text-white">
@@ -367,10 +371,12 @@ export function RobotFlowView({
   onGoToStates,
   onGoToControls,
   onRequestDeleteSubsystem,
+  onDuplicateSubsystem,
 }: {
   onGoToStates: () => void;
   onGoToControls: () => void;
   onRequestDeleteSubsystem?: (sub: SubsystemConfig) => void;
+  onDuplicateSubsystem?: (sub: SubsystemConfig) => void;
 }) {
   const {
     project,
@@ -380,6 +386,7 @@ export function RobotFlowView({
     issues,
     focusRequest,
     addSubsystem,
+    duplicateSubsystem,
     updateSubsystem,
     removeSubsystem,
     reorderSubsystems,
@@ -468,7 +475,7 @@ export function RobotFlowView({
         position: xboxPos,
         data: {
           buttons: project.controls.pilotPriority.map((p) => ({
-            label: p.button.replace("Bumper", "B").replace("Trigger", "T").toUpperCase(),
+            label: p.button.replace("Bumper", "B").replace("Trigger", "T").replace("Stick", "S").toUpperCase(),
             request: p.request,
           })),
           simRequest: activeSimRequest,
@@ -712,36 +719,40 @@ export function RobotFlowView({
                   {group.groupTitle}
                 </p>
                 <div className="flex flex-col gap-2">
-                  {group.items.map((item) => (
-                    <div
-                      key={item.kind}
-                      role="button"
-                      tabIndex={0}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, item.kind)}
-                      onDragEnd={clearDragState}
-                      onClick={() => addSubsystem(item.kind)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          addSubsystem(item.kind);
-                        }
-                      }}
-                      className="group select-none flex items-center gap-3 rounded-xl border border-[#2c3f61] bg-[#0f1624] p-3.5 text-left transition-all duration-150 hover:scale-[1.02] hover:border-[#60a5fa] hover:bg-[#19253d] active:scale-[0.98] cursor-grab active:cursor-grabbing"
-                    >
-                      <SubsystemIcon
-                        type={item.kind}
-                        className="h-6 w-6 text-[#93c5fd] shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-headline text-sm font-semibold text-white">
-                          {item.title}
-                        </p>
-                        <p className="mt-0.5 text-[11px] text-slate-400">{item.desc}</p>
+                  {group.items.map((item) => {
+                    const theme = getSubsystemTheme(item.kind);
+                    return (
+                      <div
+                        key={item.kind}
+                        role="button"
+                        tabIndex={0}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, item.kind)}
+                        onDragEnd={clearDragState}
+                        onClick={() => addSubsystem(item.kind)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            addSubsystem(item.kind);
+                          }
+                        }}
+                        className="group select-none flex items-center gap-3 rounded-xl border border-[#2c3f61] bg-[#0f1624] p-3 text-left transition-all duration-150 hover:scale-[1.02] hover:border-[#60a5fa] hover:bg-[#19253d] active:scale-[0.98] cursor-grab active:cursor-grabbing"
+                      >
+                        <span className={`h-8 w-1 shrink-0 rounded-full ${theme.barBg}`} />
+                        <SubsystemIcon
+                          type={item.kind}
+                          className={`h-5 w-5 shrink-0 ${theme.iconText}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-headline text-sm font-semibold text-white">
+                            {item.title}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-slate-400">{item.desc}</p>
+                        </div>
+                        <Plus className="h-4 w-4 text-slate-500 group-hover:text-white shrink-0" />
                       </div>
-                      <Plus className="h-4 w-4 text-slate-500 group-hover:text-white shrink-0" />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -851,6 +862,11 @@ export function RobotFlowView({
                               : sub.motor.vendor === "sparkmax"
                                 ? "SparkMax"
                                 : "TalonSRX";
+                          const theme = getSubsystemTheme(sub.type);
+                          const currentPct = Math.min(
+                            100,
+                            Math.round((sub.motor.currentLimitAmps / 120) * 100),
+                          );
 
                           return (
                             <div
@@ -876,9 +892,9 @@ export function RobotFlowView({
                               onDragEnd={clearDragState}
                               onClick={() => setSelectedSubsystemId(sub.id)}
                               className={cn(
-                                "group relative select-none aspect-square rounded-xl border-2 bg-[#162238] p-4 flex flex-col items-center justify-center text-center transition-all duration-200 cursor-grab active:cursor-grabbing hover:border-[#60a5fa] hover:bg-[#192844]",
+                                "group relative select-none overflow-hidden aspect-square rounded-xl border-2 bg-[#162238] flex flex-col justify-between text-center transition-all duration-200 cursor-grab active:cursor-grabbing hover:border-[#60a5fa] hover:bg-[#192844]",
                                 isSelected
-                                  ? "border-[#60a5fa] bg-[#1b2c4a] shadow-[0_0_24px_-8px_rgba(96,165,250,0.65)] animate-select-bounce"
+                                  ? `${theme.borderActive} bg-[#1b2c4a] shadow-lg animate-select-bounce`
                                   : "border-[#253552]",
                                 isNewlyAdded && "animate-pop-in animate-pulse-ring",
                                 isDraggingThis && "opacity-45 scale-95",
@@ -886,58 +902,83 @@ export function RobotFlowView({
                                 subErrors > 0 && "border-rose-500 ring-1 ring-rose-500/60",
                               )}
                             >
-                              <div className="absolute left-2.5 top-2.5 flex items-center gap-1 opacity-55 group-hover:opacity-100">
-                                <GripVertical className="h-4 w-4 text-slate-400" />
-                                <button
-                                  type="button"
-                                  disabled={idx === 0}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    moveSubsystem(idx, -1);
-                                  }}
-                                  className="rounded p-0.5 text-slate-400 hover:bg-[#0b0f17] hover:text-white disabled:opacity-25 cursor-pointer"
-                                  title="Mover para esquerda"
-                                >
-                                  <ArrowLeft className="h-3 w-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={idx === project.subsystems.length - 1}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    moveSubsystem(idx, 1);
-                                  }}
-                                  className="rounded p-0.5 text-slate-400 hover:bg-[#0b0f17] hover:text-white disabled:opacity-25 cursor-pointer"
-                                  title="Mover para direita"
-                                >
-                                  <ArrowRight className="h-3 w-3" />
-                                </button>
-                              </div>
-
-                              {subErrors > 0 && (
-                                <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-rose-600 px-1.5 py-0.5 font-mono text-[10px] font-bold text-white shadow">
-                                  <AlertTriangle className="h-3 w-3" />
-                                  {subErrors}
-                                </span>
-                              )}
-
-                              <SubsystemIcon
-                                type={sub.type}
+                              <div
                                 className={cn(
-                                  "mb-2.5 h-10 w-10",
-                                  isSelected ? "text-[#93c5fd]" : "text-[#60a5fa]",
+                                  "h-1.5 w-full shrink-0",
+                                  subErrors > 0 ? "bg-rose-500" : theme.barBg,
                                 )}
                               />
-                              <span className="font-headline text-sm font-semibold text-white break-words">
-                                {sub.name}
-                              </span>
-                              <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
-                                <Badge variant="default" className="text-[10px] px-2 py-0">
-                                  CAN {sub.motor.canId}
-                                </Badge>
-                                <Badge variant="secondary" className="text-[10px] px-2 py-0">
-                                  {vendorLabel}
-                                </Badge>
+                              <div className="relative flex flex-1 flex-col items-center justify-center px-3 pt-5 pb-2">
+                                <div className="absolute left-2 top-1.5 flex items-center gap-0.5 opacity-55 group-hover:opacity-100">
+                                  <GripVertical className="h-3.5 w-3.5 text-slate-400" />
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moveSubsystem(idx, -1);
+                                    }}
+                                    className="rounded p-0.5 text-slate-400 hover:bg-[#0b0f17] hover:text-white disabled:opacity-25 cursor-pointer"
+                                    title="Mover para esquerda"
+                                  >
+                                    <ArrowLeft className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === project.subsystems.length - 1}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moveSubsystem(idx, 1);
+                                    }}
+                                    className="rounded p-0.5 text-slate-400 hover:bg-[#0b0f17] hover:text-white disabled:opacity-25 cursor-pointer"
+                                    title="Mover para direita"
+                                  >
+                                    <ArrowRight className="h-3 w-3" />
+                                  </button>
+                                </div>
+
+                                {subErrors > 0 ? (
+                                  <span className="absolute right-2 top-1.5 inline-flex items-center gap-1 rounded-full bg-rose-600 px-1.5 py-0.5 font-mono text-[10px] font-bold text-white shadow">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    {subErrors}
+                                  </span>
+                                ) : sub.isDefaultTemplate ? (
+                                  <span className="absolute right-2 top-1.5 rounded border border-amber-700/60 bg-amber-950/60 px-1.5 py-0.5 font-mono text-[9px] text-amber-300">
+                                    {t("subsystems.basic_badge")}
+                                  </span>
+                                ) : null}
+
+                                <SubsystemIcon
+                                  type={sub.type}
+                                  className={cn("mb-2 h-9 w-9", theme.iconText)}
+                                />
+                                <span className="font-headline text-sm font-semibold text-white break-words">
+                                  {sub.name}
+                                </span>
+                                <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1">
+                                  <Badge variant="default" className="text-[10px] px-1.5 py-0 tabular-nums">
+                                    CAN {sub.motor.canId}
+                                  </Badge>
+                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                    {vendorLabel}
+                                  </Badge>
+                                  <span className="rounded border border-[#22304a] bg-[#0b0f17] px-1.5 py-0 font-mono text-[9px] uppercase text-slate-300">
+                                    {sub.motor.neutralMode}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="border-t border-[#22304a]/80 bg-[#0f1624]/90 px-3 py-1.5">
+                                <div className="flex items-center justify-between font-mono text-[10px] text-slate-400 tabular-nums mb-1">
+                                  <span>{sub.type}</span>
+                                  <span className="text-slate-200">{sub.motor.currentLimitAmps}A</span>
+                                </div>
+                                <div className="h-1 w-full overflow-hidden rounded-full bg-[#0b0f17]">
+                                  <div
+                                    className={cn("h-full transition-all duration-300", theme.barBg)}
+                                    style={{ width: `${currentPct}%` }}
+                                  />
+                                </div>
                               </div>
                             </div>
                           );
@@ -1029,7 +1070,10 @@ export function RobotFlowView({
                 <>
                   <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-[#22304a] pb-4">
                     <div className="flex items-center gap-3 min-w-0">
-                      <SubsystemIcon type={selected.type} className="h-5 w-5 text-[#93c5fd] shrink-0" />
+                      <SubsystemIcon
+                        type={selected.type}
+                        className={cn("h-5 w-5 shrink-0", getSubsystemTheme(selected.type).iconText)}
+                      />
                       <CardTitle className="truncate">{selected.name}</CardTitle>
                       <Badge variant="default">CAN {selected.motor.canId}</Badge>
                       <Badge variant="outline" className="capitalize">
@@ -1044,18 +1088,32 @@ export function RobotFlowView({
                         </Badge>
                       )}
                     </div>
-                    <Button
-                      size="icon"
-                      variant="destructive"
-                      onClick={() =>
-                        onRequestDeleteSubsystem
-                          ? onRequestDeleteSubsystem(selected)
-                          : removeSubsystem(selected.id)
-                      }
-                      title={t("subsystems.remove")}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() =>
+                          onDuplicateSubsystem
+                            ? onDuplicateSubsystem(selected)
+                            : duplicateSubsystem(selected.id)
+                        }
+                        title={t("subsystems.duplicate")}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        onClick={() =>
+                          onRequestDeleteSubsystem
+                            ? onRequestDeleteSubsystem(selected)
+                            : removeSubsystem(selected.id)
+                        }
+                        title={t("subsystems.remove")}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardHeader>
 
                   <CardContent className="space-y-5 pt-6">
