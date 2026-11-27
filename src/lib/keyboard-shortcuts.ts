@@ -18,6 +18,7 @@ export type ShortcutAction =
   | "tab:fsm"
   | "tab:arena"
   | "tab:controls"
+  | "tab:autonomous"
   | "tab:code";
 
 export interface ShortcutKeyInput {
@@ -30,7 +31,7 @@ export interface ShortcutKeyInput {
 
 export interface ShortcutContext {
   activeRoute: "studio" | "credits";
-  currentStep: "robot" | "states" | "arena" | "controls" | "export";
+  currentStep: "robot" | "states" | "arena" | "controls" | "autonomous" | "export";
   hasSelectedSubsystem: boolean;
   hasOpenModal: boolean;
   isEditable: boolean;
@@ -69,7 +70,8 @@ export function resolveShortcutAction(
     if (key === "2") return "tab:fsm";
     if (key === "3") return "tab:arena";
     if (key === "4") return "tab:controls";
-    if (key === "5") return "tab:code";
+    if (key === "5") return "tab:autonomous";
+    if (key === "6") return "tab:code";
   }
 
   if (ctx.isEditable) return null;
@@ -129,6 +131,7 @@ export function actionToTab(action: ShortcutAction): StudioTab | null {
   if (action === "tab:fsm") return "fsm";
   if (action === "tab:arena") return "arena";
   if (action === "tab:controls") return "controls";
+  if (action === "tab:autonomous") return "autonomous";
   if (action === "tab:code") return "code";
   return null;
 }
@@ -140,7 +143,7 @@ export const SHORTCUT_GUIDE: { keys: string[]; labelKey: TranslationKey }[] = [
   { keys: ["Ctrl", "D"], labelKey: "shortcuts.duplicate_sub" },
   { keys: ["←", "→"], labelKey: "shortcuts.switch_sub" },
   { keys: ["Alt", "← / →"], labelKey: "shortcuts.reorder_sub" },
-  { keys: ["Alt", "1–5"], labelKey: "shortcuts.switch_tabs" },
+  { keys: ["Alt", "1–6"], labelKey: "shortcuts.switch_tabs" },
   { keys: ["Ctrl", "K"], labelKey: "shortcuts.palette" },
   { keys: ["Ctrl", "S"], labelKey: "shortcuts.save" },
   { keys: ["Ctrl", "E"], labelKey: "shortcuts.export" },

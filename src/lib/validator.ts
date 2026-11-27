@@ -14,6 +14,7 @@ export type StudioTab =
   | "fsm"
   | "superstructure"
   | "arena"
+  | "autonomous"
   | "controls"
   | "code";
 
@@ -1206,6 +1207,112 @@ export function validateProject(
       });
     } else {
       copilotButtons.add(entry.button);
+    }
+  }
+
+  // Phase 6: PathPlanner / Choreo Autonomous validations
+  const auto = project.autonomous;
+  if (auto?.enabled) {
+    if (!project.drivetrain?.enabled) {
+      issues.push({
+        id: "auto-needs-drivetrain",
+        severity: "warning",
+        tab: "autonomous",
+        path: "autonomous.enabled",
+        fieldLabel: locale === "pt" ? "Autônomo" : "Autonomous",
+        message:
+          locale === "pt"
+            ? "Autônomo ativado, mas o Drivetrain está desativado. Ative a tração na aba Robô para gerar AutoBuilder e AutonomousSetup."
+            : "Autonomous is enabled while Drivetrain is disabled. Enable drivetrain in the Robot tab to emit AutoBuilder and AutonomousSetup.",
+      });
+    }
+
+    const validSuperRequests = new Set(project.superstructure.requests);
+    const seenCmdNames = new Set<string>();
+    const mappedCmdNames = new Set<string>();
+
+    for (const cmd of auto.namedCommands) {
+      const trimmed = cmd.name.trim();
+      if (!trimmed) {
+        issues.push({
+          id: `auto-cmd-empty-${cmd.id}`,
+          severity: "error",
+          tab: "autonomous",
+          path: `autonomous.namedCommands.${cmd.id}.name`,
+          message:
+            locale === "pt"
+              ? "Comando nomeado no autônomo está sem nome."
+              : "Autonomous NamedCommand is missing a name.",
+        });
+      } else if (seenCmdNames.has(trimmed)) {
+        issues.push({
+          id: `auto-cmd-dup-${cmd.id}`,
+          severity: "error",
+          tab: "autonomous",
+          path: `autonomous.namedCommands.${cmd.id}.name`,
+          message:
+            locale === "pt"
+              ? `Comando nomeado "${trimmed}" duplicado no autônomo.`
+              : `Duplicate autonomous NamedCommand "${trimmed}".`,
+        });
+      } else {
+        seenCmdNames.add(trimmed);
+        mappedCmdNames.add(trimmed);
+      }
+
+      if (!validSuperRequests.has(cmd.request)) {
+        issues.push({
+          id: `auto-cmd-req-${cmd.id}`,
+          severity: "error",
+          tab: "autonomous",
+          path: `autonomous.namedCommands.${cmd.id}.request`,
+          message:
+            locale === "pt"
+              ? `Comando nomeado "${trimmed || cmd.id}" aponta para RobotRequest "${cmd.request}" inexistente.`
+              : `NamedCommand "${trimmed || cmd.id}" references missing RobotRequest "${cmd.request}".`,
+        });
+      }
+    }
+
+    for (const routine of auto.routines) {
+      if (!routine.fileName.trim()) {
+        issues.push({
+          id: `auto-routine-file-${routine.id}`,
+          severity: "error",
+          tab: "autonomous",
+          path: `autonomous.routines.${routine.id}.fileName`,
+          message:
+            locale === "pt"
+              ? `Rotina autônoma "${routine.name}" está sem nome de arquivo.`
+              : `Autonomous routine "${routine.name}" is missing a file name.`,
+        });
+      }
+      if (routine.missingFile) {
+        issues.push({
+          id: `auto-routine-missing-${routine.id}`,
+          severity: "warning",
+          tab: "autonomous",
+          path: `autonomous.routines.${routine.id}.fileName`,
+          message:
+            locale === "pt"
+              ? `Arquivo da rotina "${routine.name}" (${routine.fileName}) não foi encontrado na pasta conectada.`
+              : `Routine file for "${routine.name}" (${routine.fileName}) was not found in the connected folder.`,
+        });
+      }
+      for (const disc of routine.discoveredNamedCommands ?? []) {
+        if (!mappedCmdNames.has(disc)) {
+          issues.push({
+            id: `auto-unmapped-cmd-${routine.id}-${disc}`,
+            severity: "warning",
+            tab: "autonomous",
+            path: `autonomous.routines.${routine.id}.fileName`,
+            message:
+              locale === "pt"
+                ? `Rotina "${routine.name}" usa NamedCommand "${disc}" sem ligação configurada.`
+                : `Routine "${routine.name}" uses NamedCommand "${disc}" with no RobotRequest binding.`,
+          });
+        }
+      }
     }
   }
 

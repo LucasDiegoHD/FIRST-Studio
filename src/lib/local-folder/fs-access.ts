@@ -1,3 +1,8 @@
+import {
+  parsePathPlannerAutoJson,
+  parsePathPlannerPathJson,
+  stripAutoExtension,
+} from "../autonomous/pathplanner-parser";
 import { generateProjectFiles, getRequiredVendordeps } from "../generator";
 import type { CiprixProject } from "../schema/ciprix-project";
 import {
@@ -42,6 +47,7 @@ export interface NativeDirectoryHandle {
   requestPermission?: (descriptor: {
     mode?: PermissionMode;
   }) => Promise<PermissionStateValue>;
+  values?: () => AsyncIterable<NativeFileHandle | NativeDirectoryHandle>;
 }
 
 interface WindowWithFsAccess extends Window {
@@ -311,5 +317,110 @@ export async function applyFolderSyncPlan(
     writtenCount,
     skippedConflicts,
     preservedCustomFileCount,
+  };
+}
+
+export interface ScannedAutoBundle {
+  autos: { fileName: string; namedCommands: string[] }[];
+  choreos: { fileName: string }[];
+  allNamedCommands: string[];
+  hasSettingsJson: boolean;
+}
+
+async function resolveDirectoryHandle(
+  root: NativeDirectoryHandle,
+  relDir: string,
+): Promise<NativeDirectoryHandle | null> {
+  const parts = relDir.split("/").filter(Boolean);
+  let dir = root;
+  for (const seg of parts) {
+    try {
+      dir = await dir.getDirectoryHandle(seg, { create: false });
+    } catch {
+      return null;
+    }
+  }
+  return dir;
+}
+
+async function readDirectoryFilesByExt(
+  dir: NativeDirectoryHandle | null,
+  ext: string,
+): Promise<{ name: string; text: string }[]> {
+  if (!dir || typeof dir.values !== "function") return [];
+  const results: { name: string; text: string }[] = [];
+  for await (const entry of dir.values()) {
+    if (entry.kind === "file" && entry.name.toLowerCase().endsWith(ext)) {
+      const file = await entry.getFile();
+      results.push({ name: entry.name, text: await file.text() });
+    }
+  }
+  return results.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function scanLocalAutoFiles(
+  root: NativeDirectoryHandle,
+): Promise<ScannedAutoBundle> {
+  const [autosDir, pathsDir, choreoDir, hasSettingsJson] = await Promise.all([
+    resolveDirectoryHandle(root, "src/main/deploy/pathplanner/autos"),
+    resolveDirectoryHandle(root, "src/main/deploy/pathplanner/paths"),
+    resolveDirectoryHandle(root, "src/main/deploy/choreo"),
+    fileExists(root, "src/main/deploy/pathplanner/settings.json"),
+  ]);
+
+  const [autoFiles, pathFiles, choreoFiles] = await Promise.all([
+    readDirectoryFilesByExt(autosDir, ".auto"),
+    readDirectoryFilesByExt(pathsDir, ".path"),
+    readDirectoryFilesByExt(choreoDir, ".traj"),
+  ]);
+
+  const pathCommandsByName = new Map<string, string[]>();
+  const globalCmdSet = new Set<string>();
+  const allNamedCommands: string[] = [];
+
+  const pushUniqueCmd = (cmd: string) => {
+    if (!globalCmdSet.has(cmd)) {
+      globalCmdSet.add(cmd);
+      allNamedCommands.push(cmd);
+    }
+  };
+
+  for (const pf of pathFiles) {
+    const parsedPath = parsePathPlannerPathJson(pf.text);
+    pathCommandsByName.set(stripAutoExtension(pf.name), parsedPath.namedCommands);
+    parsedPath.namedCommands.forEach(pushUniqueCmd);
+  }
+
+  const autos = autoFiles.map((af) => {
+    const parsedAuto = parsePathPlannerAutoJson(af.text);
+    const merged: string[] = [];
+    const seenLocal = new Set<string>();
+    const addLocal = (c: string) => {
+      pushUniqueCmd(c);
+      if (!seenLocal.has(c)) {
+        seenLocal.add(c);
+        merged.push(c);
+      }
+    };
+    parsedAuto.namedCommands.forEach(addLocal);
+    for (const refPath of parsedAuto.pathNames) {
+      const pathCmds = pathCommandsByName.get(stripAutoExtension(refPath)) ?? [];
+      pathCmds.forEach(addLocal);
+    }
+    return {
+      fileName: stripAutoExtension(af.name),
+      namedCommands: merged,
+    };
+  });
+
+  const choreos = choreoFiles.map((cf) => ({
+    fileName: stripAutoExtension(cf.name),
+  }));
+
+  return {
+    autos,
+    choreos,
+    allNamedCommands,
+    hasSettingsJson,
   };
 }

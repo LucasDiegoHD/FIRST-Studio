@@ -1,4 +1,5 @@
 import type { CiprixProject } from "../schema/ciprix-project";
+import { generateAutonomousFiles } from "./autonomous";
 import { generateCoreRobotFiles } from "./core/robot-files";
 import { generateDrivetrainFiles } from "./drivetrain";
 import { JAVA_FILE_HEADER } from "./java-utils";
@@ -67,6 +68,9 @@ export function getRequiredVendordeps(project: CiprixProject): string[] {
       deps.add("REVLib.json");
       deps.add("ThriftyLib.json");
     }
+    if (project.autonomous?.enabled) {
+      deps.add("PathplannerLib.json");
+    }
   }
 
   return Array.from(deps).sort();
@@ -87,11 +91,14 @@ export function generateProjectFiles(project: CiprixProject): GeneratedFile[] {
     files.push(generateFieldZonesFile(zones, project.project.packageName));
   }
 
+  files.push(...generateAutonomousFiles(project));
+
   files.push(
     ...generateDrivetrainFiles(
       project.drivetrain,
       project.project.packageName,
       hasZones && Boolean(project.drivetrain?.enabled),
+      project.autonomous,
     ),
   );
 

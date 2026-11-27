@@ -24,6 +24,7 @@ import {
   PanelLeft,
   Redo2,
   Rocket,
+  Route,
   Save,
   Search,
   Settings2,
@@ -48,6 +49,7 @@ import { parseProjectWithMigration } from "@/lib/schema/migrations";
 import type { StudioTab } from "@/lib/validator";
 import { cn } from "@/lib/utils";
 import { ArenaTab } from "./arena-tab";
+import { AutonomousTab } from "./autonomous-tab";
 import { CodeTab } from "./code-tab";
 import { CommandPalette } from "./command-palette";
 import { ControlsTab } from "./controls-tab";
@@ -55,12 +57,13 @@ import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { RobotFlowView } from "./robot-flow-view";
 import { StatesView } from "./states-view";
 
-type GuidedStep = "robot" | "states" | "arena" | "controls" | "export";
+type GuidedStep = "robot" | "states" | "arena" | "controls" | "autonomous" | "export";
 
 function tabToStep(tab: StudioTab): GuidedStep {
   if (tab === "fsm" || tab === "superstructure") return "states";
   if (tab === "arena") return "arena";
   if (tab === "controls") return "controls";
+  if (tab === "autonomous") return "autonomous";
   if (tab === "code") return "export";
   return "robot";
 }
@@ -386,13 +389,23 @@ export function StudioShell({
       shortcut: "Alt+4",
     },
     {
+      id: "autonomous",
+      tab: "autonomous",
+      label: "Autônomos",
+      icon: <Route className="h-4 w-4 shrink-0" />,
+      badge: project.autonomous?.enabled
+        ? String(project.autonomous.routines.length)
+        : "Off",
+      shortcut: "Alt+5",
+    },
+    {
       id: "export",
       tab: "code",
       label: "Exportar",
       icon: <Package className="h-4 w-4 shrink-0" />,
       badge: errorCount === 0 ? "OK" : `${errorCount}!`,
       badgeVariant: errorCount === 0 ? "success" : "destructive",
-      shortcut: "Alt+5",
+      shortcut: "Alt+6",
     },
   ];
 
@@ -1012,6 +1025,7 @@ export function StudioShell({
                 )}
                 {currentStep === "arena" && <ArenaTab />}
                 {currentStep === "controls" && <ControlsTab />}
+                {currentStep === "autonomous" && <AutonomousTab />}
                 {currentStep === "export" && (
                   <CodeTab
                     onDownloadZip={handleDownloadZip}

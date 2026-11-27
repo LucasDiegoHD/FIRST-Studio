@@ -396,6 +396,12 @@ public class Robot extends CiprixRobot {
     )
     .join("\n\n");
 
+  const allAtGoalExpr =
+    subInfos.length > 0
+      ? subInfos.map((info) => `is${info.className}AtGoal()`).join(" && ")
+      : "true";
+  const allAtGoalMethod = `  public boolean allSubsystemsAtGoal() {\n    return ${allAtGoalExpr};\n  }`;
+
   const superStructureJava = `package ${pkg}.subsystems.superstructure;
 
 ${superImports}
@@ -415,8 +421,13 @@ ${superStates}
 ${superBindings}
     generalFsm.validateComplete();
   }
-${superGetters ? "\n" + superGetters + "\n" : ""}}
+${superGetters ? "\n" + superGetters + "\n" : ""}
+${allAtGoalMethod}
+}
 `;
+
+  const autoWired = Boolean(project.autonomous?.enabled && hasDrivetrain);
+  const keepAutoRules = Boolean(project.autonomous?.keepAutomationsInAuto ?? true);
 
   // SuperStructureCommands.java (continuous button, sensor, or zone priorities)
   const continuousPilotEntries = project.controls.pilotPriority.filter((entry) => {
@@ -469,16 +480,61 @@ ${superGetters ? "\n" + superGetters + "\n" : ""}}
     requestSelectionBody = `              RobotRequest request;\n${branches}\n              } else {\n                request = RobotRequest.${project.superstructure.initialRequest};\n              }`;
   }
 
-  const booleanSupplierImport =
-    pilotParams.length > 0 ? "import java.util.function.BooleanSupplier;\n" : "";
+  let autoManageBranch = "";
+  if (autoWired) {
+    const autoParams = pilotParams.filter((p) => p.source === "sensor" || p.source === "zone");
+    if (keepAutoRules && autoParams.length > 0) {
+      const autoIf = autoParams
+        .map(
+          (p, idx) =>
+            `                ${idx === 0 ? "if" : "} else if"} (${p.paramName}.getAsBoolean()) {\n                  superStructure.setRequest(RobotRequest.${p.request});`,
+        )
+        .join("\n");
+      autoManageBranch = `              if (DriverStation.isAutonomous()) {\n${autoIf}\n                }\n                return;\n              }\n`;
+    } else {
+      autoManageBranch =
+        "              if (DriverStation.isAutonomous()) {\n                return;\n              }\n";
+    }
+  }
+
+  const manageCommandsImports = [
+    "import edu.wpi.first.wpilibj2.command.Command;",
+    "import edu.wpi.first.wpilibj2.command.Commands;",
+    `import ${pkg}.Constants.RobotRequest;`,
+    `import ${pkg}.subsystems.superstructure.SuperStructure;`,
+    ...(autoWired ? ["import edu.wpi.first.wpilibj.DriverStation;"] : []),
+    ...(pilotParams.length > 0 ? ["import java.util.function.BooleanSupplier;"] : []),
+  ]
+    .sort()
+    .join("\n");
+
+  const autoRequestMethod = autoWired
+    ? `
+
+  /** Sends an autonomous request to the SuperStructure, optionally waiting until mechanisms reach their goals. */
+  public static Command autoRequest(
+      SuperStructure superStructure,
+      RobotRequest request,
+      boolean waitForGoal,
+      double timeoutSec) {
+    Command apply =
+        Commands.runOnce(() -> superStructure.setRequest(request))
+            .withName("AutoRequest_" + request.name());
+    if (!waitForGoal) {
+      return apply;
+    }
+    return apply
+        .andThen(
+            Commands.waitUntil(superStructure::allSubsystemsAtGoal)
+                .withTimeout(${formatDouble(1)}))
+        .withName("AutoRequest_" + request.name());
+  }`
+    : "";
 
   const superStructureCommandsJava = `package ${pkg}.commands;
 
-import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.Commands;
-import ${pkg}.Constants.RobotRequest;
-import ${pkg}.subsystems.superstructure.SuperStructure;
-${booleanSupplierImport}
+${manageCommandsImports}
+
 /** Driver commands for the SuperStructure. */
 public final class SuperStructureCommands {
   private SuperStructureCommands() {}
@@ -487,12 +543,12 @@ public final class SuperStructureCommands {
   public static Command manageRequests(${manageParamsSignature}) {
     return Commands.run(
             () -> {
-${requestSelectionBody}
+${autoManageBranch}${requestSelectionBody}
               superStructure.setRequest(request);
             },
             superStructure)
         .withName("Requests by pilot");
-  }
+  }${autoRequestMethod.replace(formatDouble(1), "timeoutSec")}
 }
 `;
 
@@ -624,6 +680,12 @@ ${requestSelectionBody}
   if (hasZones) {
     containerImportSet.add(`import ${pkg}.field.FieldZones;`);
   }
+  if (autoWired) {
+    containerImportSet.add(`import ${pkg}.auto.AutonomousSetup;`);
+    if (usesTriggers && !keepAutoRules) {
+      containerImportSet.add("import edu.wpi.first.wpilibj.DriverStation;");
+    }
+  }
   if (hasVision) {
     containerImportSet.add("import edu.wpi.first.apriltag.AprilTagFieldLayout;");
     containerImportSet.add("import edu.wpi.first.apriltag.AprilTagFields;");
@@ -642,6 +704,7 @@ ${requestSelectionBody}
     ...ledInfos.map((info) => `  private final ${info.className} ${info.varName};`),
     ...subInfos.map((info) => `  private final ${info.className} ${info.varName};`),
     `  private final SuperStructure superStructure;`,
+    ...(autoWired ? ["  private final AutonomousSetup autonomousSetup;"] : []),
   ].join("\n");
 
   const visionCamCalls = visionCameras
@@ -756,7 +819,11 @@ ${requestSelectionBody}
         andExprs.length > 0
           ? `Commands.runOnce(() -> { if (${andExprs.join(" && ")}) { superStructure.setRequest(RobotRequest.${entry.request}); } })`
           : `Commands.runOnce(() -> superStructure.setRequest(RobotRequest.${entry.request}))`;
-      return `    new Trigger(() -> ${getterCall}).${method}(${actionCmd});`;
+      const triggerCondition =
+        autoWired && !keepAutoRules
+          ? `!DriverStation.isAutonomous() && (${getterCall})`
+          : getterCall;
+      return `    new Trigger(() -> ${triggerCondition}).${method}(${actionCmd});`;
     })
     .filter(Boolean)
     .join("\n");
@@ -836,7 +903,7 @@ ${containerFields}
   private final CommandXboxController copilot = new CommandXboxController(1);
 
   public RobotContainer() {
-${containerInits ? containerInits + "\n" : ""}    superStructure = new SuperStructure(${superArgs});
+${containerInits ? containerInits + "\n" : ""}    superStructure = new SuperStructure(${superArgs});${autoWired ? "\n    autonomousSetup = new AutonomousSetup(superStructure);" : ""}
 
     configureBindings();
   }
@@ -850,7 +917,7 @@ ${selfTests ? "\n" + selfTests : ""}${driveContextComment}
   }
 
   public Command getAutonomousCommand() {
-    return Commands.none();
+    return ${autoWired ? "autonomousSetup.getAutonomousCommand()" : "Commands.none()"};
   }
 }
 `;

@@ -658,11 +658,161 @@ export const ProjectMetaSchema = z.object({
 });
 export type ProjectMeta = z.infer<typeof ProjectMetaSchema>;
 
+export const AutoRoutineSourceSchema = z.enum(["pathplanner", "choreo"]);
+export type AutoRoutineSource = z.infer<typeof AutoRoutineSourceSchema>;
+
+export const PathPoint2dSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+export type PathPoint2d = z.infer<typeof PathPoint2dSchema>;
+
+export const PathWaypointSchema = z.object({
+  anchor: PathPoint2dSchema,
+  prevControl: PathPoint2dSchema.nullable(),
+  nextControl: PathPoint2dSchema.nullable(),
+  isLocked: z.boolean().optional(),
+  linkedName: z.string().nullable().optional(),
+});
+export type PathWaypoint = z.infer<typeof PathWaypointSchema>;
+
+export const PathRotationTargetSchema = z.object({
+  id: z.string().min(1),
+  waypointRelativePos: z.number().min(0),
+  rotationDegrees: z.number(),
+});
+export type PathRotationTarget = z.infer<typeof PathRotationTargetSchema>;
+
+export const PathEventMarkerSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  waypointRelativePos: z.number().min(0),
+  commandName: z.string().min(1),
+});
+export type PathEventMarker = z.infer<typeof PathEventMarkerSchema>;
+
+export const PathConstraintsSchema = z.object({
+  maxVelocity: z.number().positive(),
+  maxAcceleration: z.number().positive(),
+  maxAngularVelocity: z.number().positive(),
+  maxAngularAcceleration: z.number().positive(),
+});
+export type PathConstraints = z.infer<typeof PathConstraintsSchema>;
+
+export const PathPlannerPathDocSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  waypoints: z.array(PathWaypointSchema).min(2),
+  rotationTargets: z.array(PathRotationTargetSchema).default([]),
+  eventMarkers: z.array(PathEventMarkerSchema).default([]),
+  globalConstraints: PathConstraintsSchema.optional(),
+  idealStartingState: z
+    .object({
+      velocity: z.number().min(0),
+      rotation: z.number(),
+    })
+    .optional(),
+  goalEndState: z
+    .object({
+      velocity: z.number().min(0),
+      rotation: z.number(),
+    })
+    .optional(),
+  reversed: z.boolean().optional(),
+  useDefaultConstraints: z.boolean().optional(),
+});
+export type PathPlannerPathDoc = z.infer<typeof PathPlannerPathDocSchema>;
+
+export const AutoStepSchema = z.discriminatedUnion("kind", [
+  z.object({
+    id: z.string().min(1),
+    kind: z.literal("path"),
+    pathName: z.string().min(1),
+    durationSec: z.number().min(0.2).max(15).default(2.5),
+    startX: z.number().optional(),
+    startY: z.number().optional(),
+    endX: z.number().optional(),
+    endY: z.number().optional(),
+  }),
+  z.object({
+    id: z.string().min(1),
+    kind: z.literal("named"),
+    commandName: z.string().min(1),
+    durationSec: z.number().min(0.1).max(10).default(1.0),
+  }),
+  z.object({
+    id: z.string().min(1),
+    kind: z.literal("wait"),
+    seconds: z.number().min(0.1).max(15).default(0.5),
+  }),
+]);
+export type AutoStep = z.infer<typeof AutoStepSchema>;
+
+export const AutoNamedCommandSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  request: z.string().min(1),
+  waitForGoal: z.boolean().default(false),
+  timeoutSec: z.number().min(0.2).max(15).default(3.0),
+});
+export type AutoNamedCommand = z.infer<typeof AutoNamedCommandSchema>;
+
+export const AutoRoutineSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  fileName: z.string().min(1),
+  source: AutoRoutineSourceSchema.default("pathplanner"),
+  discoveredNamedCommands: z.array(z.string()).optional(),
+  steps: z.array(AutoStepSchema).optional(),
+  missingFile: z.boolean().optional(),
+});
+export type AutoRoutine = z.infer<typeof AutoRoutineSchema>;
+
+export const AutonomousPidSchema = z.object({
+  kP: z.number().min(0),
+  kI: z.number().min(0),
+  kD: z.number().min(0),
+});
+export type AutonomousPid = z.infer<typeof AutonomousPidSchema>;
+
+export const AutonomousConfigSchema = z.object({
+  enabled: z.boolean(),
+  useLocalADStarAK: z.boolean().default(true),
+  keepAutomationsInAuto: z.boolean().default(true),
+  generateSettingsJson: z.boolean().default(true).optional(),
+  chooserName: z.string().min(1).default("Auto"),
+  chooserSlots: z.number().int().min(1).max(5).default(1),
+  defaultAutoId: z.string().optional(),
+  translationPid: AutonomousPidSchema,
+  rotationPid: AutonomousPidSchema,
+  namedCommands: z.array(AutoNamedCommandSchema),
+  routines: z.array(AutoRoutineSchema),
+  paths: z.array(PathPlannerPathDocSchema).optional(),
+});
+export type AutonomousConfig = z.infer<typeof AutonomousConfigSchema>;
+
+export function createDefaultAutonomousConfig(): AutonomousConfig {
+  return {
+    enabled: false,
+    useLocalADStarAK: true,
+    keepAutomationsInAuto: true,
+    generateSettingsJson: true,
+    chooserName: "Auto",
+    chooserSlots: 1,
+    translationPid: { kP: 5.0, kI: 0, kD: 0 },
+    rotationPid: { kP: 5.0, kI: 0, kD: 0 },
+    namedCommands: [],
+    routines: [],
+    paths: [],
+  };
+}
+
 export const CiprixProjectSchema = z.object({
   schemaVersion: z.literal(2),
   project: ProjectMetaSchema,
   drivetrain: DrivetrainConfigSchema.optional(),
   zones: z.array(FieldZoneSchema).optional(),
+  autonomous: AutonomousConfigSchema.optional(),
   subsystems: z.array(SubsystemSchema),
   superstructure: SuperStructureSchema,
   controls: ControlsSchema,

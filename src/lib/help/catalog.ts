@@ -1882,6 +1882,246 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "1.2 m",
     },
   },
+  "autonomous.enabled": {
+    pt: {
+      what: "Ativa a geração do AutoBuilder (PathPlanner / Choreo) e AutonomousSetup.java.",
+      why: "Permite selecionar rotinas autônomas no dashboard e ligar NamedCommands à SuperStructure.",
+      typical: "Ativado (com Drivetrain)",
+    },
+    en: {
+      what: "Enables PathPlanner / Choreo AutoBuilder and AutonomousSetup.java generation.",
+      why: "Lets you pick autonomous routines on the dashboard and bind NamedCommands to SuperStructure.",
+      typical: "Enabled (with Drivetrain)",
+    },
+  },
+  "autonomous.chooserName": {
+    pt: {
+      what: "Nome base publicado no SmartDashboard/Shuffleboard para o seletor AutoEngine.",
+      why: "Aparece como Auto_0 (ou N slots) no dashboard da Driver Station.",
+      typical: "Auto",
+    },
+    en: {
+      what: "Dashboard key prefix for Ciprix AutoEngine chooser.",
+      why: "Published as Auto_0..N in SmartDashboard / Shuffleboard.",
+      typical: "Auto",
+    },
+  },
+  "autonomous.chooserSlots": {
+    pt: {
+      what: "Quantidade de seletores sequenciais no AutoEngine (1 a 5).",
+      why: "Com 1 escolhe 1 rotina completa; com 2+ permite combinar partes em sequência no pré-jogo.",
+      typical: "1 (simples) · 2–3 (modular)",
+    },
+    en: {
+      what: "Number of sequential AutoEngine slots (1 to 5).",
+      why: "Use 1 for single routines or 2+ to compose multi-part autos on the field.",
+      typical: "1 (single) · 2–3 (composed)",
+    },
+  },
+  "autonomous.defaultAutoId": {
+    pt: {
+      what: "Rotina marcada como padrão caso a equipe não mude o chooser no dashboard.",
+      why: "Evita que o robô fique parado por esquecimento antes do início da partida.",
+      typical: "Primeira rotina validada",
+    },
+    en: {
+      what: "Default autonomous routine when no chooser override is made.",
+      why: "Prevents sitting idle if drivers forget to pick an auto before a match.",
+      typical: "Main reliable routine",
+    },
+  },
+  "autonomous.useLocalADStarAK": {
+    pt: {
+      what: "Registra o pathfinder LocalADStarAK do Ciprix no PathPlanner.",
+      why: "Garante replay determinístico no AdvantageKit mesmo usando pathfinding dinâmico.",
+      typical: "Ativado",
+    },
+    en: {
+      what: "Registers Ciprix LocalADStarAK pathfinder with PathPlanner.",
+      why: "Preserves deterministic AdvantageKit log replay for dynamic pathfinding.",
+      typical: "Enabled",
+    },
+  },
+  "autonomous.keepAutomationsInAuto": {
+    pt: {
+      what: "Mantém gatilhos de sensor e zona ativos durante o período autônomo.",
+      why: "Útil se você quer, por exemplo, coleta ou ejeção automática mesmo no autônomo.",
+      typical: "Ativado",
+    },
+    en: {
+      what: "Keeps sensor and zone automations active during autonomous.",
+      why: "Allows automatic sensor/zone SuperStructure triggers alongside PathPlanner NamedCommands.",
+      typical: "Enabled",
+    },
+  },
+  "autonomous.generateSettingsJson": {
+    pt: {
+      what: "Gera automaticamente deploy/pathplanner/settings.json com massa, dimensões e módulos do Drivetrain.",
+      why: "Permite abrir o projeto no app do PathPlanner já calibrado sem erro de RobotConfig.fromGUISettings().",
+      typical: "Ativado",
+    },
+    en: {
+      what: "Emits deploy/pathplanner/settings.json derived from Drivetrain dimensions and limits.",
+      why: "Prevents RobotConfig.fromGUISettings() failures and pre-configures the PathPlanner GUI.",
+      typical: "Enabled",
+    },
+  },
+  "autonomous.translationPid.kP": {
+    pt: {
+      what: "Ganho proporcional (kP) para erro de posição X/Y no PathPlanner.",
+      why: "Corrige desvios na trajetória do robô no plano do campo.",
+      typical: "5.0",
+    },
+    en: {
+      what: "Proportional gain (kP) for PathPlanner X/Y translation tracking.",
+      why: "Corrects field-space position error along paths.",
+      typical: "5.0",
+    },
+  },
+  "autonomous.translationPid.kI": {
+    pt: {
+      what: "Ganho integral (kI) de translação no PathPlanner.",
+      why: "Normalmente 0 para evitar overshoot; use apenas se houver erro estacionário.",
+      typical: "0.0",
+    },
+    en: {
+      what: "Integral gain (kI) for translation tracking.",
+      why: "Usually 0 to prevent overshoot.",
+      typical: "0.0",
+    },
+  },
+  "autonomous.translationPid.kD": {
+    pt: {
+      what: "Ganho derivativo (kD) de translação no PathPlanner.",
+      why: "Amortece oscilações ao frear ou fazer curvas rápidas.",
+      typical: "0.0",
+    },
+    en: {
+      what: "Derivative gain (kD) for translation tracking.",
+      why: "Damps oscillation around high-speed turns.",
+      typical: "0.0",
+    },
+  },
+  "autonomous.rotationPid.kP": {
+    pt: {
+      what: "Ganho proporcional (kP) para manter o ângulo desejado no PathPlanner.",
+      why: "Mantém a frente do robô apontada corretamente durante a rota.",
+      typical: "5.0",
+    },
+    en: {
+      what: "Proportional gain (kP) for PathPlanner heading tracking.",
+      why: "Keeps robot heading aligned along the path.",
+      typical: "5.0",
+    },
+  },
+  "autonomous.rotationPid.kI": {
+    pt: {
+      what: "Ganho integral (kI) de rotação no PathPlanner.",
+      why: "Normalmente 0.",
+      typical: "0.0",
+    },
+    en: {
+      what: "Integral gain (kI) for heading tracking.",
+      why: "Usually 0.",
+      typical: "0.0",
+    },
+  },
+  "autonomous.rotationPid.kD": {
+    pt: {
+      what: "Ganho derivativo (kD) de rotação no PathPlanner.",
+      why: "Suaviza a chegada ao ângulo alvo.",
+      typical: "0.0",
+    },
+    en: {
+      what: "Derivative gain (kD) for heading tracking.",
+      why: "Damps heading settling.",
+      typical: "0.0",
+    },
+  },
+  "autonomous.namedCommands.*.name": {
+    pt: {
+      what: "Nome exato do evento/comando configurado no PathPlanner (Event Marker / Named Command).",
+      why: "Registrado em NamedCommands.registerCommand antes de carregar os arquivos .auto.",
+      typical: "IntakeOn",
+    },
+    en: {
+      what: "Exact command name configured inside PathPlanner (.auto or event marker).",
+      why: "Registered via NamedCommands.registerCommand before loading auto routines.",
+      typical: "IntakeOn",
+    },
+  },
+  "autonomous.namedCommands.*.request": {
+    pt: {
+      what: "RobotRequest da SuperStructure disparado quando o autônomo executa esse comando.",
+      why: "Liga diretamente as rotas do PathPlanner à máquina de estados do robô.",
+      typical: "INTAKE",
+    },
+    en: {
+      what: "SuperStructure RobotRequest triggered when this NamedCommand runs.",
+      why: "Connects PathPlanner paths directly to the robot state machine.",
+      typical: "INTAKE",
+    },
+  },
+  "autonomous.namedCommands.*.waitForGoal": {
+    pt: {
+      what: "Aguarda todos os subsistemas atingirem o alvo antes de concluir o comando.",
+      why: "Desmarcado apenas dispara o pedido; marcado bloqueia um bloco sequencial até finalizar (ou timeout).",
+      typical: "false (disparo) / true (posição)",
+    },
+    en: {
+      what: "Waits until all subsystems reach their goals before finishing the command.",
+      why: "Unchecked fires immediately; checked waits in sequences up to the timeout.",
+      typical: "false (fire) / true (setpoint)",
+    },
+  },
+  "autonomous.namedCommands.*.timeoutSec": {
+    pt: {
+      what: "Tempo máximo de espera (segundos) quando 'Esperar atGoal' está ativado.",
+      why: "Impede que o autônomo trave caso algum mecanismo atrase para atingir o alvo.",
+      typical: "2.5 s",
+    },
+    en: {
+      what: "Timeout in seconds when waiting for atGoal().",
+      why: "Prevents an auto routine from stalling if a mechanism is slow.",
+      typical: "2.5 s",
+    },
+  },
+  "autonomous.routines.*.name": {
+    pt: {
+      what: "Nome amigável exibido no seletor AutoEngine do dashboard.",
+      why: "Facilita a escolha rápida pelos drivers antes da partida.",
+      typical: "2 Peças Centro",
+    },
+    en: {
+      what: "Friendly label shown in the dashboard AutoEngine chooser.",
+      why: "Makes match selection clear for drivers.",
+      typical: "2 Piece Center",
+    },
+  },
+  "autonomous.routines.*.fileName": {
+    pt: {
+      what: "Nome do arquivo .auto (PathPlanner) ou .traj (Choreo) sem extensão.",
+      why: "Passado para new PathPlannerAuto(...) ou new ChoreoAuto(...).",
+      typical: "TwoPieceCenter",
+    },
+    en: {
+      what: "Base filename of the .auto (PathPlanner) or .traj (Choreo) file without extension.",
+      why: "Passed directly to new PathPlannerAuto(...) or new ChoreoAuto(...).",
+      typical: "TwoPieceCenter",
+    },
+  },
+  "autonomous.routines.*.source": {
+    pt: {
+      what: "Origem da rotina: arquivo .auto do PathPlanner ou trajetória .traj do Choreo.",
+      why: "Define se o gerador instancia PathPlannerAuto ou ChoreoAuto (Ciprix).",
+      typical: "pathplanner",
+    },
+    en: {
+      what: "Routine format: PathPlanner .auto file or Choreo .traj trajectory.",
+      why: "Selects PathPlannerAuto vs Ciprix ChoreoAuto in AutonomousSetup.",
+      typical: "pathplanner",
+    },
+  },
 };
 
 export const REGISTERED_FIELD_PATHS = Object.keys(HELP_CATALOG);
@@ -1929,6 +2169,12 @@ export function normalizeFieldPath(path: string): string {
   if (parts[0] === "controls" && parts.length >= 4) {
     if (parts[1] === "pilotPriority" || parts[1] === "copilotOverrides") {
       return `controls.${parts[1]}.*.${parts.slice(3).join(".")}`;
+    }
+  }
+
+  if (parts[0] === "autonomous" && parts.length >= 4) {
+    if (parts[1] === "namedCommands" || parts[1] === "routines") {
+      return `autonomous.${parts[1]}.*.${parts.slice(3).join(".")}`;
     }
   }
 

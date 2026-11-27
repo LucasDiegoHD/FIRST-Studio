@@ -1,30 +1,32 @@
 # Contexto de Sessão — FIRST Studio
 
-> Documento de retomada atualizado em **2026-11-26 (01:08)**. Leia este arquivo no início da próxima sessão para continuar exatamente de onde paramos (pronto para iniciar a **Fase 5 — Zonas na arena**).
+> Documento de retomada atualizado em **2026-11-27 (00:21)**. Leia este arquivo no início da próxima sessão para continuar exatamente de onde paramos (pronto para a **Fase 7 — Modo Tutorial** e/ou polimentos no Visualizer do PathPlanner).
 
 ---
 
 ## 1. Resumo e Estado Atual
 
 - **Workspace:** `D:\FIRST Studio`
-- **Repositório Git:** `https://github.com/LucasDiegoHD/FIRST-Studio` (branch `main`, último commit de código: `bd60c5d`)
+- **Repositório Git:** `https://github.com/LucasDiegoHD/FIRST-Studio` (branch `main`, último commit anterior: `255a6fc`; este commit traz toda a **Fase 6** + polimentos da **Arena** + **PathPlanner Visualizer**)
 - **Autor / Créditos:** `LucasDiegoHD` (`https://github.com/LucasDiegoHD`)
-- **Referência de UI original:** `D:\FGCLib Studio\FGCLibStudio`
+- **Referência de UI original:** `D:\FGCLib Studio\FGCLibStudio` · Referência PathPlanner: `mjansen4857/pathplanner` (`2025.0`)
 - **Alvo FRC:** **Ciprix `2026.3.0`** (WPILib 2026 + AdvantageKit + `@AutoCommandFactory`)
 - **Stack:** Next.js `15.5.29`, React `19.1.0`, Tailwind CSS v4, TypeScript `5.8`, Zod `3.24` (`schemaVersion: 2`), JSZip `3.10`, Vitest `3.2.7`, `@xyflow/react` `13.0.3`, `prism-react-renderer` `2.4.1`, Radix UI, `lucide-react`.
-- **Verificações após a Fase 4 (`bd60c5d`):**
-  - `npm run typecheck` (`tsc --noEmit`): passou (`0` erros).
-  - `npm run lint` (`eslint src scripts`): passou (`0` erros, `0` avisos).
-  - `npm test` (`vitest run`): **6 arquivos, 35/35 testes passando** (`shortcuts`, `phase1`, `phase2`, `phase3`, `phase4`, `generator`).
-- **Pendências de verificação em máquina com hardware/JDK:**
-  - `./gradlew build` do Java gerado não rodou localmente (esta máquina tem apenas Java 8 JRE no `PATH`; falta JDK 17+ / WPILib 2026).
+- **Verificações mais recentes (pós-Visualizer PathPlanner):**
+  - `.\node_modules\.bin\tsc.cmd --noEmit`: passou (`0` erros).
+  - `.\node_modules\.bin\eslint.cmd src scripts`: passou (`0` erros, `0` avisos).
+  - `.\node_modules\.bin\vitest.cmd run`: **8 arquivos, 47/47 testes passando** (`shortcuts`, `phase1`–`phase6`, `generator`).
+  - `/studio` em Next.js dev (`task-163`): `HTTP 200` com compilação limpa.
+- **Pendências de verificação em máquina com hardware/JDK/app:**
+  - `./gradlew build` do Java gerado não rodou localmente (falta JDK 17+ / WPILib 2026 no `PATH`).
   - Deploy real no **roboRIO** via FIRST Studio Bridge (`USB`, `Wi-Fi`, `Ethernet`) ainda não testado com hardware real.
+  - Abertura direta dos arquivos `.path` / `.auto` / `settings.json` gerados dentro do aplicativo desktop oficial do PathPlanner ainda não testada manualmente.
 
 ---
 
 ## 2. Task Inteira — Plano Completo (Fases 1 a 7)
 
-> **Progresso geral:** 4 de 7 fases concluídas e enviadas ao GitHub (`main`).
+> **Progresso geral:** **6 de 7 fases concluídas**. Próximos alvos: **Fase 7 — Modo Tutorial** + **polimentos opcionais no PathPlanner Visualizer**.
 
 ### ✅ Fase 1 — Base, Validação, Ajuda, Créditos & FSM Modular *(CONCLUÍDA — `f04c9e8`, `2d397b8`, `ba50eb6`, `227d30d`)*
 - **Erros precisos por campo:** validador aponta aba, subsistema, estado, caminho do campo e foco/scroll direto ao erro (incluindo correção de limites de exemplo `-0.5` → `0.3`).
@@ -64,40 +66,25 @@
 
 ---
 
-### ⏳ Fase 5 — Zonas na Arena *(PRÓXIMO PASSO)*
-Depende do drivetrain (`project.drivetrain`), pois toda zona compara com a pose do robô. O Ciprix `2026.3.0` já fornece formas geométricas e modificadores (`Rectangle2d`, `Circle2d`, `Polygon2d`, `Zone2d`, `AllianceFlipUtil`, `ZoneSuctionModifier`, `ZoneRepulsionModifier`, `PersistentAlert` — **confirmar assinaturas exatas em `D:\.tmp\ciprix-sources.jar` ou javadoc antes de codar**).
-
-- **5.1 Editor da Arena:**
-  - Nova aba **Arena** com o campo visto de cima em **metros**, no referencial WPILib (origem `(0, 0)` no canto inferior esquerdo da aliança azul), usando `fieldLengthMeters` e `fieldWidthMeters` já presentes no projeto.
-  - Permitir que a equipe carregue imagem de fundo do PathPlanner localmente (não embutir imagem oficial no repo por direitos autorais).
-  - Ferramentas de desenho: retângulo (arrastar), círculo (centro + raio), polígono (clicar vértice a vértice), mover vértices, coordenadas digitáveis e encaixe (snap) em grade de `0,05 m` (SVG / canvas próprio ou `@xyflow/react`).
-- **5.2 Tipos de Zona:**
-  - **Gatilho (`trigger`):** dispara requisição ou condição na `SuperStructure` (`Zone2d` + `inZone` / `enteredZone` / `leftZone`).
-  - **Sucção (`suction`):** puxa o robô para alinhamento (`ZoneSuctionModifier`).
-  - **Repulsão (`repulsion`):** empurra o robô para fora (`ZoneRepulsionModifier`).
-  - **Velocidade limitada (`speedLimit`):** reduz velocidade máxima dentro da zona (modificador de translação com fator).
-  - **Proibida (`forbidden`):** repulsão forte + aviso (`ZoneRepulsionModifier` + `PersistentAlert`).
-  - Cada zona tem opção de espelhar para a aliança vermelha (`X`, `Y` ou ambos, usando `AllianceFlipUtil`).
-- **5.3 Automações e Código Java:**
-  - Tabela de prioridade do piloto passa a aceitar três origens: **botão**, **sensor** e **zona**, podendo combinar condições com **E** (ex.: dentro de `COLLECT_ZONE` e sem peça → `INTAKE`). A ordem da tabela decide quem vence (botões acima das automações por padrão).
-  - Gerar `FieldZones.java` com enum, formas e método `current(pose)`, logado a cada ciclo no AdvantageKit para visualização no AdvantageScope.
+### ✅ Fase 5 — Zonas na Arena & Polimentos de UI *(CONCLUÍDA — `255a6fc` + atualizações)*
+- **Editor Blueprint REBUILT 2026 (`src/components/studio/arena-tab.tsx`, `src/lib/arena/rebuilt-2026.ts`):** campo `16,54 m × 8,07 m` em metros WPILib com marcos REBUILT 2026 (Trenches, Bumps, Hubs octogonais, Towers, Depots, Outposts, Neutral Zone FUEL), ferramentas retângulo, círculo, polígono (com **fechamento magnético** a `0,55 m`), snap `0,05 m`, imagem de fundo opcional e presets REBUILT prontos.
+- **5 Tipos de Zona & Gerador Java (`src/lib/generator/zones/index.ts`):** `trigger`, `suction` (`ZoneSuctionModifier`), `repulsion` (`ZoneRepulsionModifier`), `speedLimit` e `forbidden` (`ZoneRepulsionModifier` + `PersistentAlert`), espelhamento via `AllianceFlipUtil`, `FieldZones.java` + regras de zona na fila do piloto e `SuperStructure`.
+- **Simulador Contínuo 60 FPS na Arena:** clique para dirigir (`driveTarget`), patrulha automática **`Testar Zonas`**, física contínua nas zonas (`speedLimit`, `suction`, `repulsion`, `forbidden`), painel **Telemetria ao Vivo · Zonas**, toolbar fixa sem pulo de layout e overlay flutuante para `PersistentAlert`.
+- **Compactação & FSM Interativa:** UI enxuta de Drivetrain e construtor interativo de FSM na aba Estados & SuperStructure.
 
 ---
 
-### ⏳ Fase 6 — Autônomos com PathPlanner / Choreo *(PENDENTE)*
-Depende do drivetrain (`project.drivetrain`). A rota continua sendo desenhada no PathPlanner; o FIRST Studio cuida da ligação rota ↔ `SuperStructure`.
-1. **Configurar o `AutoBuilder`:** gerar `AutoBuilder.configure(...)` no `Drive.java`, com PIDs de translação e rotação e `RobotConfig` lido de `deploy/pathplanner/settings.json`, incluindo espelhamento por aliança e `LocalADStarAK` do Ciprix para pathfinding com replay.
-2. **Listar os autos:** com a pasta conectada (Fase 3), ler `src/main/deploy/pathplanner/autos/*.auto` e `paths/*.path`, listando os autos e os comandos nomeados usados por eles. Sem pasta conectada, permitir digitação manual.
-3. **Ligar comandos nomeados (`NamedCommands`):** mapear `nomeNoPathPlanner` → `RobotRequest` (ex.: `IntakeOn` → `INTAKE`), com opção de esperar `atGoal` ou seguir sem esperar; gerar `NamedCommands.registerCommand(...)` antes de carregar os autos.
-4. **Durante o autônomo:** `SuperStructure` recebe requisições dos autos em vez dos botões do piloto; automações por sensor e zona continuam valendo se a equipe deixar marcado.
-5. **Escolha do auto:** seletor no dashboard usando `AutoEngine` e `LoggedSequentialDashboardChooser` do Ciprix (permitindo também compor auto juntando partes).
-6. **Validação:** avisar sobre comando nomeado usado num `.auto` sem binding configurado, `RobotRequest` ligada que não existe mais e arquivo `.auto` não encontrado.
-7. **Choreo:** suporte a trajetórias do Choreo via `ChoreoAuto` do Ciprix.
+### ✅ Fase 6 — Autônomos, PathPlanner Visualizer & Choreo *(CONCLUÍDA — commit atual)*
+- **`AutoBuilder`, `LocalADStarAK` & `PathplannerLib.json`:** `Drive.java` (`src/lib/generator/drivetrain/index.ts`) gera `AutoBuilder.configure(...)` nas 5 bases, `resetPose`, `driveRobotRelative` e `Pathfinding.setPathfinder(new LocalADStarAK())`.
+- **`AutonomousSetup.java`, `settings.json`, `.auto` & `.path` `"2025.0"` (`src/lib/generator/autonomous/index.ts`):** registra `NamedCommands` ligados à `SuperStructureCommands.autoRequest(...)`, configura `AutoEngine` (`1–5` slots), suporta `PathPlannerAuto` e `ChoreoAuto`, além de gerar `deploy/pathplanner/settings.json`, `autos/*.auto` e `paths/*.path` (`version: "2025.0"`).
+- **Motor Bézier & Trajetória PathPlanner (`src/lib/autonomous/pathplanner-engine.ts`):** port do `mjansen4857/pathplanner` com splines cúbicas C¹, perfilamento por curvatura e aceleração/desaceleração, interpolação cosseno da rotação holonômica, ângulos dos 4 módulos swerve, escala térmica de velocidade (`red → orange → yellow → green`) e detecção de saltos `>= 0,25 m` entre caminhos (`AutoPathBreak`).
+- **PathPlanner Visualizer & Templates (`src/components/studio/autonomous-tab.tsx`, `src/components/studio/rebuilt-field-svg.tsx`, `src/lib/autonomous/templates.ts`, `src/lib/autonomous/pathplanner-parser.ts`):** 3 modos (`Trajetos (.path)`, `Rotinas (.auto)`, `Config & Código`), árvore retrátil no painel direito, seekbar animado `60 FPS` (`0.5× / 1× / 2×`), 4 modelos **REBUILT 2026**, leitura de pasta conectada e importação `.path` / `.auto` / `.traj`.
 
 ---
 
-### ⏳ Fase 7 — Modo Tutorial *(PENDENTE — Fica por último porque percorre todas as telas)*
-- **Funcionamento:** botão **Tutorial** no topo inicia um passo a passo guiado com spotlight (fundo escurecido + recorte no elemento destacado) e cartão em 3 partes:
+### ⏳ Fase 7 — Modo Tutorial & Polimentos do Visualizer *(PRÓXIMO PASSO)*
+- **Polimentos futuros no PathPlanner Visualizer (caminho já traçado):** zonas de restrição (`constraintZones`), `pointTowardsZones`, `linkedName` entre waypoints, zoom/pan no SVG e prévia visual de trajetórias Choreo `.traj`.
+- **Funcionamento (Tutorial):** botão **Tutorial** no topo inicia um passo a passo guiado com spotlight (fundo escurecido + recorte no elemento destacado) e cartão em 3 partes:
   1. *O que preencher*
   2. *Por que isso importa*
   3. **De onde tirar o dado no robô** (ex.: ID CAN/firmware no Phoenix Tuner X ou REV Hardware Client; redução na gearbox/CAD; limites medidos no fim de curso; corrente na ficha técnica do motor; porta DIO no roboRIO).
@@ -107,20 +94,21 @@ Depende do drivetrain (`project.drivetrain`). A rota continua sendo desenhada no
 
 ---
 
-## 3. Mapa de Arquivos Principais (Pós-Fase 4)
+## 3. Mapa de Arquivos Principais (Pós-Fase 6)
 
 | Área | Caminho |
 | --- | --- |
 | Schema & Migrações | `src/lib/schema/ciprix-project.ts`, `src/lib/schema/migrations.ts` |
 | Presets | `src/lib/presets/skeleton.ts`, `src/lib/presets/drivetrain.ts` |
 | Validador & Catálogo de Ajuda | `src/lib/validator.ts`, `src/lib/help/catalog.ts`, `src/lib/i18n.ts` |
+| Arena 2026 REBUILT & Autônomos | `src/lib/arena/rebuilt-2026.ts`, `src/lib/autonomous/pathplanner-engine.ts`, `src/lib/autonomous/pathplanner-parser.ts`, `src/lib/autonomous/templates.ts` |
 | Parser Tuner X | `src/lib/drivetrain/tuner-parser.ts` |
-| Geradores Java & JSON | `src/lib/generator/index.ts`, `src/lib/generator/core/robot-files.ts`, `src/lib/generator/drivetrain/index.ts`, `src/lib/generator/subsystems/roller.ts`, `src/lib/generator/sensors.ts`, `src/lib/generator/leds/index.ts` |
+| Geradores Java & JSON | `src/lib/generator/index.ts`, `src/lib/generator/core/robot-files.ts`, `src/lib/generator/drivetrain/index.ts`, `src/lib/generator/zones/index.ts`, `src/lib/generator/autonomous/index.ts`, `src/lib/generator/subsystems/roller.ts`, `src/lib/generator/sensors.ts`, `src/lib/generator/leds/index.ts` |
 | Pasta Local (Fase 3.1) | `src/lib/local-folder/` (`handle`, `sync-plan.ts`, `manifest`, `custom` blocks) |
 | Bridge Client & Server (Fase 3.2) | `src/lib/bridge/`, `src/components/studio/bridge-deploy-panel.tsx`, `bridge/` |
-| UI Principal do Studio | `src/components/studio/studio-shell.tsx`, `robot-flow-view.tsx`, `drivetrain-panel.tsx`, `states-view.tsx`, `superstructure-tab.tsx`, `controls-tab.tsx`, `code-tab.tsx` |
-| Vendordeps 2026 | `public/skeleton/vendordeps/` |
-| Testes Vitest | `src/lib/__tests__/` (`phase1`, `phase2`, `phase3`, `phase4`, `generator`, `shortcuts`) |
+| UI Principal do Studio | `src/components/studio/studio-shell.tsx`, `robot-flow-view.tsx`, `drivetrain-panel.tsx`, `states-view.tsx`, `superstructure-tab.tsx`, `arena-tab.tsx`, `autonomous-tab.tsx`, `rebuilt-field-svg.tsx`, `controls-tab.tsx`, `code-tab.tsx` |
+| Vendordeps 2026 | `public/skeleton/vendordeps/` (inclui `PathplannerLib.json`) |
+| Testes Vitest | `src/lib/__tests__/` (`phase1`–`phase6`, `generator`, `shortcuts`) |
 
 ---
 
@@ -138,7 +126,7 @@ Depende do drivetrain (`project.drivetrain`). A rota continua sendo desenhada no
   ```powershell
   git add -A -- ":!.github/workflows/ci.yml"
   ```
-- **Regra do teste `phase1.test.ts` (`HELP_CATALOG`):** todo `<Field path="...">` nos componentes precisa existir em `src/lib/help/catalog.ts` (`pt` e `en`) ou casar com `normalizeFieldPath()`. O scanner estático converte `${...}` em `*`, então **nunca** use variável como base dentro de `path={\`${base}.campo\`}` (sempre prefixo literal).
+- **Regra do teste `phase1.test.ts` (`HELP_CATALOG`):** todo `<Field path="...">` nos componentes precisa existir em `src/lib/help/catalog.ts` (`pt` e `en`) ou casar com `normalizeFieldPath()`. O scanner estático converte `${...}` em `*` e expande `${gain}` para todos de `["kP", "kI", "kD", "kS", "kV", "kA", "kG"]` — então **nunca** use variável como base dentro de `path={\`${base}.campo\`}` e prefira `<Field path="autonomous.translationPid.kP">` explícito em blocos PID sem feedforward (`kS`/`kV`/`kA`/`kG`).
 - **APIs exatas do Ciprix `2026.3.0`:** ao iniciar as Fases 5 e 6, inspecionar os fontes/assinaturas reais do Ciprix (`D:\.tmp\ciprix-sources.jar` se ainda existir, ou pacote WPILib/Gradle cache) antes de gerar código Java (`Zone2d`, `AllianceFlipUtil`, `AutoEngine`, `LoggedSequentialDashboardChooser`, `LocalADStarAK`, `ChoreoAuto`).
 - **Next dev vs Next build:** encerrar qualquer `next dev --port 3000` antes de rodar `npm run build` para evitar lock em `.next`.
 - **Preferência de comunicação:** responder em português curto e direto (`ponytail` + `caveman`), com links clicáveis `file:///`.

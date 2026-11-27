@@ -1,4 +1,5 @@
 import type {
+  AutonomousConfig,
   DrivetrainConfig,
   GyroType,
   MotorVendor,
@@ -57,6 +58,66 @@ function renderDriveAssistantsImports(dt: DrivetrainConfig, hasZones = false): s
     imports.push("import org.ciprix.util.drivetrain.PIDRotation;");
   }
   return imports;
+}
+
+function renderAutoBuilderImports(
+  autonomous: AutonomousConfig | undefined,
+  isDifferential: boolean,
+): string[] {
+  if (!autonomous?.enabled) return [];
+  const list = [
+    "import com.pathplanner.lib.auto.AutoBuilder;",
+    "import com.pathplanner.lib.config.RobotConfig;",
+    "import edu.wpi.first.wpilibj.DriverStation;",
+  ];
+  if (isDifferential) {
+    list.push("import com.pathplanner.lib.controllers.PPLTVController;");
+  } else {
+    list.push(
+      "import com.pathplanner.lib.config.PIDConstants;",
+      "import com.pathplanner.lib.controllers.PPHolonomicDriveController;",
+    );
+  }
+  if (autonomous.useLocalADStarAK) {
+    list.push(
+      "import com.pathplanner.lib.pathfinding.Pathfinding;",
+      "import org.ciprix.util.LocalADStarAK;",
+    );
+  }
+  return list;
+}
+
+function renderAutoBuilderMethod(
+  autonomous: AutonomousConfig | undefined,
+  isDifferential: boolean,
+): string {
+  if (!autonomous?.enabled) return "";
+  const tp = autonomous.translationPid;
+  const rp = autonomous.rotationPid;
+  const pathfinderLine = autonomous.useLocalADStarAK
+    ? "    Pathfinding.setPathfinder(new LocalADStarAK());\n"
+    : "";
+  const controllerExpr = isDifferential
+    ? "new PPLTVController(0.02, maxSpeed.in(MetersPerSecond))"
+    : `new PPHolonomicDriveController(\n                new PIDConstants(${formatDouble(tp.kP)}, ${formatDouble(tp.kI)}, ${formatDouble(tp.kD)}),\n                new PIDConstants(${formatDouble(rp.kP)}, ${formatDouble(rp.kI)}, ${formatDouble(rp.kD)}))`;
+
+  return `
+  private void configureAutoBuilder() {
+${pathfinderLine}    try {
+      RobotConfig config = RobotConfig.fromGUISettings();
+      AutoBuilder.configure(
+          this::getPose,
+          this::resetPose,
+          this::getRobotVelocity,
+          this::driveRobotRelative,
+          ${controllerExpr},
+          config,
+          () -> DriverStation.getAlliance().map(a -> a == DriverStation.Alliance.Red).orElse(false),
+          this);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to configure PathPlanner AutoBuilder", e);
+    }
+  }`;
 }
 
 function renderDriveTeleopHelper(
@@ -309,6 +370,7 @@ function generateCtreSwerve(
   basePackage: string,
   baseDir: string,
   hasZones: boolean,
+  autonomous?: AutonomousConfig,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const bus = dt.canBus.trim() || "rio";
@@ -407,6 +469,7 @@ public class CommandSwerveDrivetrain extends SwerveDrivetrain<TalonFX, TalonFX, 
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
+    ...renderAutoBuilderImports(autonomous, false),
     "import com.ctre.phoenix6.swerve.SwerveRequest;",
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -421,6 +484,10 @@ public class CommandSwerveDrivetrain extends SwerveDrivetrain<TalonFX, TalonFX, 
     .sort()
     .join("\n");
 
+  const ctreCtor = autonomous?.enabled
+    ? `\n  public Drive() {\n    configureAutoBuilder();\n  }\n`
+    : "";
+
   const driveJava = `package ${fullPkg};
 
 ${imports}
@@ -430,7 +497,7 @@ public class Drive extends SubsystemBase implements DriveContext, DriveAccelerat
   private final CommandSwerveDrivetrain swerve = TunerConstants.createDrivetrain();
   private final SwerveRequest.FieldCentric fieldCentric = new SwerveRequest.FieldCentric();
   private final SwerveRequest.RobotCentric robotCentric = new SwerveRequest.RobotCentric();
-${renderDriveContextMembers(dt, hasZones)}
+${renderDriveContextMembers(dt, hasZones)}${ctreCtor}
 
   @Override
   public void periodic() {
@@ -444,9 +511,21 @@ ${renderDriveContextMembers(dt, hasZones)}
     return swerve.getState().Pose;
   }
 
+  public void resetPose(Pose2d pose) {
+    swerve.resetPose(pose);
+  }
+
   @Override
   public ChassisSpeeds getRobotVelocity() {
     return swerve.getState().Speeds;
+  }
+
+  public void driveRobotRelative(ChassisSpeeds speeds) {
+    swerve.setControl(
+        robotCentric
+            .withVelocityX(speeds.vxMetersPerSecond)
+            .withVelocityY(speeds.vyMetersPerSecond)
+            .withRotationalRate(speeds.omegaRadiansPerSecond));
   }
 
   public void addVisionMeasurement(
@@ -465,7 +544,7 @@ ${renderDriveTeleopHelper(
                   ? fieldCentric.withVelocityX(vx).withVelocityY(vy).withRotationalRate(omega)
                   : robotCentric.withVelocityX(vx).withVelocityY(vy).withRotationalRate(omega));`,
   hasZones,
-)}
+)}${renderAutoBuilderMethod(autonomous, false)}
 }
 `;
 
@@ -481,6 +560,7 @@ function generateYagsl(
   basePackage: string,
   baseDir: string,
   hasZones: boolean,
+  autonomous?: AutonomousConfig,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const halfLength = dt.wheelBaseMeters / 2;
@@ -564,6 +644,7 @@ function generateYagsl(
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
+    ...renderAutoBuilderImports(autonomous, false),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.geometry.Pose2d;",
     "import edu.wpi.first.math.kinematics.ChassisSpeeds;",
@@ -582,6 +663,8 @@ function generateYagsl(
     .sort()
     .join("\n");
 
+  const autoCtorCall = autonomous?.enabled ? "\n    configureAutoBuilder();" : "";
+
   const driveJava = `package ${fullPkg};
 
 ${imports}
@@ -598,7 +681,7 @@ ${renderDriveContextMembers(dt, hasZones)}
               .createSwerveDrive(maxSpeed.in(MetersPerSecond));
     } catch (IOException e) {
       throw new RuntimeException("Failed to load YAGSL deploy/swerve config", e);
-    }
+    }${autoCtorCall}
   }
 
   @Override
@@ -614,9 +697,17 @@ ${renderDriveContextMembers(dt, hasZones)}
     return swerveDrive.getPose();
   }
 
+  public void resetPose(Pose2d pose) {
+    swerveDrive.resetOdometry(pose);
+  }
+
   @Override
   public ChassisSpeeds getRobotVelocity() {
     return swerveDrive.getRobotVelocity();
+  }
+
+  public void driveRobotRelative(ChassisSpeeds speeds) {
+    swerveDrive.setChassisSpeeds(speeds);
   }
 
   public void addVisionMeasurement(
@@ -632,7 +723,7 @@ ${renderDriveTeleopHelper(
   dt,
   "swerveDrive.drive(new Translation2d(vx, vy), omega, fieldOriented, false);",
   hasZones,
-)}
+)}${renderAutoBuilderMethod(autonomous, false)}
 }
 `;
 
@@ -654,6 +745,7 @@ function generateAkitSwerve(
   basePackage: string,
   baseDir: string,
   hasZones: boolean,
+  autonomous?: AutonomousConfig,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const realGyroClass = gyroClassName(dt.gyro.type);
@@ -852,6 +944,7 @@ public class Module {
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
+    ...renderAutoBuilderImports(autonomous, false),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -900,7 +993,7 @@ ${renderDriveContextMembers(dt, hasZones)}
         for (int i = 0; i < 4; i++) modules[i] = new Module("Mod" + i, new ModuleIO() {});
       }
     }
-    poseEstimator = new SwerveDrivePoseEstimator(kinematics, rawGyroRotation, getModulePositions(), new Pose2d());
+    poseEstimator = new SwerveDrivePoseEstimator(kinematics, rawGyroRotation, getModulePositions(), new Pose2d());${autonomous?.enabled ? "\n    configureAutoBuilder();" : ""}
   }
 
   @Override
@@ -946,9 +1039,17 @@ ${renderDriveContextMembers(dt, hasZones)}
     return poseEstimator.getEstimatedPosition();
   }
 
+  public void resetPose(Pose2d pose) {
+    poseEstimator.resetPosition(rawGyroRotation, getModulePositions(), pose);
+  }
+
   @Override
   public ChassisSpeeds getRobotVelocity() {
     return kinematics.toChassisSpeeds(getModuleStates());
+  }
+
+  public void driveRobotRelative(ChassisSpeeds speeds) {
+    runVelocity(speeds);
   }
 
   public void addVisionMeasurement(
@@ -967,7 +1068,7 @@ ${renderDriveTeleopHelper(
               : new ChassisSpeeds(vx, vy, omega);
           runVelocity(target);`,
   hasZones,
-)}
+)}${renderAutoBuilderMethod(autonomous, false)}
 }
 `;
 
@@ -987,6 +1088,7 @@ function generateDifferential(
   basePackage: string,
   baseDir: string,
   hasZones: boolean,
+  autonomous?: AutonomousConfig,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const realDiffClass = diffIoVendorClass(dt.motorVendor);
@@ -1117,6 +1219,7 @@ public class DriveIOSim implements DriveIO {
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
+    ...renderAutoBuilderImports(autonomous, true),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.DifferentialDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -1166,7 +1269,7 @@ ${renderDriveContextMembers(dt, hasZones)}
         gyroIO = new GyroIO() {};
       }
     }
-    poseEstimator = new DifferentialDrivePoseEstimator(kinematics, heading, 0.0, 0.0, new Pose2d());
+    poseEstimator = new DifferentialDrivePoseEstimator(kinematics, heading, 0.0, 0.0, new Pose2d());${autonomous?.enabled ? "\n    configureAutoBuilder();" : ""}
   }
 
   @Override
@@ -1191,10 +1294,20 @@ ${renderDriveContextMembers(dt, hasZones)}
     return poseEstimator.getEstimatedPosition();
   }
 
+  public void resetPose(Pose2d pose) {
+    poseEstimator.resetPosition(heading, inputs.leftPositionMeters, inputs.rightPositionMeters, pose);
+  }
+
   @Override
   public ChassisSpeeds getRobotVelocity() {
     return kinematics.toChassisSpeeds(
         new DifferentialDriveWheelSpeeds(inputs.leftVelocityMps, inputs.rightVelocityMps));
+  }
+
+  public void driveRobotRelative(ChassisSpeeds speeds) {
+    DifferentialDriveWheelSpeeds ws = kinematics.toWheelSpeeds(speeds);
+    double maxSpd = maxSpeed.in(MetersPerSecond);
+    io.setWheelVolts((ws.leftMetersPerSecond / maxSpd) * 12.0, (ws.rightMetersPerSecond / maxSpd) * 12.0);
   }
 
   public void addVisionMeasurement(
@@ -1211,7 +1324,7 @@ ${renderDriveTeleopHelper(
   `DifferentialDrive.WheelSpeeds wheelSpeeds =
               DifferentialDrive.arcadeDriveIK(vx / maxSpeed.in(MetersPerSecond), omega / maxAngularSpeed.in(RadiansPerSecond), false);
           io.setWheelVolts(wheelSpeeds.left * 12.0, wheelSpeeds.right * 12.0);`,
-)}
+)}${renderAutoBuilderMethod(autonomous, true)}
 }
 `;
 
@@ -1230,6 +1343,7 @@ function generateMecanum(
   basePackage: string,
   baseDir: string,
   hasZones: boolean,
+  autonomous?: AutonomousConfig,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const realMecClass = diffIoVendorClass(dt.motorVendor);
@@ -1315,6 +1429,7 @@ public class DriveIOSim implements DriveIO {
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
+    ...renderAutoBuilderImports(autonomous, false),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.MecanumDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -1368,7 +1483,7 @@ ${renderDriveContextMembers(dt, hasZones)}
     }
     poseEstimator =
         new MecanumDrivePoseEstimator(
-            kinematics, heading, new MecanumDriveWheelPositions(), new Pose2d());
+            kinematics, heading, new MecanumDriveWheelPositions(), new Pose2d());${autonomous?.enabled ? "\n    configureAutoBuilder();" : ""}
   }
 
   @Override
@@ -1393,10 +1508,26 @@ ${renderDriveContextMembers(dt, hasZones)}
     return poseEstimator.getEstimatedPosition();
   }
 
+  public void resetPose(Pose2d pose) {
+    poseEstimator.resetPosition(
+        heading,
+        new MecanumDriveWheelPositions(inputs.flMeters, inputs.frMeters, inputs.blMeters, inputs.brMeters),
+        pose);
+  }
+
   @Override
   public ChassisSpeeds getRobotVelocity() {
     return kinematics.toChassisSpeeds(
         new MecanumDriveWheelSpeeds(inputs.flMps, inputs.frMps, inputs.blMps, inputs.brMps));
+  }
+
+  public void driveRobotRelative(ChassisSpeeds speeds) {
+    MecanumDriveWheelSpeeds ws = kinematics.toWheelSpeeds(speeds);
+    io.setWheelSpeedsMps(
+        ws.frontLeftMetersPerSecond,
+        ws.frontRightMetersPerSecond,
+        ws.rearLeftMetersPerSecond,
+        ws.rearRightMetersPerSecond);
   }
 
   public void addVisionMeasurement(
@@ -1419,7 +1550,7 @@ ${renderDriveTeleopHelper(
           double maxSpd = maxSpeed.in(MetersPerSecond);
           io.setWheelSpeedsMps(ws.frontLeft * maxSpd, ws.frontRight * maxSpd, ws.rearLeft * maxSpd, ws.rearRight * maxSpd);`,
   hasZones,
-)}
+)}${renderAutoBuilderMethod(autonomous, false)}
 }
 `;
 
@@ -1482,6 +1613,7 @@ export function generateDrivetrainFiles(
   drivetrain: DrivetrainConfig | undefined,
   basePackage: string,
   hasZones = false,
+  autonomous?: AutonomousConfig,
 ): GeneratedFile[] {
   if (!drivetrain?.enabled) return [];
 
@@ -1490,14 +1622,14 @@ export function generateDrivetrainFiles(
 
   switch (drivetrain.type) {
     case "ctre_swerve":
-      return generateCtreSwerve(drivetrain, basePackage, baseDir, hasZones);
+      return generateCtreSwerve(drivetrain, basePackage, baseDir, hasZones, autonomous);
     case "yagsl":
-      return generateYagsl(drivetrain, basePackage, baseDir, hasZones);
+      return generateYagsl(drivetrain, basePackage, baseDir, hasZones, autonomous);
     case "akit_swerve":
-      return generateAkitSwerve(drivetrain, basePackage, baseDir, hasZones);
+      return generateAkitSwerve(drivetrain, basePackage, baseDir, hasZones, autonomous);
     case "differential":
-      return generateDifferential(drivetrain, basePackage, baseDir, hasZones);
+      return generateDifferential(drivetrain, basePackage, baseDir, hasZones, autonomous);
     case "mecanum":
-      return generateMecanum(drivetrain, basePackage, baseDir, hasZones);
+      return generateMecanum(drivetrain, basePackage, baseDir, hasZones, autonomous);
   }
 }

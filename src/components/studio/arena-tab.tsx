@@ -4,18 +4,23 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
+  ChevronRight,
   Circle,
   Code2,
   Eye,
+  Gauge,
   Hexagon,
   ImagePlus,
   Layers,
   Magnet,
   MousePointer,
+  Navigation,
   Play,
   Plus,
   RotateCcw,
   ShieldAlert,
+  SlidersHorizontal,
   Sparkles,
   Square,
   Trash2,
@@ -34,6 +39,7 @@ import { useProject } from "@/context/project-context";
 import {
   clamp,
   evaluateRobotInZones,
+  getActiveZoneShape,
   getRebuilt2026Landmarks,
   mirrorShape,
   REBUILT_ZONE_PRESETS,
@@ -55,8 +61,10 @@ import type {
 import { CodeViewer } from "./code-viewer";
 
 type ArenaMode = "edit" | "simulate";
-type ArenaInnerTab = "zones" | "edit" | "presets";
+type ArenaInnerTab = "zones" | "presets";
 type ToolMode = "select" | "rectangle" | "circle" | "polygon";
+
+const POLY_CLOSE_SNAP_RADIUS = 0.55;
 
 type DragAction =
   | { kind: "drawRect"; start: ZonePoint; current: ZonePoint }
@@ -123,6 +131,22 @@ const ZONE_META: Record<
   },
 };
 
+function formatShapeLabel(kind: ZoneShape["kind"], locale: "pt" | "en"): string {
+  if (kind === "rectangle") return locale === "pt" ? "Retângulo" : "Rect";
+  if (kind === "circle") return locale === "pt" ? "Círculo" : "Circle";
+  return locale === "pt" ? "Polígono" : "Polygon";
+}
+
+function formatMirrorLabel(mirror: ZoneMirror, locale: "pt" | "en"): string {
+  if (locale === "pt") {
+    if (mirror === "both") return "Espelho 180°";
+    if (mirror === "x") return "Espelho X";
+    if (mirror === "y") return "Espelho Y";
+    return "Só Azul";
+  }
+  return mirror === "none" ? "Blue only" : `Mirror ${mirror}`;
+}
+
 export function ArenaTab() {
   const { project, generatedFiles, updateProject, setActiveTab, locale } = useProject();
   const fieldL = project.project.fieldLengthMeters;
@@ -133,6 +157,7 @@ export function ArenaTab() {
   const [innerTab, setInnerTab] = useState<ArenaInnerTab>(
     zones.length > 0 ? "zones" : "presets",
   );
+  const [showCoords, setShowCoords] = useState(false);
   const [tool, setTool] = useState<ToolMode>("select");
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showMirror, setShowMirror] = useState(true);
@@ -156,7 +181,19 @@ export function ArenaTab() {
     y: round2(fieldW / 2),
     thetaRad: 0,
   }));
+  const [driveTarget, setDriveTarget] = useState<ZonePoint | null>(null);
+  const [autoPatrol, setAutoPatrol] = useState(false);
+  const [simSpeedMps, setSimSpeedMps] = useState(0);
+  const [trail, setTrail] = useState<{ x: number; y: number; color: string }[]>([]);
+  const [simLogs, setSimLogs] = useState<
+    { id: string; text: string; tone: "info" | "warn" | "alert" }[]
+  >([]);
   const pressedKeysRef = useRef<Set<string>>(new Set());
+  const robotPoseRef = useRef<RobotPose2d>(robotPose);
+  const patrolIdxRef = useRef(0);
+  const patrolTimerRef = useRef(0);
+  const lastTrailRef = useRef<ZonePoint | null>(null);
+  const prevZoneIdsRef = useRef<Set<string>>(new Set());
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const bgInputRef = useRef<HTMLInputElement | null>(null);
@@ -177,6 +214,10 @@ export function ArenaTab() {
   );
 
   useEffect(() => {
+    robotPoseRef.current = robotPose;
+  }, [robotPose]);
+
+  useEffect(() => {
     return () => {
       if (bgImageUrl) URL.revokeObjectURL(bgImageUrl);
     };
@@ -187,6 +228,8 @@ export function ArenaTab() {
       if (e.key === "Escape") {
         setPolyDraft([]);
         setDrag(null);
+        setDriveTarget(null);
+        setAutoPatrol(false);
         return;
       }
       if (mode === "simulate" && !isEditableTarget(e.target)) {
@@ -198,6 +241,10 @@ export function ArenaTab() {
         ) {
           e.preventDefault();
           pressedKeysRef.current.add(k);
+          if (k !== "q" && k !== "e") {
+            setDriveTarget(null);
+            setAutoPatrol(false);
+          }
         }
       }
     };
@@ -218,6 +265,20 @@ export function ArenaTab() {
     let lastTs = performance.now();
     const maxSpeed = project.drivetrain?.maxSpeedMps ?? 4.2;
 
+    const rectCenter = (r: FieldRect): ZonePoint => ({
+      x: (r.x1 + r.x2) / 2,
+      y: (r.y1 + r.y2) / 2,
+    });
+    const patrolWaypoints: ZonePoint[] =
+      zones.length > 0
+        ? zones.map((z) => shapeCenter(getActiveZoneShape(z, simAlliance, fieldL, fieldW)))
+        : [
+            rectCenter(landmarks.blueBumps[0]),
+            rectCenter(landmarks.blueTrenches[0]),
+            rectCenter(landmarks.neutralFuelZone),
+            { x: round2(fieldL * 0.25), y: round2(fieldW / 2) },
+          ];
+
     const tick = (now: number) => {
       const dt = Math.min(0.05, Math.max(0.001, (now - lastTs) / 1000));
       lastTs = now;
@@ -233,20 +294,118 @@ export function ArenaTab() {
       if (keys.has("q")) omega += 2.6;
       if (keys.has("e")) omega -= 2.6;
 
-      if (ix !== 0 || iy !== 0 || omega !== 0) {
-        const mag = Math.hypot(ix, iy) || 1;
+      const cur = robotPoseRef.current;
+      let goalPoint: ZonePoint | null = null;
+      if (ix === 0 && iy === 0) {
+        if (autoPatrol && patrolWaypoints.length > 0) {
+          const idx = patrolIdxRef.current % patrolWaypoints.length;
+          goalPoint = patrolWaypoints[idx];
+          patrolTimerRef.current += dt;
+          if (Math.hypot(goalPoint.x - cur.x, goalPoint.y - cur.y) < 0.35 || patrolTimerRef.current > 2.4) {
+            patrolIdxRef.current = (idx + 1) % patrolWaypoints.length;
+            patrolTimerRef.current = 0;
+            goalPoint = patrolWaypoints[patrolIdxRef.current];
+          }
+        } else if (driveTarget) {
+          const distGoal = Math.hypot(driveTarget.x - cur.x, driveTarget.y - cur.y);
+          if (distGoal < 0.14) {
+            setDriveTarget(null);
+          } else {
+            goalPoint = driveTarget;
+          }
+        }
+      }
+
+      let autoSteerAngle: number | null = null;
+      if (goalPoint) {
+        const dxG = goalPoint.x - cur.x;
+        const dyG = goalPoint.y - cur.y;
+        const distG = Math.hypot(dxG, dyG);
+        if (distG > 0.05) {
+          const scale = clamp(distG * 1.4, 0.35, 1.0);
+          ix = (dxG / distG) * scale;
+          iy = (dyG / distG) * scale;
+          autoSteerAngle = Math.atan2(dyG, dxG);
+        }
+      } else if (ix !== 0 || iy !== 0) {
+        const mag = Math.hypot(ix, iy);
         ix /= mag;
         iy /= mag;
-        setRobotPose((prev) => {
-          const ev = evaluateRobotInZones(zones, prev, simAlliance, fieldL, fieldW);
-          const vx = (ix + ev.forceVec.x) * maxSpeed * ev.speedFactor;
-          const vy = (iy + ev.forceVec.y) * maxSpeed * ev.speedFactor;
-          return {
-            x: round2(clamp(prev.x + vx * dt, 0.42, fieldL - 0.42)),
-            y: round2(clamp(prev.y + vy * dt, 0.42, fieldW - 0.42)),
-            thetaRad: prev.thetaRad + omega * dt,
-          };
-        });
+      }
+
+      if (drag?.kind !== "dragRobot") {
+        const ev = evaluateRobotInZones(zones, cur, simAlliance, fieldL, fieldW);
+        const vx = (ix + ev.forceVec.x * 1.35) * maxSpeed * ev.speedFactor;
+        const vy = (iy + ev.forceVec.y * 1.35) * maxSpeed * ev.speedFactor;
+        const speedMag = Math.hypot(vx, vy);
+
+        const nextX = clamp(cur.x + vx * dt, 0.42, fieldL - 0.42);
+        const nextY = clamp(cur.y + vy * dt, 0.42, fieldW - 0.42);
+        const nextTheta =
+          omega !== 0
+            ? cur.thetaRad + omega * dt
+            : autoSteerAngle !== null
+              ? autoSteerAngle
+              : cur.thetaRad;
+
+        if (
+          Math.abs(nextX - cur.x) > 1e-4 ||
+          Math.abs(nextY - cur.y) > 1e-4 ||
+          Math.abs(nextTheta - cur.thetaRad) > 1e-4
+        ) {
+          const nextPose = { x: nextX, y: nextY, thetaRad: nextTheta };
+          robotPoseRef.current = nextPose;
+          setRobotPose(nextPose);
+          setSimSpeedMps(speedMag);
+
+          const lastPt = lastTrailRef.current;
+          if (!lastPt || Math.hypot(nextX - lastPt.x, nextY - lastPt.y) >= 0.16) {
+            const c = ev.currentZone
+              ? (ev.currentZone.colorHex ?? ZONE_META[ev.currentZone.type].color)
+              : "#38bdf8";
+            lastTrailRef.current = { x: nextX, y: nextY };
+            setTrail((prevT) => [...prevT.slice(-54), { x: nextX, y: nextY, color: c }]);
+          }
+        } else {
+          setSimSpeedMps(0);
+        }
+
+        const nextIds = new Set(ev.activeZones.map((z) => z.id));
+        const prevIds = prevZoneIdsRef.current;
+        const events: { id: string; text: string; tone: "info" | "warn" | "alert" }[] = [];
+        for (const az of ev.activeZones) {
+          if (!prevIds.has(az.id)) {
+            const effect =
+              az.type === "speedLimit"
+                ? ` · Freio ${Math.round((az.speedFactor ?? 0.5) * 100)}%`
+                : az.type === "suction"
+                  ? " · Puxando ao eixo"
+                  : az.type === "repulsion"
+                    ? " · Repulsão ativa"
+                    : az.type === "forbidden"
+                      ? " · ALERTA PROIBIDA"
+                      : " · Gatilho ativo";
+            events.push({
+              id: `in-${az.id}-${now}`,
+              text: `Entrou em ${az.name}${effect}`,
+              tone: az.type === "forbidden" ? "alert" : az.type === "speedLimit" || az.type === "repulsion" ? "warn" : "info",
+            });
+          }
+        }
+        for (const oldId of prevIds) {
+          if (!nextIds.has(oldId)) {
+            const zName = zones.find((z) => z.id === oldId)?.name ?? oldId;
+            events.push({
+              id: `out-${oldId}-${now}`,
+              text: `Saiu de ${zName}`,
+              tone: "info",
+            });
+          }
+        }
+        if (events.length > 0) {
+          prevZoneIdsRef.current = nextIds;
+          setSimLogs((prevL) => [...events, ...prevL].slice(0, 6));
+        }
       }
 
       rafId = requestAnimationFrame(tick);
@@ -254,7 +413,18 @@ export function ArenaTab() {
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [mode, zones, simAlliance, fieldL, fieldW, project.drivetrain?.maxSpeedMps]);
+  }, [
+    mode,
+    zones,
+    simAlliance,
+    fieldL,
+    fieldW,
+    project.drivetrain?.maxSpeedMps,
+    driveTarget,
+    autoPatrol,
+    drag,
+    landmarks,
+  ]);
 
   const toFieldPoint = useCallback(
     (clientX: number, clientY: number, useSnap = true): ZonePoint | null => {
@@ -303,7 +473,7 @@ export function ArenaTab() {
       }));
       setSelectedZoneId(id);
       setTool("select");
-      if (openEditor) setInnerTab("edit");
+      if (openEditor) setInnerTab("zones");
     },
     [uniqueZoneName, updateProject],
   );
@@ -351,8 +521,25 @@ export function ArenaTab() {
     [createZone],
   );
 
+  const isSnappingPolyClose =
+    mode === "edit" &&
+    tool === "polygon" &&
+    polyDraft.length >= 3 &&
+    cursorField !== null &&
+    Math.hypot(cursorField.x - polyDraft[0].x, cursorField.y - polyDraft[0].y) <=
+      POLY_CLOSE_SNAP_RADIUS;
+
   const handleSvgMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (mode === "simulate") {
+      const p = toFieldPoint(e.clientX, e.clientY, false);
+      if (p) {
+        setAutoPatrol(false);
+        setDriveTarget(p);
+      }
+      return;
+    }
     if (mode !== "edit") return;
+    const rawP = toFieldPoint(e.clientX, e.clientY, false);
     const p = toFieldPoint(e.clientX, e.clientY);
     if (!p) return;
 
@@ -363,10 +550,17 @@ export function ArenaTab() {
     } else if (tool === "polygon") {
       if (polyDraft.length >= 3) {
         const first = polyDraft[0];
-        if (Math.hypot(p.x - first.x, p.y - first.y) <= 0.25) {
+        if (
+          (rawP && Math.hypot(rawP.x - first.x, rawP.y - first.y) <= POLY_CLOSE_SNAP_RADIUS) ||
+          Math.hypot(p.x - first.x, p.y - first.y) <= POLY_CLOSE_SNAP_RADIUS
+        ) {
           finishPolygon(polyDraft);
           return;
         }
+      }
+      const last = polyDraft[polyDraft.length - 1];
+      if (last && Math.hypot(p.x - last.x, p.y - last.y) < 0.05) {
+        return;
       }
       setPolyDraft((prev) => [...prev, p]);
     }
@@ -531,15 +725,15 @@ export function ArenaTab() {
         {opts.label && (
           <g className="pointer-events-none select-none">
             <rect
-              x={center.x - Math.max(0.75, opts.label.length * 0.095)}
-              y={fieldW - center.y - 0.24}
-              width={Math.max(1.5, opts.label.length * 0.19)}
-              height={0.48}
-              rx={0.1}
+              x={center.x - Math.max(0.7, opts.label.length * 0.088)}
+              y={fieldW - center.y - 0.21}
+              width={Math.max(1.4, opts.label.length * 0.176)}
+              height={0.42}
+              rx={0.11}
               fill="#0b0f17"
-              fillOpacity={0.78}
+              fillOpacity={0.86}
               stroke={color}
-              strokeOpacity={0.6}
+              strokeOpacity={0.55}
               strokeWidth={0.025}
             />
             <text
@@ -548,7 +742,7 @@ export function ArenaTab() {
               textAnchor="middle"
               dominantBaseline="central"
               fill="#f8fafc"
-              fontSize={0.27}
+              fontSize={0.23}
               fontFamily="monospace"
               fontWeight={700}
             >
@@ -764,34 +958,36 @@ export function ArenaTab() {
         {/* Left: Blueprint Stage */}
         <Card className="xl:col-span-8 overflow-hidden bg-[#0b0f17] border-[#22304a]">
           {/* Compact Blueprint Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#22304a] bg-[#0f1624]/95 px-4 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#22304a] bg-[#0f1624] px-3.5 py-2.5">
             {mode === "edit" ? (
-              <div className="flex flex-wrap items-center gap-1.5">
-                {(
-                  [
-                    { id: "select", label: "Mover", icon: <MousePointer className="h-3.5 w-3.5" /> },
-                    { id: "rectangle", label: "Retângulo", icon: <Square className="h-3.5 w-3.5" /> },
-                    { id: "circle", label: "Círculo", icon: <Circle className="h-3.5 w-3.5" /> },
-                    { id: "polygon", label: "Polígono", icon: <Hexagon className="h-3.5 w-3.5" /> },
-                  ] as const
-                ).map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      setTool(item.id);
-                      setPolyDraft([]);
-                    }}
-                    className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium cursor-pointer transition-all ${
-                      tool === item.id
-                        ? "border-[#60a5fa]/80 bg-[#142c4f] text-white shadow-sm"
-                        : "border-[#22304a] bg-[#0b0f17] text-slate-300 hover:border-[#3b6bb5] hover:text-white"
-                    }`}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center gap-0.5 rounded-lg border border-[#22304a] bg-[#0b0f17] p-0.5">
+                  {(
+                    [
+                      { id: "select", label: "Mover", icon: <MousePointer className="h-3.5 w-3.5" /> },
+                      { id: "rectangle", label: "Retângulo", icon: <Square className="h-3.5 w-3.5" /> },
+                      { id: "circle", label: "Círculo", icon: <Circle className="h-3.5 w-3.5" /> },
+                      { id: "polygon", label: "Polígono", icon: <Hexagon className="h-3.5 w-3.5" /> },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setTool(item.id);
+                        setPolyDraft([]);
+                      }}
+                      className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium cursor-pointer transition-all ${
+                        tool === item.id
+                          ? "border-[#60a5fa]/70 bg-[#142c4f] text-white"
+                          : "border-transparent text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
                 {tool === "polygon" && polyDraft.length >= 3 && (
                   <Button
                     size="sm"
@@ -846,9 +1042,26 @@ export function ArenaTab() {
                 </div>
                 <Button
                   size="sm"
+                  variant={autoPatrol ? "primary" : "outline"}
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => {
+                    setDriveTarget(null);
+                    setAutoPatrol((v) => !v);
+                  }}
+                >
+                  <Play className="h-3 w-3" />
+                  {autoPatrol ? "Parar Teste" : "Testar Zonas"}
+                </Button>
+                <Button
+                  size="sm"
                   variant="outline"
                   className="h-7 px-2 text-xs"
-                  onClick={() =>
+                  onClick={() => {
+                    setAutoPatrol(false);
+                    setDriveTarget(null);
+                    setTrail([]);
+                    setSimLogs([]);
+                    prevZoneIdsRef.current = new Set();
                     setRobotPose({
                       x:
                         simAlliance === "Blue"
@@ -856,51 +1069,52 @@ export function ArenaTab() {
                           : round2(Math.max(fieldL - 2.2, fieldL * 0.85)),
                       y: round2(fieldW / 2),
                       thetaRad: simAlliance === "Blue" ? 0 : Math.PI,
-                    })
-                  }
+                    });
+                  }}
                 >
                   <RotateCcw className="h-3 w-3" />
                   Resetar
                 </Button>
-                <Badge variant="outline" className="font-mono text-[11px]">
-                  Zones/Current: {simEval.currentZone?.name ?? "NONE"}
-                </Badge>
-                {simEval.speedFactor < 1 && (
-                  <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 font-mono text-[11px]">
-                    Vel ×{simEval.speedFactor.toFixed(2)}
-                  </Badge>
-                )}
               </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button
-                size="sm"
-                variant={showRebuilt ? "secondary" : "outline"}
-                className="h-7 px-2 text-[11px]"
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
                 onClick={() => setShowRebuilt((v) => !v)}
+                className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors cursor-pointer ${
+                  showRebuilt
+                    ? "bg-[#142c4f]/80 text-[#93c5fd] border-[#3b6bb5]/60"
+                    : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#19253d]/60"
+                }`}
               >
                 REBUILT 2026
-              </Button>
+              </button>
               {mode === "edit" && (
-                <Button
-                  size="sm"
-                  variant={snapEnabled ? "secondary" : "outline"}
-                  className="h-7 px-2 text-[11px]"
+                <button
+                  type="button"
                   onClick={() => setSnapEnabled((v) => !v)}
+                  className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors cursor-pointer ${
+                    snapEnabled
+                      ? "bg-[#142c4f]/80 text-[#93c5fd] border-[#3b6bb5]/60"
+                      : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#19253d]/60"
+                  }`}
                 >
                   {snapEnabled ? "Snap 5cm" : "Livre"}
-                </Button>
+                </button>
               )}
-              <Button
-                size="sm"
-                variant={showMirror ? "secondary" : "outline"}
-                className="h-7 px-2 text-[11px]"
+              <button
+                type="button"
                 onClick={() => setShowMirror((v) => !v)}
+                className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors cursor-pointer ${
+                  showMirror
+                    ? "bg-[#142c4f]/80 text-[#93c5fd] border-[#3b6bb5]/60"
+                    : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#19253d]/60"
+                }`}
               >
                 <Eye className="h-3 w-3" />
                 Espelho
-              </Button>
+              </button>
               <input
                 ref={bgInputRef}
                 type="file"
@@ -914,15 +1128,14 @@ export function ArenaTab() {
                   e.target.value = "";
                 }}
               />
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-[11px]"
+              <button
+                type="button"
                 onClick={() => bgInputRef.current?.click()}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-transparent px-2 text-[11px] font-medium text-slate-400 hover:text-slate-200 hover:bg-[#19253d]/60 transition-colors cursor-pointer"
               >
                 <ImagePlus className="h-3 w-3" />
                 Imagem
-              </Button>
+              </button>
               {bgImageUrl && (
                 <>
                   <input
@@ -951,16 +1164,14 @@ export function ArenaTab() {
             </div>
           </div>
 
-          {mode === "simulate" && simEval.forbiddenAlerts.length > 0 && (
-            <div className="flex items-center gap-2 border-b border-rose-500/40 bg-rose-950/70 px-4 py-2 text-xs text-rose-200 animate-pulse">
-              <ShieldAlert className="h-4 w-4 text-rose-400 shrink-0" />
-              <span className="font-mono font-semibold">PersistentAlert:</span>
-              <span>{simEval.forbiddenAlerts[0]}</span>
-            </div>
-          )}
-
-          <CardContent className="p-3.5 space-y-3">
-            <div className="rounded-xl border border-[#1e2d48] bg-[#070b12] p-2 shadow-inner">
+          <div className="relative bg-[#070b12] px-3 py-2.5">
+            {mode === "simulate" && simEval.forbiddenAlerts.length > 0 && (
+              <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 rounded-lg border border-rose-500/60 bg-rose-950/90 px-3 py-1.5 text-xs text-rose-100 shadow-lg backdrop-blur-sm">
+                <ShieldAlert className="h-4 w-4 text-rose-400 shrink-0" />
+                <span className="font-mono font-semibold">PersistentAlert:</span>
+                <span className="whitespace-nowrap">{simEval.forbiddenAlerts[0]}</span>
+              </div>
+            )}
               <svg
                 ref={svgRef}
                 viewBox={`-1.1 -0.42 ${fieldL + 1.92} ${fieldW + 0.94}`}
@@ -1037,7 +1248,7 @@ export function ArenaTab() {
                       width={landmarks.blueAllianceLineX}
                       height={fieldW}
                       fill="#1d4ed8"
-                      fillOpacity={0.07}
+                      fillOpacity={0.045}
                     />
                     <rect
                       x={landmarks.redAllianceLineX}
@@ -1045,14 +1256,14 @@ export function ArenaTab() {
                       width={fieldL - landmarks.redAllianceLineX}
                       height={fieldW}
                       fill="#dc2626"
-                      fillOpacity={0.07}
+                      fillOpacity={0.045}
                     />
                     <text
                       x={landmarks.blueAllianceLineX * 0.52}
                       y={0.42}
                       textAnchor="middle"
                       fill="#60a5fa"
-                      fillOpacity={0.35}
+                      fillOpacity={0.24}
                       fontSize={0.22}
                       fontFamily="monospace"
                       fontWeight={700}
@@ -1064,7 +1275,7 @@ export function ArenaTab() {
                       y={0.42}
                       textAnchor="middle"
                       fill="#f87171"
-                      fillOpacity={0.35}
+                      fillOpacity={0.24}
                       fontSize={0.22}
                       fontFamily="monospace"
                       fontWeight={700}
@@ -1091,8 +1302,8 @@ export function ArenaTab() {
                   x={0}
                   y={fieldW + 0.3}
                   textAnchor="middle"
-                  fill="#64748b"
-                  fontSize={0.2}
+                  fill="#475569"
+                  fontSize={0.175}
                   fontFamily="monospace"
                 >
                   0m
@@ -1105,7 +1316,7 @@ export function ArenaTab() {
                       x2={x}
                       y2={fieldW}
                       stroke="#1e2d4a"
-                      strokeOpacity={0.7}
+                      strokeOpacity={0.32}
                       strokeWidth={0.02}
                     />
                     {x % 2 === 0 && (
@@ -1115,15 +1326,15 @@ export function ArenaTab() {
                           y1={fieldW}
                           x2={x}
                           y2={fieldW + 0.1}
-                          stroke="#475569"
+                          stroke="#334155"
                           strokeWidth={0.025}
                         />
                         <text
                           x={x}
                           y={fieldW + 0.3}
                           textAnchor="middle"
-                          fill="#64748b"
-                          fontSize={0.2}
+                          fill="#475569"
+                          fontSize={0.175}
                           fontFamily="monospace"
                         >
                           {x}m
@@ -1140,7 +1351,7 @@ export function ArenaTab() {
                       x2={fieldL}
                       y2={fieldW - y}
                       stroke="#1e2d4a"
-                      strokeOpacity={0.7}
+                      strokeOpacity={0.32}
                       strokeWidth={0.02}
                     />
                     {y % 2 === 0 && (
@@ -1150,7 +1361,7 @@ export function ArenaTab() {
                           y1={fieldW - y}
                           x2={-0.6}
                           y2={fieldW - y}
-                          stroke="#475569"
+                          stroke="#334155"
                           strokeWidth={0.025}
                         />
                         <text
@@ -1158,8 +1369,8 @@ export function ArenaTab() {
                           y={fieldW - y}
                           textAnchor="middle"
                           dominantBaseline="central"
-                          fill="#64748b"
-                          fontSize={0.2}
+                          fill="#475569"
+                          fontSize={0.175}
                           fontFamily="monospace"
                         >
                           {y}m
@@ -1171,7 +1382,7 @@ export function ArenaTab() {
 
                 {/* 2026 REBUILT Field Elements */}
                 {showRebuilt && (
-                  <g className="pointer-events-none select-none">
+                  <g className="pointer-events-none select-none" opacity={0.76}>
                     {/* Driver Station Bays */}
                     {[0, 1, 2].map((slot) => {
                       const slotY = (fieldW / 3) * slot + fieldW / 6;
@@ -1642,26 +1853,139 @@ export function ArenaTab() {
                     "#60a5fa",
                     { dashed: true },
                   )}
-                {mode === "edit" && tool === "polygon" && polyDraft.length > 0 && (
+                {mode === "edit" && tool === "polygon" && polyDraft.length > 0 && (() => {
+                  const firstPt = polyDraft[0];
+                  const previewPoint = isSnappingPolyClose ? firstPt : cursorField;
+                  return (
+                    <g>
+                      <g className="pointer-events-none">
+                        {isSnappingPolyClose ? (
+                          <polygon
+                            points={polyDraft.map((v) => `${v.x},${fieldW - v.y}`).join(" ")}
+                            fill="#34d399"
+                            fillOpacity={0.18}
+                            stroke="#34d399"
+                            strokeWidth={0.055}
+                          />
+                        ) : (
+                          <polyline
+                            points={[...polyDraft, ...(previewPoint ? [previewPoint] : [])]
+                              .map((v) => `${v.x},${fieldW - v.y}`)
+                              .join(" ")}
+                            fill="none"
+                            stroke="#60a5fa"
+                            strokeWidth={0.05}
+                            strokeDasharray="0.2 0.12"
+                          />
+                        )}
+                        {polyDraft.length >= 3 && (
+                          <circle
+                            cx={firstPt.x}
+                            cy={fieldW - firstPt.y}
+                            r={isSnappingPolyClose ? 0.36 : 0.28}
+                            fill="#34d399"
+                            fillOpacity={isSnappingPolyClose ? 0.28 : 0.14}
+                            stroke="#34d399"
+                            strokeOpacity={isSnappingPolyClose ? 0.95 : 0.65}
+                            strokeWidth={0.04}
+                          />
+                        )}
+                        {polyDraft.map((v, idx) => (
+                          <circle
+                            key={idx}
+                            cx={v.x}
+                            cy={fieldW - v.y}
+                            r={idx === 0 ? (isSnappingPolyClose ? 0.2 : 0.16) : 0.12}
+                            fill={idx === 0 ? "#34d399" : "#93c5fd"}
+                          />
+                        ))}
+                        {isSnappingPolyClose && (
+                          <g>
+                            <rect
+                              x={clamp(firstPt.x - 0.55, 0.1, fieldL - 1.2)}
+                              y={Math.max(0.1, fieldW - firstPt.y - 0.72)}
+                              width={1.1}
+                              height={0.34}
+                              rx={0.08}
+                              fill="#064e3b"
+                              stroke="#34d399"
+                              strokeWidth={0.025}
+                            />
+                            <text
+                              x={clamp(firstPt.x, 0.65, fieldL - 0.65)}
+                              y={Math.max(0.27, fieldW - firstPt.y - 0.55)}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              fill="#ecfdf5"
+                              fontSize={0.18}
+                              fontFamily="monospace"
+                              fontWeight={700}
+                            >
+                              {locale === "pt" ? "Fechar" : "Close"}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                      {polyDraft.length >= 3 && (
+                        <circle
+                          cx={firstPt.x}
+                          cy={fieldW - firstPt.y}
+                          r={POLY_CLOSE_SNAP_RADIUS}
+                          fill="transparent"
+                          className="cursor-pointer"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            finishPolygon(polyDraft);
+                          }}
+                        />
+                      )}
+                    </g>
+                  );
+                })()}
+
+                {/* Simulation Breadcrumb Trail & Click-to-Drive Target */}
+                {mode === "simulate" && trail.length > 1 && (
                   <g className="pointer-events-none">
-                    <polyline
-                      points={[...polyDraft, ...(cursorField ? [cursorField] : [])]
-                        .map((v) => `${v.x},${fieldW - v.y}`)
-                        .join(" ")}
-                      fill="none"
-                      stroke="#60a5fa"
-                      strokeWidth={0.05}
-                      strokeDasharray="0.2 0.12"
+                    {trail.slice(1).map((pt, idx) => {
+                      const prevPt = trail[idx];
+                      return (
+                        <line
+                          key={`tr-${idx}`}
+                          x1={prevPt.x}
+                          y1={fieldW - prevPt.y}
+                          x2={pt.x}
+                          y2={fieldW - pt.y}
+                          stroke={pt.color}
+                          strokeOpacity={0.35 + (idx / trail.length) * 0.5}
+                          strokeWidth={0.07}
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                  </g>
+                )}
+
+                {mode === "simulate" && driveTarget && (
+                  <g className="pointer-events-none">
+                    <line
+                      x1={robotPose.x}
+                      y1={fieldW - robotPose.y}
+                      x2={driveTarget.x}
+                      y2={fieldW - driveTarget.y}
+                      stroke="#38bdf8"
+                      strokeOpacity={0.6}
+                      strokeWidth={0.04}
+                      strokeDasharray="0.18 0.12"
                     />
-                    {polyDraft.map((v, idx) => (
-                      <circle
-                        key={idx}
-                        cx={v.x}
-                        cy={fieldW - v.y}
-                        r={idx === 0 ? 0.16 : 0.12}
-                        fill={idx === 0 ? "#34d399" : "#93c5fd"}
-                      />
-                    ))}
+                    <circle
+                      cx={driveTarget.x}
+                      cy={fieldW - driveTarget.y}
+                      r={0.22}
+                      fill="#38bdf8"
+                      fillOpacity={0.2}
+                      stroke="#38bdf8"
+                      strokeWidth={0.04}
+                    />
                   </g>
                 )}
 
@@ -1674,6 +1998,8 @@ export function ArenaTab() {
                     <g
                       onMouseDown={(e) => {
                         e.stopPropagation();
+                        setAutoPatrol(false);
+                        setDriveTarget(null);
                         setDrag({ kind: "dragRobot" });
                       }}
                       className="cursor-grab active:cursor-grabbing"
@@ -1754,8 +2080,8 @@ export function ArenaTab() {
               </svg>
             </div>
 
-            {/* Legend & Live Coordinate Footer */}
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+            {/* Clean Card Footer: Legend & Live Coordinate */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#22304a] bg-[#0f1624] px-4 py-2 text-[11px] text-slate-400">
               <div className="flex flex-wrap items-center gap-3">
                 {(Object.keys(ZONE_META) as ZoneType[]).map((zt) => (
                   <span key={zt} className="inline-flex items-center gap-1.5">
@@ -1767,39 +2093,222 @@ export function ArenaTab() {
                   </span>
                 ))}
               </div>
-              <span className="font-mono text-slate-300">
+              <span className="font-mono tabular-nums text-slate-300">
                 {mode === "simulate"
-                  ? `Pose: (${robotPose.x.toFixed(2)}m, ${robotPose.y.toFixed(2)}m, ${Math.round((robotPose.thetaRad * 180) / Math.PI)}°) · WASD/Setas + Q/E ou arraste`
+                  ? `Pose: (${robotPose.x.toFixed(2)}m, ${robotPose.y.toFixed(2)}m) · Clique no campo para dirigir · WASD/Setas + Q/E`
                   : cursorField
-                    ? `X: ${cursorField.x.toFixed(2)} m · Y: ${cursorField.y.toFixed(2)} m`
+                    ? `${
+                        tool === "polygon" && polyDraft.length >= 3
+                          ? isSnappingPolyClose
+                            ? "Clique para fechar a zona · "
+                            : "Aproxime do ponto verde para fechar · "
+                          : ""
+                      }X: ${cursorField.x.toFixed(2)} m · Y: ${cursorField.y.toFixed(2)} m`
                     : `${fieldL} m × ${fieldW} m`}
               </span>
             </div>
-          </CardContent>
         </Card>
 
-        {/* Right: Tabbed Inspector matching StatesView */}
-        <Card className="xl:col-span-4 overflow-hidden">
-          <CardHeader className="border-b border-[#22304a] p-2.5">
-            <div className="grid grid-cols-3 gap-1.5">
+        {/* Right: Live Simulation Telemetry (when Simulating) or 2-Tab Editor */}
+        {mode === "simulate" ? (
+          <Card className="xl:col-span-4 overflow-hidden">
+            <CardHeader className="border-b border-[#22304a] px-4 py-3 flex-row items-center justify-between space-y-0">
+              <div className="flex items-center gap-2">
+                <Gauge className="h-4 w-4 text-emerald-400" />
+                <span className="text-xs font-semibold text-white">
+                  {locale === "pt" ? "Telemetria ao Vivo · Zonas" : "Live Zone Telemetry"}
+                </span>
+              </div>
+              <Badge variant={simEval.activeZones.length > 0 ? "success" : "outline"} className="font-mono text-[10px]">
+                {simEval.activeZones.length} {simEval.activeZones.length === 1 ? "ativa" : "ativas"}
+              </Badge>
+            </CardHeader>
+
+            <CardContent className="p-4 space-y-4">
+              {/* Speed Gauge */}
+              {(() => {
+                const maxSpd = project.drivetrain?.maxSpeedMps ?? 4.2;
+                const pct = Math.min(100, Math.round((simSpeedMps / Math.max(0.1, maxSpd)) * 100));
+                return (
+                  <div className="rounded-lg border border-[#22304a] bg-[#0f1624] p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-300 font-medium">Velocidade atual</span>
+                      <div className="flex items-center gap-2">
+                        {simEval.speedFactor < 1 && (
+                          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 font-mono text-[10px] text-amber-300">
+                            Freio {Math.round(simEval.speedFactor * 100)}%
+                          </span>
+                        )}
+                        <span className="font-mono text-white font-semibold">
+                          {simSpeedMps.toFixed(2)} / {maxSpd.toFixed(1)} m/s
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-[#0b0f17] overflow-hidden">
+                      <div
+                        className={`h-full transition-all ${
+                          simEval.speedFactor < 1 ? "bg-amber-400" : "bg-sky-400"
+                        }`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Active Zones & SuperStructure Trigger Reactions */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                    Zonas Ativas & SuperStructure
+                  </span>
+                  <span className="font-mono text-[10px] text-slate-300 truncate">
+                    Zones/Current: {simEval.currentZone?.name ?? "NONE"}
+                  </span>
+                </div>
+                {simEval.activeZones.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-[#22304a] bg-[#0b0f17] px-3 py-2.5 text-[11px] text-slate-400">
+                    Fora de qualquer zona. Clique em uma zona abaixo ou no campo para dirigir o robô até ela.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {simEval.activeZones.map((az) => (
+                      <div
+                        key={az.id}
+                        className="flex items-center justify-between rounded-lg border border-[#3b6bb5]/60 bg-[#142c4f]/50 px-3 py-2 text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {ZONE_META[az.type].icon}
+                          <span className="truncate font-mono font-semibold text-white">
+                            {az.name}
+                          </span>
+                        </div>
+                        <span className="font-mono text-[10px] text-slate-300 shrink-0">
+                          {ZONE_META[az.type].label[locale]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {(() => {
+                  const activeIds = new Set(simEval.activeZones.map((z) => z.id));
+                  const firedPilot = project.controls.pilotPriority.filter(
+                    (p) => p.source === "zone" && p.zoneId && activeIds.has(p.zoneId),
+                  );
+                  const firedSuper = (project.superstructure.transitions ?? []).filter(
+                    (tr) =>
+                      (tr.condition === "inZone" && tr.zoneId && activeIds.has(tr.zoneId)) ||
+                      (tr.condition === "outOfZone" && tr.zoneId && !activeIds.has(tr.zoneId)),
+                  );
+                  if (firedPilot.length === 0 && firedSuper.length === 0) return null;
+                  return (
+                    <div className="rounded-lg border border-sky-500/40 bg-sky-950/30 p-2.5 space-y-1 text-[11px]">
+                      {firedPilot.map((fp) => (
+                        <div key={fp.id} className="flex items-center justify-between text-sky-200">
+                          <span>Regra Piloto:</span>
+                          <span className="font-mono font-semibold text-white">→ {fp.request}</span>
+                        </div>
+                      ))}
+                      {firedSuper.map((fs) => (
+                        <div key={fs.id} className="flex items-center justify-between text-cyan-200">
+                          <span>SuperStructure:</span>
+                          <span className="font-mono font-semibold text-white">
+                            {fs.fromState} → {fs.toState}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* 1-Click Drive to Zone */}
+              {zones.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                    Dirigir até zona (1 clique)
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {zones.map((z) => (
+                      <button
+                        key={z.id}
+                        type="button"
+                        onClick={() => {
+                          setAutoPatrol(false);
+                          const c = shapeCenter(getActiveZoneShape(z, simAlliance, fieldL, fieldW));
+                          setDriveTarget(c);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-[#22304a] bg-[#0f1624] px-2 py-1 font-mono text-[10px] text-slate-200 hover:border-[#60a5fa] cursor-pointer"
+                      >
+                        <Navigation className="h-2.5 w-2.5 text-sky-400" />
+                        {z.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Live Event Log */}
+              <div className="space-y-1.5 border-t border-[#22304a] pt-3">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                  Eventos em Campo
+                </span>
+                {simLogs.length === 0 ? (
+                  <p className="text-[11px] text-slate-500">
+                    Nenhum evento ainda. Clique em &quot;Testar Zonas&quot; acima!
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {simLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        className={`rounded px-2 py-1 font-mono text-[10px] ${
+                          log.tone === "alert"
+                            ? "bg-rose-950/60 text-rose-200"
+                            : log.tone === "warn"
+                              ? "bg-amber-950/50 text-amber-200"
+                              : "bg-[#0b111c] text-slate-300"
+                        }`}
+                      >
+                        {log.text}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="xl:col-span-4 overflow-hidden">
+          <CardHeader className="border-b border-[#22304a] p-2">
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-[#0b0f17] p-1">
               {(
                 [
-                  { id: "zones", label: `${locale === "pt" ? "Zonas" : "Zones"} (${zones.length})` },
-                  { id: "edit", label: locale === "pt" ? "Editar" : "Edit" },
-                  { id: "presets", label: "Modelos 2026" },
+                  {
+                    id: "zones",
+                    label: locale === "pt" ? "Zonas" : "Zones",
+                    count: zones.length,
+                  },
+                  {
+                    id: "presets",
+                    label: "Modelos 2026",
+                    count: REBUILT_ZONE_PRESETS.length,
+                  },
                 ] as const
               ).map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setInnerTab(tab.id)}
-                  className={`rounded-md px-2.5 py-2 text-xs font-medium cursor-pointer transition-all ${
+                  className={`flex items-center justify-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-medium cursor-pointer transition-all ${
                     innerTab === tab.id
-                      ? "bg-[#142c4f] border border-[#3b6bb5] text-white"
-                      : "border border-transparent text-slate-400 hover:bg-[#19253d] hover:text-white"
+                      ? "bg-[#142c4f] border border-[#60a5fa]/70 text-white"
+                      : "border border-transparent text-slate-400 hover:text-white"
                   }`}
                 >
-                  {tab.label}
+                  <span>{tab.label}</span>
+                  <span className="font-mono text-[10px] text-[#93c5fd]">{tab.count}</span>
                 </button>
               ))}
             </div>
@@ -1807,7 +2316,7 @@ export function ArenaTab() {
 
           <CardContent className="p-4 space-y-4">
             {innerTab === "zones" && (
-              <div className="space-y-2.5">
+              <div className="space-y-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-slate-300">
                     {locale === "pt" ? "Zonas do Projeto" : "Project Zones"}
@@ -1848,456 +2357,535 @@ export function ArenaTab() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-[460px] overflow-y-auto pr-0.5">
-                    {zones.map((z) => {
-                      const selected = z.id === activeZoneId;
-                      const meta = ZONE_META[z.type];
-                      return (
-                        <div
-                          key={z.id}
-                          onClick={() => {
-                            setSelectedZoneId(z.id);
-                            setInnerTab("edit");
-                          }}
-                          className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
-                            selected
-                              ? "border-[#60a5fa] bg-[#142c4f]/70"
-                              : "border-[#22304a] bg-[#0f1624] hover:border-[#3b6bb5]"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {meta.icon}
-                            <div className="min-w-0">
-                              <p className="truncate font-mono text-xs font-semibold text-white">
-                                {z.name}
-                              </p>
-                              <p className="text-[11px] text-slate-400">
-                                {meta.label[locale]} · {z.shape.kind} · mirror {z.mirror}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 shrink-0"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteZone(z.id);
-                            }}
+                  <>
+                    {/* Compact Selectable Zone List */}
+                    <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-0.5">
+                      {zones.map((z) => {
+                        const selected = z.id === activeZoneId;
+                        const meta = ZONE_META[z.type];
+                        return (
+                          <div
+                            key={z.id}
+                            onClick={() => setSelectedZoneId(z.id)}
+                            className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 cursor-pointer transition-colors ${
+                              selected
+                                ? "border-[#60a5fa] bg-[#142c4f]/70"
+                                : "border-[#22304a] bg-[#0f1624] hover:border-[#3b6bb5]"
+                            }`}
                           >
-                            <Trash2 className="h-3.5 w-3.5 text-rose-400" />
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {innerTab === "edit" && (
-              selectedZone ? (
-                <div className="space-y-3.5">
-                  <Field
-                    path={`zones.${selectedZone.id}.name`}
-                    label={locale === "pt" ? "Nome da Zona" : "Zone Name"}
-                  >
-                    <Input
-                      value={selectedZone.name}
-                      className="h-8 font-mono text-xs"
-                      onChange={(e) =>
-                        updateZone(selectedZone.id, (z) => ({
-                          ...z,
-                          name: toUpperSnake(e.target.value),
-                        }))
-                      }
-                    />
-                  </Field>
-
-                  <Field
-                    path={`zones.${selectedZone.id}.type`}
-                    label={locale === "pt" ? "O que faz no robô" : "Zone Behavior"}
-                  >
-                    <Select
-                      className="h-8 text-xs"
-                      value={selectedZone.type}
-                      onChange={(e) => {
-                        const nextType = e.target.value as ZoneType;
-                        updateZone(selectedZone.id, (z) => ({
-                          ...z,
-                          type: nextType,
-                          colorHex: ZONE_META[nextType].color,
-                          strength:
-                            nextType === "suction"
-                              ? (z.strength ?? 0.4)
-                              : nextType === "repulsion"
-                                ? (z.strength ?? 0.6)
-                                : nextType === "forbidden"
-                                  ? (z.strength ?? 0.9)
-                                  : undefined,
-                          speedFactor:
-                            nextType === "speedLimit" ? (z.speedFactor ?? 0.5) : undefined,
-                        }));
-                      }}
-                    >
-                      {(Object.keys(ZONE_META) as ZoneType[]).map((zt) => (
-                        <option key={zt} value={zt}>
-                          {ZONE_META[zt].label[locale]}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <p className="rounded-md border border-[#22304a] bg-[#0b0f17] px-2.5 py-2 text-[11px] text-slate-300">
-                    {ZONE_META[selectedZone.type].hint[locale]}
-                  </p>
-
-                  <Field
-                    path={`zones.${selectedZone.id}.mirror`}
-                    label={locale === "pt" ? "Espelhar para Vermelho" : "Mirror to Red"}
-                  >
-                    <Select
-                      className="h-8 text-xs font-mono"
-                      value={selectedZone.mirror}
-                      onChange={(e) =>
-                        updateZone(selectedZone.id, (z) => ({
-                          ...z,
-                          mirror: e.target.value as ZoneMirror,
-                        }))
-                      }
-                    >
-                      <option value="both">both (rotação 180° X + Y)</option>
-                      <option value="x">x (espelho horizontal)</option>
-                      <option value="y">y (espelho vertical)</option>
-                      <option value="none">none (apenas Azul)</option>
-                    </Select>
-                  </Field>
-
-                  {(selectedZone.type === "suction" ||
-                    selectedZone.type === "repulsion" ||
-                    selectedZone.type === "forbidden") && (
-                    <Field
-                      path={`zones.${selectedZone.id}.strength`}
-                      label={locale === "pt" ? "Força (0.05 – 1.0)" : "Strength (0.05 – 1.0)"}
-                    >
-                      <Input
-                        type="number"
-                        step={0.05}
-                        min={0.05}
-                        max={1.0}
-                        className="h-8 font-mono text-xs"
-                        value={
-                          selectedZone.strength ??
-                          (selectedZone.type === "suction"
-                            ? 0.4
-                            : selectedZone.type === "forbidden"
-                              ? 0.9
-                              : 0.6)
-                        }
-                        onChange={(e) => {
-                          const val = clamp(
-                            Number.parseFloat(e.target.value || "0.5") || 0.5,
-                            0.05,
-                            1.0,
-                          );
-                          updateZone(selectedZone.id, (z) => ({ ...z, strength: val }));
-                        }}
-                      />
-                    </Field>
-                  )}
-
-                  {selectedZone.type === "speedLimit" && (
-                    <Field
-                      path={`zones.${selectedZone.id}.speedFactor`}
-                      label={locale === "pt" ? "Fator de Velocidade (0.1 – 1.0)" : "Speed Factor (0.1 – 1.0)"}
-                    >
-                      <Input
-                        type="number"
-                        step={0.05}
-                        min={0.1}
-                        max={1.0}
-                        className="h-8 font-mono text-xs"
-                        value={selectedZone.speedFactor ?? 0.5}
-                        onChange={(e) => {
-                          const val = clamp(
-                            Number.parseFloat(e.target.value || "0.5") || 0.5,
-                            0.1,
-                            1.0,
-                          );
-                          updateZone(selectedZone.id, (z) => ({ ...z, speedFactor: val }));
-                        }}
-                      />
-                    </Field>
-                  )}
-
-                  {selectedZone.type === "forbidden" && (
-                    <Field
-                      path={`zones.${selectedZone.id}.alertMessage`}
-                      label={locale === "pt" ? "Mensagem PersistentAlert" : "PersistentAlert Message"}
-                    >
-                      <Input
-                        className="h-8 text-xs"
-                        placeholder={`Robot entered forbidden zone ${selectedZone.name}`}
-                        value={selectedZone.alertMessage ?? ""}
-                        onChange={(e) =>
-                          updateZone(selectedZone.id, (z) => ({
-                            ...z,
-                            alertMessage: e.target.value,
-                          }))
-                        }
-                      />
-                    </Field>
-                  )}
-
-                  {selectedZone.shape.kind === "rectangle" && (
-                    <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-[#22304a]">
-                      <Field path={`zones.${selectedZone.id}.shape.x1`} label="X1 (m)">
-                        <Input
-                          type="number"
-                          step={0.05}
-                          className="h-8 font-mono text-xs"
-                          value={selectedZone.shape.x1}
-                          onChange={(e) => {
-                            const x1 = Number.parseFloat(e.target.value || "0") || 0;
-                            updateZone(selectedZone.id, (z) =>
-                              z.shape.kind === "rectangle"
-                                ? { ...z, shape: { ...z.shape, x1 } }
-                                : z,
-                            );
-                          }}
-                        />
-                      </Field>
-                      <Field path={`zones.${selectedZone.id}.shape.y1`} label="Y1 (m)">
-                        <Input
-                          type="number"
-                          step={0.05}
-                          className="h-8 font-mono text-xs"
-                          value={selectedZone.shape.y1}
-                          onChange={(e) => {
-                            const y1 = Number.parseFloat(e.target.value || "0") || 0;
-                            updateZone(selectedZone.id, (z) =>
-                              z.shape.kind === "rectangle"
-                                ? { ...z, shape: { ...z.shape, y1 } }
-                                : z,
-                            );
-                          }}
-                        />
-                      </Field>
-                      <Field path={`zones.${selectedZone.id}.shape.x2`} label="X2 (m)">
-                        <Input
-                          type="number"
-                          step={0.05}
-                          className="h-8 font-mono text-xs"
-                          value={selectedZone.shape.x2}
-                          onChange={(e) => {
-                            const x2 = Number.parseFloat(e.target.value || "0") || 0;
-                            updateZone(selectedZone.id, (z) =>
-                              z.shape.kind === "rectangle"
-                                ? { ...z, shape: { ...z.shape, x2 } }
-                                : z,
-                            );
-                          }}
-                        />
-                      </Field>
-                      <Field path={`zones.${selectedZone.id}.shape.y2`} label="Y2 (m)">
-                        <Input
-                          type="number"
-                          step={0.05}
-                          className="h-8 font-mono text-xs"
-                          value={selectedZone.shape.y2}
-                          onChange={(e) => {
-                            const y2 = Number.parseFloat(e.target.value || "0") || 0;
-                            updateZone(selectedZone.id, (z) =>
-                              z.shape.kind === "rectangle"
-                                ? { ...z, shape: { ...z.shape, y2 } }
-                                : z,
-                            );
-                          }}
-                        />
-                      </Field>
-                    </div>
-                  )}
-
-                  {selectedZone.shape.kind === "circle" && (
-                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#22304a]">
-                      <Field path={`zones.${selectedZone.id}.shape.cx`} label="CX (m)">
-                        <Input
-                          type="number"
-                          step={0.05}
-                          className="h-8 font-mono text-xs"
-                          value={selectedZone.shape.cx}
-                          onChange={(e) => {
-                            const cx = Number.parseFloat(e.target.value || "0") || 0;
-                            updateZone(selectedZone.id, (z) =>
-                              z.shape.kind === "circle" ? { ...z, shape: { ...z.shape, cx } } : z,
-                            );
-                          }}
-                        />
-                      </Field>
-                      <Field path={`zones.${selectedZone.id}.shape.cy`} label="CY (m)">
-                        <Input
-                          type="number"
-                          step={0.05}
-                          className="h-8 font-mono text-xs"
-                          value={selectedZone.shape.cy}
-                          onChange={(e) => {
-                            const cy = Number.parseFloat(e.target.value || "0") || 0;
-                            updateZone(selectedZone.id, (z) =>
-                              z.shape.kind === "circle" ? { ...z, shape: { ...z.shape, cy } } : z,
-                            );
-                          }}
-                        />
-                      </Field>
-                      <Field path={`zones.${selectedZone.id}.shape.radius`} label="R (m)">
-                        <Input
-                          type="number"
-                          step={0.05}
-                          min={0.05}
-                          className="h-8 font-mono text-xs"
-                          value={selectedZone.shape.radius}
-                          onChange={(e) => {
-                            const radius = Math.max(
-                              0.05,
-                              Number.parseFloat(e.target.value || "0.5") || 0.5,
-                            );
-                            updateZone(selectedZone.id, (z) =>
-                              z.shape.kind === "circle"
-                                ? { ...z, shape: { ...z.shape, radius } }
-                                : z,
-                            );
-                          }}
-                        />
-                      </Field>
-                    </div>
-                  )}
-
-                  {selectedZone.shape.kind === "polygon" && (
-                    <div className="space-y-2 pt-2 border-t border-[#22304a]">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-[11px] uppercase text-slate-400">
-                          Vértices ({selectedZone.shape.vertices.length})
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-[11px]"
-                          onClick={() =>
-                            updateZone(selectedZone.id, (z) => {
-                              if (z.shape.kind !== "polygon") return z;
-                              const last = z.shape.vertices[z.shape.vertices.length - 1] ?? {
-                                x: 1,
-                                y: 1,
-                              };
-                              return {
-                                ...z,
-                                shape: {
-                                  kind: "polygon",
-                                  vertices: [
-                                    ...z.shape.vertices,
-                                    {
-                                      x: round2(clamp(last.x + 0.5, 0, fieldL)),
-                                      y: round2(clamp(last.y, 0, fieldW)),
-                                    },
-                                  ],
-                                },
-                              };
-                            })
-                          }
-                        >
-                          <Plus className="h-3 w-3" />
-                          Vértice
-                        </Button>
-                      </div>
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                        {selectedZone.shape.vertices.map((v, vIdx) => (
-                          <div key={vIdx} className="flex items-center gap-1.5">
-                            <span className="w-6 font-mono text-[10px] text-slate-500">
-                              P{vIdx + 1}
-                            </span>
-                            <Input
-                              type="number"
-                              step={0.05}
-                              className="h-7 font-mono text-xs"
-                              value={v.x}
-                              onChange={(e) => {
-                                const x = Number.parseFloat(e.target.value || "0") || 0;
-                                updateZone(selectedZone.id, (z) =>
-                                  z.shape.kind === "polygon"
-                                    ? {
-                                        ...z,
-                                        shape: {
-                                          kind: "polygon",
-                                          vertices: z.shape.vertices.map((pt, i) =>
-                                            i === vIdx ? { ...pt, x } : pt,
-                                          ),
-                                        },
-                                      }
-                                    : z,
-                                );
-                              }}
-                            />
-                            <Input
-                              type="number"
-                              step={0.05}
-                              className="h-7 font-mono text-xs"
-                              value={v.y}
-                              onChange={(e) => {
-                                const y = Number.parseFloat(e.target.value || "0") || 0;
-                                updateZone(selectedZone.id, (z) =>
-                                  z.shape.kind === "polygon"
-                                    ? {
-                                        ...z,
-                                        shape: {
-                                          kind: "polygon",
-                                          vertices: z.shape.vertices.map((pt, i) =>
-                                            i === vIdx ? { ...pt, y } : pt,
-                                          ),
-                                        },
-                                      }
-                                    : z,
-                                );
-                              }}
-                            />
+                            <div className="flex items-center gap-2 min-w-0">
+                              {meta.icon}
+                              <div className="min-w-0">
+                                <p className="truncate font-mono text-xs font-semibold text-white">
+                                  {z.name}
+                                </p>
+                                <p className="text-[11px] text-slate-400">
+                                  {meta.label[locale]} · {formatShapeLabel(z.shape.kind, locale)} ·{" "}
+                                  {formatMirrorLabel(z.mirror, locale)}
+                                </p>
+                              </div>
+                            </div>
                             <Button
                               size="icon"
                               variant="ghost"
                               className="h-7 w-7 shrink-0"
-                              disabled={
-                                selectedZone.shape.kind === "polygon" &&
-                                selectedZone.shape.vertices.length <= 3
-                              }
-                              onClick={() =>
-                                updateZone(selectedZone.id, (z) =>
-                                  z.shape.kind === "polygon" && z.shape.vertices.length > 3
-                                    ? {
-                                        ...z,
-                                        shape: {
-                                          kind: "polygon",
-                                          vertices: z.shape.vertices.filter((_, i) => i !== vIdx),
-                                        },
-                                      }
-                                    : z,
-                                )
-                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteZone(z.id);
+                              }}
                             >
-                              <Trash2 className="h-3 w-3 text-rose-400" />
+                              <Trash2 className="h-3.5 w-3.5 text-rose-400" />
                             </Button>
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
-                  )}
-                </div>
-              ) : (
-                <p className="rounded-lg border border-dashed border-[#22304a] bg-[#0b0f17] p-5 text-center text-xs text-slate-400">
-                  {locale === "pt"
-                    ? "Selecione uma zona no campo ou na aba Zonas para editar."
-                    : "Select a zone on the field or in the Zones tab to edit."}
-                </p>
-              )
+
+                    {/* Inline Editor for Selected Zone */}
+                    {selectedZone && (() => {
+                      const dimsLabel =
+                        selectedZone.shape.kind === "rectangle"
+                          ? `${Math.abs(selectedZone.shape.x2 - selectedZone.shape.x1).toFixed(2)} × ${Math.abs(selectedZone.shape.y2 - selectedZone.shape.y1).toFixed(2)} m`
+                          : selectedZone.shape.kind === "circle"
+                            ? `R = ${selectedZone.shape.radius.toFixed(2)} m`
+                            : `${selectedZone.shape.vertices.length} vértices`;
+                      const strengthVal =
+                        selectedZone.strength ??
+                        (selectedZone.type === "suction"
+                          ? 0.4
+                          : selectedZone.type === "forbidden"
+                            ? 0.9
+                            : 0.6);
+                      const speedVal = selectedZone.speedFactor ?? 0.5;
+
+                      return (
+                        <div className="space-y-3 rounded-xl border border-[#3b6bb5]/60 bg-[#111a2d] p-3.5">
+                          <Field
+                            path={`zones.${selectedZone.id}.name`}
+                            label={locale === "pt" ? "Nome da Zona" : "Zone Name"}
+                          >
+                            <Input
+                              value={selectedZone.name}
+                              className="h-8 font-mono text-xs"
+                              onChange={(e) =>
+                                updateZone(selectedZone.id, (z) => ({
+                                  ...z,
+                                  name: toUpperSnake(e.target.value),
+                                }))
+                              }
+                            />
+                          </Field>
+
+                          <div className="space-y-1.5">
+                            <Field
+                              path={`zones.${selectedZone.id}.type`}
+                              label={locale === "pt" ? "O que faz no robô" : "Zone Behavior"}
+                            >
+                              <Select
+                                className="h-8 py-0 text-xs"
+                                value={selectedZone.type}
+                                onChange={(e) => {
+                                  const nextType = e.target.value as ZoneType;
+                                  updateZone(selectedZone.id, (z) => ({
+                                    ...z,
+                                    type: nextType,
+                                    colorHex: ZONE_META[nextType].color,
+                                    strength:
+                                      nextType === "suction"
+                                        ? (z.strength ?? 0.4)
+                                        : nextType === "repulsion"
+                                          ? (z.strength ?? 0.6)
+                                          : nextType === "forbidden"
+                                            ? (z.strength ?? 0.9)
+                                            : undefined,
+                                    speedFactor:
+                                      nextType === "speedLimit" ? (z.speedFactor ?? 0.5) : undefined,
+                                  }));
+                                }}
+                              >
+                                {(Object.keys(ZONE_META) as ZoneType[]).map((zt) => (
+                                  <option key={zt} value={zt}>
+                                    {ZONE_META[zt].label[locale]}
+                                  </option>
+                                ))}
+                              </Select>
+                            </Field>
+                            <p className="text-[11px] leading-snug text-slate-400">
+                              {ZONE_META[selectedZone.type].hint[locale]}
+                            </p>
+                          </div>
+
+                          <Field
+                            path={`zones.${selectedZone.id}.mirror`}
+                            label={locale === "pt" ? "Espelhar para Vermelho" : "Mirror to Red"}
+                          >
+                            <Select
+                              className="h-8 py-0 text-xs"
+                              value={selectedZone.mirror}
+                              onChange={(e) =>
+                                updateZone(selectedZone.id, (z) => ({
+                                  ...z,
+                                  mirror: e.target.value as ZoneMirror,
+                                }))
+                              }
+                            >
+                              <option value="both">
+                                {locale === "pt" ? "Rotação 180° (Azul ↔ Vermelho)" : "both (180° rotation)"}
+                              </option>
+                              <option value="x">
+                                {locale === "pt" ? "Espelho horizontal (X)" : "x (horizontal mirror)"}
+                              </option>
+                              <option value="y">
+                                {locale === "pt" ? "Espelho vertical (Y)" : "y (vertical mirror)"}
+                              </option>
+                              <option value="none">
+                                {locale === "pt" ? "Apenas Aliança Azul" : "none (Blue only)"}
+                              </option>
+                            </Select>
+                          </Field>
+
+                          {(selectedZone.type === "suction" ||
+                            selectedZone.type === "repulsion" ||
+                            selectedZone.type === "forbidden") && (
+                            <Field
+                              path={`zones.${selectedZone.id}.strength`}
+                              label={locale === "pt" ? "Força (0.05 – 1.0)" : "Strength (0.05 – 1.0)"}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="range"
+                                  min={0.05}
+                                  max={1.0}
+                                  step={0.05}
+                                  value={strengthVal}
+                                  onChange={(e) =>
+                                    updateZone(selectedZone.id, (z) => ({
+                                      ...z,
+                                      strength: Number.parseFloat(e.target.value),
+                                    }))
+                                  }
+                                  className="flex-1"
+                                />
+                                <Input
+                                  type="number"
+                                  step={0.05}
+                                  min={0.05}
+                                  max={1.0}
+                                  className="h-7 py-0 w-16 font-mono text-xs"
+                                  value={strengthVal}
+                                  onChange={(e) => {
+                                    const val = clamp(
+                                      Number.parseFloat(e.target.value || "0.5") || 0.5,
+                                      0.05,
+                                      1.0,
+                                    );
+                                    updateZone(selectedZone.id, (z) => ({ ...z, strength: val }));
+                                  }}
+                                />
+                              </div>
+                            </Field>
+                          )}
+
+                          {selectedZone.type === "speedLimit" && (
+                            <Field
+                              path={`zones.${selectedZone.id}.speedFactor`}
+                              label={
+                                locale === "pt"
+                                  ? "Limite de velocidade"
+                                  : "Speed Factor (0.1 – 1.0)"
+                              }
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="range"
+                                  min={0.1}
+                                  max={1.0}
+                                  step={0.05}
+                                  value={speedVal}
+                                  onChange={(e) =>
+                                    updateZone(selectedZone.id, (z) => ({
+                                      ...z,
+                                      speedFactor: Number.parseFloat(e.target.value),
+                                    }))
+                                  }
+                                  className="flex-1"
+                                />
+                                <span className="w-9 text-right font-mono text-[11px] text-amber-300">
+                                  {Math.round(speedVal * 100)}%
+                                </span>
+                                <Input
+                                  type="number"
+                                  step={0.05}
+                                  min={0.1}
+                                  max={1.0}
+                                  className="h-7 py-0 w-16 font-mono text-xs"
+                                  value={speedVal}
+                                  onChange={(e) => {
+                                    const val = clamp(
+                                      Number.parseFloat(e.target.value || "0.5") || 0.5,
+                                      0.1,
+                                      1.0,
+                                    );
+                                    updateZone(selectedZone.id, (z) => ({ ...z, speedFactor: val }));
+                                  }}
+                                />
+                              </div>
+                            </Field>
+                          )}
+
+                          {selectedZone.type === "forbidden" && (
+                            <Field
+                              path={`zones.${selectedZone.id}.alertMessage`}
+                              label={locale === "pt" ? "Mensagem PersistentAlert" : "PersistentAlert Message"}
+                            >
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder={`Robot entered forbidden zone ${selectedZone.name}`}
+                                value={selectedZone.alertMessage ?? ""}
+                                onChange={(e) =>
+                                  updateZone(selectedZone.id, (z) => ({
+                                    ...z,
+                                    alertMessage: e.target.value,
+                                  }))
+                                }
+                              />
+                            </Field>
+                          )}
+
+                          {/* Collapsible Precise Coordinates */}
+                          <div className="border-t border-[#22304a]/80 pt-2 space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowCoords((v) => !v)}
+                              className="flex w-full items-center justify-between text-left cursor-pointer"
+                            >
+                              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-400 hover:text-slate-200">
+                                {showCoords ? (
+                                  <ChevronDown className="h-3 w-3" />
+                                ) : (
+                                  <ChevronRight className="h-3 w-3" />
+                                )}
+                                <SlidersHorizontal className="h-3 w-3" />
+                                {locale === "pt" ? "Coordenadas precisas" : "Precise coordinates"}
+                              </span>
+                              <span className="font-mono text-[10px] text-slate-400">
+                                {dimsLabel}
+                              </span>
+                            </button>
+
+                            {showCoords && selectedZone.shape.kind === "rectangle" && (
+                              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                                <Field path={`zones.${selectedZone.id}.shape.x1`} label="X1 (m)">
+                                  <Input
+                                    type="number"
+                                    step={0.05}
+                                    className="h-7 py-0 font-mono text-xs"
+                                    value={selectedZone.shape.x1}
+                                    onChange={(e) => {
+                                      const x1 = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateZone(selectedZone.id, (z) =>
+                                        z.shape.kind === "rectangle"
+                                          ? { ...z, shape: { ...z.shape, x1 } }
+                                          : z,
+                                      );
+                                    }}
+                                  />
+                                </Field>
+                                <Field path={`zones.${selectedZone.id}.shape.y1`} label="Y1 (m)">
+                                  <Input
+                                    type="number"
+                                    step={0.05}
+                                    className="h-7 py-0 font-mono text-xs"
+                                    value={selectedZone.shape.y1}
+                                    onChange={(e) => {
+                                      const y1 = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateZone(selectedZone.id, (z) =>
+                                        z.shape.kind === "rectangle"
+                                          ? { ...z, shape: { ...z.shape, y1 } }
+                                          : z,
+                                      );
+                                    }}
+                                  />
+                                </Field>
+                                <Field path={`zones.${selectedZone.id}.shape.x2`} label="X2 (m)">
+                                  <Input
+                                    type="number"
+                                    step={0.05}
+                                    className="h-7 py-0 font-mono text-xs"
+                                    value={selectedZone.shape.x2}
+                                    onChange={(e) => {
+                                      const x2 = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateZone(selectedZone.id, (z) =>
+                                        z.shape.kind === "rectangle"
+                                          ? { ...z, shape: { ...z.shape, x2 } }
+                                          : z,
+                                      );
+                                    }}
+                                  />
+                                </Field>
+                                <Field path={`zones.${selectedZone.id}.shape.y2`} label="Y2 (m)">
+                                  <Input
+                                    type="number"
+                                    step={0.05}
+                                    className="h-7 py-0 font-mono text-xs"
+                                    value={selectedZone.shape.y2}
+                                    onChange={(e) => {
+                                      const y2 = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateZone(selectedZone.id, (z) =>
+                                        z.shape.kind === "rectangle"
+                                          ? { ...z, shape: { ...z.shape, y2 } }
+                                          : z,
+                                      );
+                                    }}
+                                  />
+                                </Field>
+                              </div>
+                            )}
+
+                            {showCoords && selectedZone.shape.kind === "circle" && (
+                              <div className="grid grid-cols-3 gap-2 pt-1">
+                                <Field path={`zones.${selectedZone.id}.shape.cx`} label="CX (m)">
+                                  <Input
+                                    type="number"
+                                    step={0.05}
+                                    className="h-7 py-0 font-mono text-xs"
+                                    value={selectedZone.shape.cx}
+                                    onChange={(e) => {
+                                      const cx = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateZone(selectedZone.id, (z) =>
+                                        z.shape.kind === "circle"
+                                          ? { ...z, shape: { ...z.shape, cx } }
+                                          : z,
+                                      );
+                                    }}
+                                  />
+                                </Field>
+                                <Field path={`zones.${selectedZone.id}.shape.cy`} label="CY (m)">
+                                  <Input
+                                    type="number"
+                                    step={0.05}
+                                    className="h-7 py-0 font-mono text-xs"
+                                    value={selectedZone.shape.cy}
+                                    onChange={(e) => {
+                                      const cy = Number.parseFloat(e.target.value || "0") || 0;
+                                      updateZone(selectedZone.id, (z) =>
+                                        z.shape.kind === "circle"
+                                          ? { ...z, shape: { ...z.shape, cy } }
+                                          : z,
+                                      );
+                                    }}
+                                  />
+                                </Field>
+                                <Field path={`zones.${selectedZone.id}.shape.radius`} label="R (m)">
+                                  <Input
+                                    type="number"
+                                    step={0.05}
+                                    min={0.05}
+                                    className="h-7 py-0 font-mono text-xs"
+                                    value={selectedZone.shape.radius}
+                                    onChange={(e) => {
+                                      const radius = Math.max(
+                                        0.05,
+                                        Number.parseFloat(e.target.value || "0.5") || 0.5,
+                                      );
+                                      updateZone(selectedZone.id, (z) =>
+                                        z.shape.kind === "circle"
+                                          ? { ...z, shape: { ...z.shape, radius } }
+                                          : z,
+                                      );
+                                    }}
+                                  />
+                                </Field>
+                              </div>
+                            )}
+
+                            {showCoords && selectedZone.shape.kind === "polygon" && (
+                              <div className="space-y-2 pt-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono text-[11px] uppercase text-slate-400">
+                                    Vértices ({selectedZone.shape.vertices.length})
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-2 text-[11px]"
+                                    onClick={() =>
+                                      updateZone(selectedZone.id, (z) => {
+                                        if (z.shape.kind !== "polygon") return z;
+                                        const last = z.shape.vertices[z.shape.vertices.length - 1] ?? {
+                                          x: 1,
+                                          y: 1,
+                                        };
+                                        return {
+                                          ...z,
+                                          shape: {
+                                            kind: "polygon",
+                                            vertices: [
+                                              ...z.shape.vertices,
+                                              {
+                                                x: round2(clamp(last.x + 0.5, 0, fieldL)),
+                                                y: round2(clamp(last.y, 0, fieldW)),
+                                              },
+                                            ],
+                                          },
+                                        };
+                                      })
+                                    }
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                    Vértice
+                                  </Button>
+                                </div>
+                                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                  {selectedZone.shape.vertices.map((v, vIdx) => (
+                                    <div key={vIdx} className="flex items-center gap-1.5">
+                                      <span className="w-6 font-mono text-[10px] text-slate-500">
+                                        P{vIdx + 1}
+                                      </span>
+                                      <Input
+                                        type="number"
+                                        step={0.05}
+                                        className="h-7 py-0 font-mono text-xs"
+                                        value={v.x}
+                                        onChange={(e) => {
+                                          const x = Number.parseFloat(e.target.value || "0") || 0;
+                                          updateZone(selectedZone.id, (z) =>
+                                            z.shape.kind === "polygon"
+                                              ? {
+                                                  ...z,
+                                                  shape: {
+                                                    kind: "polygon",
+                                                    vertices: z.shape.vertices.map((pt, i) =>
+                                                      i === vIdx ? { ...pt, x } : pt,
+                                                    ),
+                                                  },
+                                                }
+                                              : z,
+                                          );
+                                        }}
+                                      />
+                                      <Input
+                                        type="number"
+                                        step={0.05}
+                                        className="h-7 py-0 font-mono text-xs"
+                                        value={v.y}
+                                        onChange={(e) => {
+                                          const y = Number.parseFloat(e.target.value || "0") || 0;
+                                          updateZone(selectedZone.id, (z) =>
+                                            z.shape.kind === "polygon"
+                                              ? {
+                                                  ...z,
+                                                  shape: {
+                                                    kind: "polygon",
+                                                    vertices: z.shape.vertices.map((pt, i) =>
+                                                      i === vIdx ? { ...pt, y } : pt,
+                                                    ),
+                                                  },
+                                                }
+                                              : z,
+                                          );
+                                        }}
+                                      />
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 shrink-0"
+                                        disabled={
+                                          selectedZone.shape.kind === "polygon" &&
+                                          selectedZone.shape.vertices.length <= 3
+                                        }
+                                        onClick={() =>
+                                          updateZone(selectedZone.id, (z) =>
+                                            z.shape.kind === "polygon" && z.shape.vertices.length > 3
+                                              ? {
+                                                  ...z,
+                                                  shape: {
+                                                    kind: "polygon",
+                                                    vertices: z.shape.vertices.filter((_, i) => i !== vIdx),
+                                                  },
+                                                }
+                                              : z,
+                                          )
+                                        }
+                                      >
+                                        <Trash2 className="h-3 w-3 text-rose-400" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
             )}
 
             {innerTab === "presets" && (
-              <div className="space-y-2.5 max-h-[490px] overflow-y-auto pr-0.5">
+              <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-0.5">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[11px] text-slate-400">
                     {locale === "pt"
@@ -2326,6 +2914,7 @@ export function ArenaTab() {
                           zones: [...(prev.zones ?? []), ...toAdd],
                         }));
                         setSelectedZoneId(toAdd[0].id);
+                        setInnerTab("zones");
                       }
                     }}
                   >
@@ -2339,14 +2928,6 @@ export function ArenaTab() {
                   const alreadyAdded = zones.some(
                     (z) => z.name.toUpperCase() === preview.name.toUpperCase(),
                   );
-                  const shapeTag =
-                    preview.shape.kind === "circle"
-                      ? locale === "pt"
-                        ? "Círculo"
-                        : "Circle"
-                      : locale === "pt"
-                        ? "Retângulo"
-                        : "Rect";
                   return (
                     <div
                       key={preset.id}
@@ -2388,9 +2969,9 @@ export function ArenaTab() {
                           {preview.name}
                         </span>
                         <span>·</span>
-                        <span>{shapeTag}</span>
+                        <span>{formatShapeLabel(preview.shape.kind, locale)}</span>
                         <span>·</span>
-                        <span>mirror {preview.mirror}</span>
+                        <span>{formatMirrorLabel(preview.mirror, locale)}</span>
                       </div>
                     </div>
                   );
@@ -2399,6 +2980,7 @@ export function ArenaTab() {
             )}
           </CardContent>
         </Card>
+        )}
       </div>
 
       {showJava && fieldZonesFile && (
