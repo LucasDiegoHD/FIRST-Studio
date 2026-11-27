@@ -25,7 +25,7 @@ function diffIoVendorClass(vendor: MotorVendor): string {
   return "DriveIOTalonSRX";
 }
 
-function renderDriveAssistantsImports(dt: DrivetrainConfig): string[] {
+function renderDriveAssistantsImports(dt: DrivetrainConfig, hasZones = false): string[] {
   const imports = [
     "import edu.wpi.first.math.MathUtil;",
     "import edu.wpi.first.math.geometry.Translation2d;",
@@ -44,6 +44,9 @@ function renderDriveAssistantsImports(dt: DrivetrainConfig): string[] {
     "import static edu.wpi.first.units.Units.RadiansPerSecond;",
     "import static edu.wpi.first.units.Units.RadiansPerSecondPerSecond;",
   ];
+  if (hasZones) {
+    imports.push("import org.ciprix.util.drivetrain.TranslationModifier;");
+  }
   if (dt.assistants.throttleMap) {
     imports.push("import org.ciprix.util.drivetrain.ThrottleMapModifier;");
   }
@@ -56,13 +59,20 @@ function renderDriveAssistantsImports(dt: DrivetrainConfig): string[] {
   return imports;
 }
 
-function renderDriveTeleopHelper(dt: DrivetrainConfig, applyDriveCall: string): string {
+function renderDriveTeleopHelper(
+  dt: DrivetrainConfig,
+  applyDriveCall: string,
+  hasZones = false,
+): string {
   const throttleSetup = dt.assistants.throttleMap
     ? "  private final ThrottleMapModifier throttleMap = new ThrottleMapModifier();\n"
     : "";
   const throttleApply = dt.assistants.throttleMap
     ? "          Translation2d mapped = throttleMap.apply(this, new Translation2d(x, y));\n"
     : "          Translation2d mapped = new Translation2d(x, y);\n";
+  const zoneApply = hasZones
+    ? "          mapped = zoneModifier.apply(this, mapped);\n"
+    : "";
 
   const rotStrategyInit = dt.assistants.headingStickRotation
     ? `    PIDRotation.setDefaultGains(${formatDouble(dt.assistants.rotKp)}, ${formatDouble(dt.assistants.rotKi)}, ${formatDouble(dt.assistants.rotKd)});
@@ -110,7 +120,7 @@ ${rotStrategyInit}
               double deadband = CiprixSettings.getControllerDeadband();
               double x = MathUtil.applyDeadband(xInput.getAsDouble(), deadband);
               double y = MathUtil.applyDeadband(yInput.getAsDouble(), deadband);
-${throttleApply}          double reqVx = mapped.getX() * maxSpeed.in(MetersPerSecond);
+${throttleApply}${zoneApply}          double reqVx = mapped.getX() * maxSpeed.in(MetersPerSecond);
           double reqVy = mapped.getY() * maxSpeed.in(MetersPerSecond);
           double reqOmega = rotStrategy.calculate(this);
 ${accelStep}          ${applyDriveCall}
@@ -123,7 +133,18 @@ ${targetHeadingReset}          rotStrategy.reset(this);
   }`;
 }
 
-function renderDriveContextMembers(dt: DrivetrainConfig): string {
+function renderDriveContextMembers(dt: DrivetrainConfig, hasZones = false): string {
+  const zoneMembers = hasZones
+    ? `
+  private TranslationModifier zoneModifier = (ctx, in) -> in;
+  private Runnable zonePeriodic = () -> {};
+
+  public void setZoneHooks(TranslationModifier modifier, Runnable periodicHook) {
+    this.zoneModifier = modifier != null ? modifier : (ctx, in) -> in;
+    this.zonePeriodic = periodicHook != null ? periodicHook : () -> {};
+  }`
+    : "";
+
   return `  private boolean fieldOriented = ${dt.fieldOrientedDefault};
   private final LinearVelocity maxSpeed = MetersPerSecond.of(${formatDouble(dt.maxSpeedMps)});
   private final AngularVelocity maxAngularSpeed = RadiansPerSecond.of(${formatDouble(dt.maxAngularSpeedRadPerSec)});
@@ -166,7 +187,7 @@ function renderDriveContextMembers(dt: DrivetrainConfig): string {
 
   public boolean isFieldOriented() {
     return fieldOriented;
-  }`;
+  }${zoneMembers}`;
 }
 
 function generateGyroIoFiles(
@@ -287,6 +308,7 @@ function generateCtreSwerve(
   dt: DrivetrainConfig,
   basePackage: string,
   baseDir: string,
+  hasZones: boolean,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const bus = dt.canBus.trim() || "rio";
@@ -384,7 +406,7 @@ public class CommandSwerveDrivetrain extends SwerveDrivetrain<TalonFX, TalonFX, 
 `;
 
   const imports = [
-    ...renderDriveAssistantsImports(dt),
+    ...renderDriveAssistantsImports(dt, hasZones),
     "import com.ctre.phoenix6.swerve.SwerveRequest;",
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -408,13 +430,13 @@ public class Drive extends SubsystemBase implements DriveContext, DriveAccelerat
   private final CommandSwerveDrivetrain swerve = TunerConstants.createDrivetrain();
   private final SwerveRequest.FieldCentric fieldCentric = new SwerveRequest.FieldCentric();
   private final SwerveRequest.RobotCentric robotCentric = new SwerveRequest.RobotCentric();
-${renderDriveContextMembers(dt)}
+${renderDriveContextMembers(dt, hasZones)}
 
   @Override
   public void periodic() {
     Logger.recordOutput("Drive/Pose", getPose());
     Logger.recordOutput("Drive/ChassisSpeeds", getRobotVelocity());
-    Logger.recordOutput("Drive/FieldOriented", fieldOriented);
+    Logger.recordOutput("Drive/FieldOriented", fieldOriented);${hasZones ? "\n    zonePeriodic.run();" : ""}
   }
 
   @Override
@@ -442,6 +464,7 @@ ${renderDriveTeleopHelper(
               fieldOriented
                   ? fieldCentric.withVelocityX(vx).withVelocityY(vy).withRotationalRate(omega)
                   : robotCentric.withVelocityX(vx).withVelocityY(vy).withRotationalRate(omega));`,
+  hasZones,
 )}
 }
 `;
@@ -457,6 +480,7 @@ function generateYagsl(
   dt: DrivetrainConfig,
   basePackage: string,
   baseDir: string,
+  hasZones: boolean,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const halfLength = dt.wheelBaseMeters / 2;
@@ -539,7 +563,7 @@ function generateYagsl(
     );
 
   const imports = [
-    ...renderDriveAssistantsImports(dt),
+    ...renderDriveAssistantsImports(dt, hasZones),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.geometry.Pose2d;",
     "import edu.wpi.first.math.kinematics.ChassisSpeeds;",
@@ -565,7 +589,7 @@ ${imports}
 /** YAGSL drivetrain adapter implementing Ciprix {@link DriveContext}. */
 public class Drive extends SubsystemBase implements DriveContext, DriveAccelerationLimits {
   private final SwerveDrive swerveDrive;
-${renderDriveContextMembers(dt)}
+${renderDriveContextMembers(dt, hasZones)}
 
   public Drive() {
     try {
@@ -582,7 +606,7 @@ ${renderDriveContextMembers(dt)}
     swerveDrive.updateOdometry();
     Logger.recordOutput("Drive/Pose", getPose());
     Logger.recordOutput("Drive/ChassisSpeeds", getRobotVelocity());
-    Logger.recordOutput("Drive/FieldOriented", fieldOriented);
+    Logger.recordOutput("Drive/FieldOriented", fieldOriented);${hasZones ? "\n    zonePeriodic.run();" : ""}
   }
 
   @Override
@@ -607,6 +631,7 @@ ${renderDriveContextMembers(dt)}
 ${renderDriveTeleopHelper(
   dt,
   "swerveDrive.drive(new Translation2d(vx, vy), omega, fieldOriented, false);",
+  hasZones,
 )}
 }
 `;
@@ -628,6 +653,7 @@ function generateAkitSwerve(
   dt: DrivetrainConfig,
   basePackage: string,
   baseDir: string,
+  hasZones: boolean,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const realGyroClass = gyroClassName(dt.gyro.type);
@@ -825,7 +851,7 @@ public class Module {
 `;
 
   const imports = [
-    ...renderDriveAssistantsImports(dt),
+    ...renderDriveAssistantsImports(dt, hasZones),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -857,7 +883,7 @@ public class Drive extends SubsystemBase implements DriveContext, DriveAccelerat
       new SwerveDriveKinematics(DriveConstants.MODULE_TRANSLATIONS);
   private final SwerveDrivePoseEstimator poseEstimator;
   private Rotation2d rawGyroRotation = new Rotation2d();
-${renderDriveContextMembers(dt)}
+${renderDriveContextMembers(dt, hasZones)}
 
   public Drive() {
     switch (CiprixSettings.getMode()) {
@@ -892,7 +918,7 @@ ${renderDriveContextMembers(dt)}
 
     Logger.recordOutput("Drive/Pose", getPose());
     Logger.recordOutput("Drive/ChassisSpeeds", speeds);
-    Logger.recordOutput("Drive/SwerveStates/Measured", getModuleStates());
+    Logger.recordOutput("Drive/SwerveStates/Measured", getModuleStates());${hasZones ? "\n    zonePeriodic.run();" : ""}
   }
 
   public void runVelocity(ChassisSpeeds speeds) {
@@ -940,6 +966,7 @@ ${renderDriveTeleopHelper(
               ? ChassisSpeeds.fromFieldRelativeSpeeds(vx, vy, omega, getRotation())
               : new ChassisSpeeds(vx, vy, omega);
           runVelocity(target);`,
+  hasZones,
 )}
 }
 `;
@@ -959,6 +986,7 @@ function generateDifferential(
   dt: DrivetrainConfig,
   basePackage: string,
   baseDir: string,
+  hasZones: boolean,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const realDiffClass = diffIoVendorClass(dt.motorVendor);
@@ -1088,7 +1116,7 @@ public class DriveIOSim implements DriveIO {
 `;
 
   const imports = [
-    ...renderDriveAssistantsImports(dt),
+    ...renderDriveAssistantsImports(dt, hasZones),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.DifferentialDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -1121,7 +1149,7 @@ public class Drive extends SubsystemBase implements DriveContext, DriveAccelerat
       new DifferentialDriveKinematics(DriveConstants.TRACK_WIDTH_METERS);
   private final DifferentialDrivePoseEstimator poseEstimator;
   private Rotation2d heading = new Rotation2d();
-${renderDriveContextMembers(dt)}
+${renderDriveContextMembers(dt, hasZones)}
 
   public Drive() {
     switch (CiprixSettings.getMode()) {
@@ -1155,7 +1183,7 @@ ${renderDriveContextMembers(dt)}
     poseEstimator.update(heading, inputs.leftPositionMeters, inputs.rightPositionMeters);
 
     Logger.recordOutput("Drive/Pose", getPose());
-    Logger.recordOutput("Drive/ChassisSpeeds", getRobotVelocity());
+    Logger.recordOutput("Drive/ChassisSpeeds", getRobotVelocity());${hasZones ? "\n    zonePeriodic.run();" : ""}
   }
 
   @Override
@@ -1201,6 +1229,7 @@ function generateMecanum(
   dt: DrivetrainConfig,
   basePackage: string,
   baseDir: string,
+  hasZones: boolean,
 ): GeneratedFile[] {
   const fullPkg = `${basePackage}.subsystems.drive`;
   const realMecClass = diffIoVendorClass(dt.motorVendor);
@@ -1285,7 +1314,7 @@ public class DriveIOSim implements DriveIO {
 `;
 
   const imports = [
-    ...renderDriveAssistantsImports(dt),
+    ...renderDriveAssistantsImports(dt, hasZones),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.MecanumDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -1320,7 +1349,7 @@ public class Drive extends SubsystemBase implements DriveContext, DriveAccelerat
           DriveConstants.FL_POS, DriveConstants.FR_POS, DriveConstants.BL_POS, DriveConstants.BR_POS);
   private final MecanumDrivePoseEstimator poseEstimator;
   private Rotation2d heading = new Rotation2d();
-${renderDriveContextMembers(dt)}
+${renderDriveContextMembers(dt, hasZones)}
 
   public Drive() {
     switch (CiprixSettings.getMode()) {
@@ -1356,7 +1385,7 @@ ${renderDriveContextMembers(dt)}
         heading,
         new MecanumDriveWheelPositions(inputs.flMeters, inputs.frMeters, inputs.blMeters, inputs.brMeters));
     Logger.recordOutput("Drive/Pose", getPose());
-    Logger.recordOutput("Drive/ChassisSpeeds", getRobotVelocity());
+    Logger.recordOutput("Drive/ChassisSpeeds", getRobotVelocity());${hasZones ? "\n    zonePeriodic.run();" : ""}
   }
 
   @Override
@@ -1389,6 +1418,7 @@ ${renderDriveTeleopHelper(
                   fieldOriented ? getRotation() : new Rotation2d());
           double maxSpd = maxSpeed.in(MetersPerSecond);
           io.setWheelSpeedsMps(ws.frontLeft * maxSpd, ws.frontRight * maxSpd, ws.rearLeft * maxSpd, ws.rearRight * maxSpd);`,
+  hasZones,
 )}
 }
 `;
@@ -1451,6 +1481,7 @@ ${busDecl}  private final MotorIO fl = new ${motorCtor}("Drive/FL", DriveConstan
 export function generateDrivetrainFiles(
   drivetrain: DrivetrainConfig | undefined,
   basePackage: string,
+  hasZones = false,
 ): GeneratedFile[] {
   if (!drivetrain?.enabled) return [];
 
@@ -1459,14 +1490,14 @@ export function generateDrivetrainFiles(
 
   switch (drivetrain.type) {
     case "ctre_swerve":
-      return generateCtreSwerve(drivetrain, basePackage, baseDir);
+      return generateCtreSwerve(drivetrain, basePackage, baseDir, hasZones);
     case "yagsl":
-      return generateYagsl(drivetrain, basePackage, baseDir);
+      return generateYagsl(drivetrain, basePackage, baseDir, hasZones);
     case "akit_swerve":
-      return generateAkitSwerve(drivetrain, basePackage, baseDir);
+      return generateAkitSwerve(drivetrain, basePackage, baseDir, hasZones);
     case "differential":
-      return generateDifferential(drivetrain, basePackage, baseDir);
+      return generateDifferential(drivetrain, basePackage, baseDir, hasZones);
     case "mecanum":
-      return generateMecanum(drivetrain, basePackage, baseDir);
+      return generateMecanum(drivetrain, basePackage, baseDir, hasZones);
   }
 }

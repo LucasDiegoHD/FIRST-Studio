@@ -3,6 +3,7 @@ import {
   isMotorSubsystem,
   type CiprixProject,
   type LedPattern,
+  type PilotCondition,
   type RumblePattern,
   type StateAction,
   type SuperStateEffect,
@@ -18,6 +19,7 @@ import {
 } from "../java-utils";
 import { getSensorGetterName } from "../sensors";
 import { getVendorIoClassName, type GeneratedFile } from "../subsystems/roller";
+import { resolveZoneEnumNames } from "../zones";
 
 function escapeJavaString(text: string): string {
   return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, "\\n");
@@ -170,6 +172,17 @@ public class Robot extends CiprixRobot {
   // SuperStructure.java (only motor subsystems!)
   const motorSubs = project.subsystems.filter(isMotorSubsystem);
   const ledSubs = project.subsystems.filter(isLedSubsystem);
+  const zones = project.zones ?? [];
+  const hasZones = zones.length > 0;
+  const dt = project.drivetrain;
+  const hasDrivetrain = Boolean(dt?.enabled);
+  const zonesWired = hasZones && hasDrivetrain;
+  const zoneEnumById = resolveZoneEnumNames(zones);
+  const superUsesZones =
+    zonesWired &&
+    (project.superstructure.transitions ?? []).some(
+      (tr) => tr.condition === "inZone" || tr.condition === "outOfZone",
+    );
 
   const subInfos = motorSubs.map((s) => {
     const className = toPascalCase(s.name);
@@ -269,6 +282,15 @@ public class Robot extends CiprixRobot {
           }
           return `\n        .transitionTo(RobotState.${tr.toState}, () -> false)`;
         }
+        if (tr.condition === "inZone" || tr.condition === "outOfZone") {
+          const zEnum = tr.zoneId ? zoneEnumById.get(tr.zoneId) : undefined;
+          if (superUsesZones && zEnum) {
+            const call = `fieldZones.inZone(ZoneId.${zEnum}, poseSupplier.get())`;
+            const expr = tr.condition === "outOfZone" ? `!${call}` : call;
+            return `\n        .transitionTo(RobotState.${tr.toState}, () -> ${expr})`;
+          }
+          return `\n        .transitionTo(RobotState.${tr.toState}, () -> false)`;
+        }
         const ids =
           tr.condition === "allAtGoal"
             ? motorSubs.map((s) => s.id)
@@ -307,6 +329,14 @@ public class Robot extends CiprixRobot {
   if (superHasLogs) {
     superImportsList.push("import org.littletonrobotics.junction.Logger;");
   }
+  if (superUsesZones) {
+    superImportsList.push(
+      "import edu.wpi.first.math.geometry.Pose2d;",
+      "import java.util.function.Supplier;",
+      `import ${pkg}.field.FieldZones;`,
+      `import ${pkg}.field.FieldZones.ZoneId;`,
+    );
+  }
 
   const superImports = [
     `import ${pkg}.Constants.RobotRequest;`,
@@ -328,10 +358,27 @@ public class Robot extends CiprixRobot {
       (info) =>
         `  private final ${info.className} ${info.varName};\n  private ${info.requestEnum} ${info.requestField} = ${info.requestEnum}.${info.sub.fsm.initialRequest};`,
     ),
+    ...(superUsesZones
+      ? [
+          "  private final FieldZones fieldZones;",
+          "  private final Supplier<Pose2d> poseSupplier;",
+        ]
+      : []),
   ].join("\n");
 
-  const ctorParams = subInfos.map((info) => `${info.className} ${info.varName}`).join(", ");
-  const ctorAssigns = subInfos.map((info) => `    this.${info.varName} = ${info.varName};`).join("\n");
+  const ctorParams = [
+    ...subInfos.map((info) => `${info.className} ${info.varName}`),
+    ...(superUsesZones ? ["FieldZones fieldZones", "Supplier<Pose2d> poseSupplier"] : []),
+  ].join(", ");
+  const ctorAssigns = [
+    ...subInfos.map((info) => `    this.${info.varName} = ${info.varName};`),
+    ...(superUsesZones
+      ? [
+          "    this.fieldZones = fieldZones;",
+          "    this.poseSupplier = poseSupplier;",
+        ]
+      : []),
+  ].join("\n");
 
   const superBindings = project.superstructure.bindings
     .map((b) => `    bindRequest(RobotRequest.${b.request}, RobotState.${b.entryState});`)
@@ -371,20 +418,32 @@ ${superBindings}
 ${superGetters ? "\n" + superGetters + "\n" : ""}}
 `;
 
-  // SuperStructureCommands.java (continuous button or continuous sensor priorities)
+  // SuperStructureCommands.java (continuous button, sensor, or zone priorities)
   const continuousPilotEntries = project.controls.pilotPriority.filter((entry) => {
-    if (entry.source !== "sensor") return Boolean(entry.button);
-    return entry.sensorTrigger === "whileTrue" || entry.sensorTrigger === "whileFalse" || !entry.sensorTrigger;
+    if (entry.source === "sensor") {
+      return entry.sensorTrigger === "whileTrue" || entry.sensorTrigger === "whileFalse" || !entry.sensorTrigger;
+    }
+    if (entry.source === "zone") {
+      return entry.zoneTrigger === "inZone" || !entry.zoneTrigger;
+    }
+    return Boolean(entry.button);
   });
-  const edgeSensorEntries = project.controls.pilotPriority.filter(
+  const edgeEntries = project.controls.pilotPriority.filter(
     (entry) =>
-      entry.source === "sensor" &&
-      (entry.sensorTrigger === "onTrue" || entry.sensorTrigger === "onFalse"),
+      (entry.source === "sensor" &&
+        (entry.sensorTrigger === "onTrue" || entry.sensorTrigger === "onFalse")) ||
+      (entry.source === "zone" &&
+        (entry.zoneTrigger === "enteredZone" || entry.zoneTrigger === "leftZone")),
   );
 
   const usedParamNames = new Set<string>();
   const pilotParams = continuousPilotEntries.map((entry, idx) => {
-    const suffix = entry.source === "sensor" ? "Sensor" : "Button";
+    const suffix =
+      entry.source === "sensor"
+        ? "Sensor"
+        : entry.source === "zone"
+          ? "Zone"
+          : "Button";
     const base = `${toCamelCase(entry.request)}${suffix}`;
     let paramName = base;
     if (usedParamNames.has(paramName)) {
@@ -440,8 +499,7 @@ ${requestSelectionBody}
   // RobotContainer.java (wires LEDs & Rumble triggers via inState — zero coupling inside subsystems!)
   const usesLeds = projectUsesLedArbiter(project);
   const usesRumble = projectUsesRumbleArbiter(project);
-  const usesTriggers =
-    edgeSensorEntries.length > 0;
+  const usesTriggers = edgeEntries.length > 0;
 
   const containerImportSet = new Set<string>([
     "import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;",
@@ -551,12 +609,10 @@ ${requestSelectionBody}
     }
   }
 
-  const dt = project.drivetrain;
-  const hasDrivetrain = Boolean(dt?.enabled);
   const visionCameras = hasDrivetrain && dt?.vision.enabled ? dt.vision.cameras : [];
   const hasVision = visionCameras.length > 0;
 
-  if (edgeSensorEntries.length > 0) {
+  if (edgeEntries.length > 0) {
     containerImportSet.add(`import ${pkg}.Constants.RobotRequest;`);
   }
   if (needRobotStateImport) {
@@ -564,6 +620,9 @@ ${requestSelectionBody}
   }
   if (hasDrivetrain) {
     containerImportSet.add(`import ${pkg}.subsystems.drive.Drive;`);
+  }
+  if (hasZones) {
+    containerImportSet.add(`import ${pkg}.field.FieldZones;`);
   }
   if (hasVision) {
     containerImportSet.add("import edu.wpi.first.apriltag.AprilTagFieldLayout;");
@@ -576,6 +635,7 @@ ${requestSelectionBody}
 
   const containerFields = [
     ...(hasDrivetrain ? ["  private final Drive drive;"] : []),
+    ...(hasZones ? ["  private final FieldZones fieldZones = new FieldZones();"] : []),
     ...(hasVision ? ["  private final AprilTagVision vision;"] : []),
     ...(usesLeds ? ["  private final LedArbiter ledArbiter = new LedArbiter();"] : []),
     ...(usesRumble ? ["  private final RumbleArbiter rumbleArbiter;"] : []),
@@ -615,34 +675,95 @@ ${requestSelectionBody}
     }),
   ].join("\n");
 
-  const superArgs = subInfos.map((info) => info.varName).join(", ");
-  const pilotArgs = [
+  const renderExtraCondition = (cond: PilotCondition): string => {
+    let base = "false";
+    if (cond.kind === "button") {
+      base = `pilot.${xboxButtonToJavaMethod(cond.button, cond.triggerThreshold)}.getAsBoolean()`;
+    } else if (cond.kind === "sensor") {
+      const info = subInfoById.get(cond.sensorOwnerId);
+      const sensor = info?.sub.sensors?.find((s) => s.id === cond.sensorId);
+      if (info && sensor) {
+        base = `${info.varName}.${getSensorGetterName(sensor)}()`;
+      }
+    } else if (cond.kind === "zone") {
+      const zEnum = zoneEnumById.get(cond.zoneId);
+      if (zonesWired && zEnum) {
+        base = `fieldZones.inZone(ZoneId.${zEnum}, drive.getPose())`;
+      }
+    }
+    return cond.negated ? `!${base}` : base;
+  };
+
+  const superArgs = [
+    ...subInfos.map((info) => info.varName),
+    ...(superUsesZones ? ["fieldZones", "drive::getPose"] : []),
+  ].join(", ");
+
+  const pilotArgsList = [
     "superStructure",
     ...pilotParams.map((p) => {
+      const andExprs = (p.andConditions ?? []).map(renderExtraCondition);
+      let primaryBool = "false";
+      let isSimpleButton = false;
+
       if (p.source === "sensor") {
         const info = p.sensorOwnerId ? subInfoById.get(p.sensorOwnerId) : undefined;
         const sensor = info?.sub.sensors?.find((s) => s.id === p.sensorId);
         if (info && sensor) {
           const getterCall = `${info.varName}.${getSensorGetterName(sensor)}()`;
-          return p.sensorTrigger === "whileFalse" ? `() -> !${getterCall}` : `() -> ${getterCall}`;
+          primaryBool = p.sensorTrigger === "whileFalse" ? `!${getterCall}` : getterCall;
         }
-        return "() -> false";
+      } else if (p.source === "zone") {
+        const zEnum = p.zoneId ? zoneEnumById.get(p.zoneId) : undefined;
+        if (zonesWired && zEnum) {
+          primaryBool = `fieldZones.inZone(ZoneId.${zEnum}, drive.getPose())`;
+        }
+      } else {
+        isSimpleButton = andExprs.length === 0;
+        primaryBool = `pilot.${xboxButtonToJavaMethod(p.button ?? "a", p.triggerThreshold)}.getAsBoolean()`;
       }
-      return `pilot.${xboxButtonToJavaMethod(p.button ?? "a", p.triggerThreshold)}`;
-    }),
-  ].join(", ");
 
-  const edgeSensorTriggerLines = edgeSensorEntries
+      if (isSimpleButton) {
+        return `pilot.${xboxButtonToJavaMethod(p.button ?? "a", p.triggerThreshold)}`;
+      }
+      const combined = [primaryBool, ...andExprs].join(" && ");
+      return `() -> ${combined}`;
+    }),
+  ];
+  const pilotArgs = pilotArgsList.join(", ");
+
+  const edgeTriggerLines = edgeEntries
     .map((entry) => {
-      const info = entry.sensorOwnerId ? subInfoById.get(entry.sensorOwnerId) : undefined;
-      const sensor = info?.sub.sensors?.find((s) => s.id === entry.sensorId);
-      if (!info || !sensor) return null;
-      const getterCall = `${info.varName}.${getSensorGetterName(sensor)}()`;
-      const method = entry.sensorTrigger === "onFalse" ? "onFalse" : "onTrue";
-      return `    new Trigger(() -> ${getterCall}).${method}(Commands.runOnce(() -> superStructure.setRequest(RobotRequest.${entry.request})));`;
+      let getterCall: string | null = null;
+      let method: "onTrue" | "onFalse" = "onTrue";
+
+      if (entry.source === "sensor") {
+        const info = entry.sensorOwnerId ? subInfoById.get(entry.sensorOwnerId) : undefined;
+        const sensor = info?.sub.sensors?.find((s) => s.id === entry.sensorId);
+        if (!info || !sensor) return null;
+        getterCall = `${info.varName}.${getSensorGetterName(sensor)}()`;
+        method = entry.sensorTrigger === "onFalse" ? "onFalse" : "onTrue";
+      } else if (entry.source === "zone") {
+        const zEnum = entry.zoneId ? zoneEnumById.get(entry.zoneId) : undefined;
+        if (!zonesWired || !zEnum) return null;
+        getterCall = `fieldZones.inZone(ZoneId.${zEnum}, drive.getPose())`;
+        method = entry.zoneTrigger === "leftZone" ? "onFalse" : "onTrue";
+      }
+      if (!getterCall) return null;
+
+      const andExprs = (entry.andConditions ?? []).map(renderExtraCondition);
+      const actionCmd =
+        andExprs.length > 0
+          ? `Commands.runOnce(() -> { if (${andExprs.join(" && ")}) { superStructure.setRequest(RobotRequest.${entry.request}); } })`
+          : `Commands.runOnce(() -> superStructure.setRequest(RobotRequest.${entry.request}))`;
+      return `    new Trigger(() -> ${getterCall}).${method}(${actionCmd});`;
     })
     .filter(Boolean)
     .join("\n");
+
+  if (pilotArgs.includes("ZoneId.") || edgeTriggerLines.includes("ZoneId.")) {
+    containerImportSet.add(`import ${pkg}.field.FieldZones.ZoneId;`);
+  }
 
   const defaultCommands = subInfos
     .map(
@@ -671,6 +792,11 @@ ${requestSelectionBody}
 
   const driveBindingLines: string[] = [];
   if (hasDrivetrain && dt) {
+    if (zonesWired) {
+      driveBindingLines.push(
+        "    drive.setZoneHooks(fieldZones::applyDriveModifiers, () -> fieldZones.periodic(drive.getPose()));",
+      );
+    }
     driveBindingLines.push(
       `    drive.setDefaultCommand(\n        drive.driveTeleopCommand(\n            () -> -pilot.getLeftY(),\n            () -> -pilot.getLeftX(),\n            () -> -pilot.getRightX(),\n            () -> -pilot.getRightY()));`,
     );
@@ -696,7 +822,7 @@ ${requestSelectionBody}
   const effectBlock =
     effectTriggerLines.length > 0 ? "\n" + effectTriggerLines.join("\n") : "";
 
-  const edgeBlock = edgeSensorTriggerLines ? "\n" + edgeSensorTriggerLines : "";
+  const edgeBlock = edgeTriggerLines ? "\n" + edgeTriggerLines : "";
 
   const robotContainerJava = `package ${pkg};
 

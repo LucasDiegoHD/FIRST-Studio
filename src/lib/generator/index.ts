@@ -6,6 +6,7 @@ import { generateLedArbiterFile } from "./leds";
 import { generateSubsystemFiles } from "./registry";
 import { generateRumbleArbiterFile } from "./rumble";
 import type { GeneratedFile } from "./subsystems/roller";
+import { generateFieldZonesFile } from "./zones";
 
 export function projectUsesLedArbiter(project: CiprixProject): boolean {
   if (project.subsystems.some((s) => s.type === "leds")) return true;
@@ -73,6 +74,8 @@ export function getRequiredVendordeps(project: CiprixProject): string[] {
 
 export function generateProjectFiles(project: CiprixProject): GeneratedFile[] {
   const files: GeneratedFile[] = [...generateCoreRobotFiles(project)];
+  const zones = project.zones ?? [];
+  const hasZones = zones.length > 0;
 
   if (projectUsesLedArbiter(project)) {
     files.push(generateLedArbiterFile(project.project.packageName));
@@ -80,8 +83,17 @@ export function generateProjectFiles(project: CiprixProject): GeneratedFile[] {
   if (projectUsesRumbleArbiter(project)) {
     files.push(generateRumbleArbiterFile(project.project.packageName));
   }
+  if (hasZones) {
+    files.push(generateFieldZonesFile(zones, project.project.packageName));
+  }
 
-  files.push(...generateDrivetrainFiles(project.drivetrain, project.project.packageName));
+  files.push(
+    ...generateDrivetrainFiles(
+      project.drivetrain,
+      project.project.packageName,
+      hasZones && Boolean(project.drivetrain?.enabled),
+    ),
+  );
 
   for (const subsystem of project.subsystems) {
     files.push(...generateSubsystemFiles(subsystem, project.project.packageName));

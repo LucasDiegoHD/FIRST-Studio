@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { ArrowRight, Plus, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -20,8 +20,8 @@ export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-3.5">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-slate-300">{t("fsm.bindings_title")}</span>
           <Badge variant="default">{subsystem.fsm.bindings.length}</Badge>
@@ -54,6 +54,10 @@ export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
         </Button>
       </div>
 
+      <p className="text-[11px] leading-relaxed text-slate-400">
+        Conecta cada Requisição ao Estado que o mecanismo executa. Intermediários são opcionais para sequências em etapas.
+      </p>
+
       <div className="space-y-2.5">
         {subsystem.fsm.bindings.map((binding, idx) => (
           <Field
@@ -61,14 +65,14 @@ export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
             path={`subsystems.${subsystem.id}.fsm.bindings.${binding.request}`}
           >
             <div className="space-y-2 rounded-lg border border-[#22304a] bg-[#0f1624] p-2.5">
-              <div className="grid grid-cols-12 gap-1.5 items-center">
+              <div className="grid grid-cols-12 gap-1.5 items-end">
                 <div className="col-span-4 space-y-1">
                   <span className="block font-mono text-[10px] uppercase text-slate-400">
                     {t("fsm.col_request")}
                   </span>
                   <Select
                     value={binding.request}
-                    className="font-mono h-8 text-xs"
+                    className="font-mono h-8 py-0 text-xs"
                     onChange={(e) =>
                       patchFsm((fsm) => ({
                         ...fsm,
@@ -86,13 +90,14 @@ export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
                   </Select>
                 </div>
 
-                <div className="col-span-3 space-y-1">
-                  <span className="block font-mono text-[10px] uppercase text-slate-400">
+                <div className="col-span-4 space-y-1">
+                  <span className="flex items-center gap-1 font-mono text-[10px] uppercase text-slate-400">
+                    <ArrowRight className="h-2.5 w-2.5 text-sky-400" />
                     {t("fsm.col_entry")}
                   </span>
                   <Select
                     value={binding.entryState}
-                    className="font-mono h-8 text-xs"
+                    className="font-mono h-8 py-0 text-xs"
                     onChange={(e) =>
                       patchFsm((fsm) => ({
                         ...fsm,
@@ -110,13 +115,14 @@ export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
                   </Select>
                 </div>
 
-                <div className="col-span-4 space-y-1">
-                  <span className="block font-mono text-[10px] uppercase text-slate-400">
+                <div className="col-span-3 space-y-1">
+                  <span className="flex items-center gap-1 font-mono text-[10px] uppercase text-slate-400">
+                    <ArrowRight className="h-2.5 w-2.5 text-sky-400" />
                     {t("fsm.col_goal")}
                   </span>
                   <Select
                     value={binding.goalState}
-                    className="font-mono h-8 text-xs"
+                    className="font-mono h-8 py-0 text-xs"
                     onChange={(e) =>
                       patchFsm((fsm) => ({
                         ...fsm,
@@ -134,7 +140,7 @@ export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
                   </Select>
                 </div>
 
-                <div className="col-span-1 flex justify-end pt-4">
+                <div className="col-span-1 flex justify-end">
                   <Button
                     size="icon"
                     variant="ghost"
@@ -156,6 +162,9 @@ export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
                 <span className="font-mono text-[10px] uppercase text-slate-400 mr-1">
                   {t("fsm.col_intermediate")}:
                 </span>
+                {binding.intermediateStates.length === 0 && (
+                  <span className="text-[11px] text-slate-500 mr-1">opcional</span>
+                )}
                 {binding.intermediateStates.map((inter, interIdx) => (
                   <span
                     key={`${inter}-${interIdx}`}
@@ -187,7 +196,7 @@ export function BindingsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
                 ))}
                 <Select
                   value=""
-                  className="h-6 w-28 font-mono text-[11px]"
+                  className="h-7 py-0 w-32 font-mono text-[11px]"
                   onChange={(e) => {
                     const chosen = e.target.value;
                     if (!chosen) return;

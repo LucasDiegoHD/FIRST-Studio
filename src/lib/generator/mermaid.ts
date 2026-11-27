@@ -60,6 +60,7 @@ export function generateSuperStructureMermaid(project: CiprixProject): string {
   ];
 
   const subById = new Map(project.subsystems.map((s) => [s.id, s]));
+  const zoneById = new Map((project.zones ?? []).map((z) => [z.id, z]));
 
   for (const tr of project.superstructure.transitions ?? []) {
     let label = "atGoal()";
@@ -72,6 +73,10 @@ export function generateSuperStructureMermaid(project: CiprixProject): string {
       const sensor = sub?.sensors?.find((s) => s.id === tr.sensorId);
       const sLabel = `${sub?.name ?? "?"}.${sensor?.name ?? "?"}`;
       label = tr.condition === "sensorTrue" ? `${sLabel} == true` : `${sLabel} == false`;
+    } else if (tr.condition === "inZone" || tr.condition === "outOfZone") {
+      const zone = tr.zoneId ? zoneById.get(tr.zoneId) : undefined;
+      const zName = zone?.name ?? "?";
+      label = tr.condition === "inZone" ? `inZone(${zName})` : `!inZone(${zName})`;
     }
     lines.push(`  ${tr.fromState} --> ${tr.toState} : ${label}`);
   }

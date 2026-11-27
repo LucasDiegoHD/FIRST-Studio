@@ -8,7 +8,14 @@ import type { Locale } from "./i18n";
 import { formatZodIssue } from "./issue-messages";
 
 export type IssueSeverity = "error" | "warning";
-export type StudioTab = "project" | "subsystems" | "fsm" | "superstructure" | "controls" | "code";
+export type StudioTab =
+  | "project"
+  | "subsystems"
+  | "fsm"
+  | "superstructure"
+  | "arena"
+  | "controls"
+  | "code";
 
 export interface ValidationIssue {
   id: string;
@@ -79,6 +86,8 @@ export function validateProject(
   const pwmPorts = new Map<number, string>();
   const dioChannels = new Map<number, string>();
   const subsystemById = new Map(project.subsystems.map((s) => [s.id, s]));
+  const zones = project.zones ?? [];
+  const zoneById = new Map(zones.map((z) => [z.id, z]));
   const ledSubIds = new Set(
     project.subsystems.filter((s) => s.type === "leds").map((s) => s.id),
   );
@@ -664,6 +673,19 @@ export function validateProject(
               : `Sensor interlock (${tr.fromState} -> ${tr.toState}) references a missing sensor.`,
         });
       }
+    } else if (tr.condition === "inZone" || tr.condition === "outOfZone") {
+      if (!tr.zoneId || !zoneById.has(tr.zoneId)) {
+        issues.push({
+          id: `super-tr-zone-${tr.id}`,
+          severity: "error",
+          tab: "superstructure",
+          path: `superstructure.transitions.${tr.id}`,
+          message:
+            locale === "pt"
+              ? `Intertravamento por zona (${tr.fromState} -> ${tr.toState}) referencia zona inexistente.`
+              : `Zone interlock (${tr.fromState} -> ${tr.toState}) references a missing zone.`,
+        });
+      }
     }
   }
 
@@ -894,6 +916,131 @@ export function validateProject(
     }
   }
 
+  // Arena zones checks
+  if (zones.length > 0 && !project.drivetrain?.enabled) {
+    issues.push({
+      id: "zones-no-drivetrain",
+      severity: "warning",
+      tab: "arena",
+      message:
+        locale === "pt"
+          ? "Zonas da Arena configuradas, mas o Drivetrain está desativado. Ative o Drivetrain na aba Robô para avaliar a pose no campo."
+          : "Arena zones configured, but Drivetrain is disabled. Enable Drivetrain in the Robot tab to evaluate field pose.",
+    });
+  }
+
+  const zoneNames = new Set<string>();
+  const fieldL = project.project.fieldLengthMeters;
+  const fieldW = project.project.fieldWidthMeters;
+  for (const z of zones) {
+    if (!isValidJavaIdentifier(z.name) || z.name === "NONE") {
+      issues.push({
+        id: `zone-invalid-name-${z.id}`,
+        severity: "error",
+        tab: "arena",
+        targetId: z.id,
+        path: `zones.${z.id}.name`,
+        fieldLabel: locale === "pt" ? "Nome da Zona" : "Zone Name",
+        message:
+          locale === "pt"
+            ? `Nome de zona inválido "${z.name}". Use identificador Java válido diferente de NONE.`
+            : `Invalid zone name "${z.name}". Use a valid Java identifier other than NONE.`,
+      });
+    } else {
+      const lower = z.name.toLowerCase();
+      if (zoneNames.has(lower)) {
+        issues.push({
+          id: `zone-dup-name-${z.id}`,
+          severity: "error",
+          tab: "arena",
+          targetId: z.id,
+          path: `zones.${z.id}.name`,
+          fieldLabel: locale === "pt" ? "Nome da Zona" : "Zone Name",
+          message:
+            locale === "pt"
+              ? `Nome de zona duplicado: "${z.name}".`
+              : `Duplicate zone name: "${z.name}".`,
+        });
+      } else {
+        zoneNames.add(lower);
+      }
+    }
+
+    let outOfBounds = false;
+    if (z.shape.kind === "rectangle") {
+      const { x1, y1, x2, y2 } = z.shape;
+      if (Math.abs(x2 - x1) < 0.05 || Math.abs(y2 - y1) < 0.05) {
+        issues.push({
+          id: `zone-rect-degen-${z.id}`,
+          severity: "error",
+          tab: "arena",
+          targetId: z.id,
+          path: `zones.${z.id}.shape.x2`,
+          fieldLabel: locale === "pt" ? "Retângulo" : "Rectangle",
+          message:
+            locale === "pt"
+              ? `Zona retangular "${z.name}" deve ter largura e altura mínimas de 0,05 m.`
+              : `Rectangular zone "${z.name}" must be at least 0.05 m in width and height.`,
+        });
+      }
+      if (x1 < 0 || x2 < 0 || x1 > fieldL || x2 > fieldL || y1 < 0 || y2 < 0 || y1 > fieldW || y2 > fieldW) {
+        outOfBounds = true;
+      }
+    } else if (z.shape.kind === "circle") {
+      const { cx, cy, radius } = z.shape;
+      if (radius < 0.05) {
+        issues.push({
+          id: `zone-circle-radius-${z.id}`,
+          severity: "error",
+          tab: "arena",
+          targetId: z.id,
+          path: `zones.${z.id}.shape.radius`,
+          fieldLabel: locale === "pt" ? "Raio (m)" : "Radius (m)",
+          message:
+            locale === "pt"
+              ? `Raio da zona "${z.name}" deve ser pelo menos 0,05 m.`
+              : `Zone "${z.name}" radius must be at least 0.05 m.`,
+        });
+      }
+      if (cx < 0 || cx > fieldL || cy < 0 || cy > fieldW) {
+        outOfBounds = true;
+      }
+    } else {
+      if (z.shape.vertices.length < 3) {
+        issues.push({
+          id: `zone-poly-verts-${z.id}`,
+          severity: "error",
+          tab: "arena",
+          targetId: z.id,
+          path: `zones.${z.id}.name`,
+          fieldLabel: locale === "pt" ? "Vértices" : "Vertices",
+          message:
+            locale === "pt"
+              ? `Polígono "${z.name}" precisa de pelo menos 3 vértices.`
+              : `Polygon "${z.name}" requires at least 3 vertices.`,
+        });
+      }
+      if (z.shape.vertices.some((v) => v.x < 0 || v.x > fieldL || v.y < 0 || v.y > fieldW)) {
+        outOfBounds = true;
+      }
+    }
+
+    if (outOfBounds) {
+      issues.push({
+        id: `zone-oob-${z.id}`,
+        severity: "warning",
+        tab: "arena",
+        targetId: z.id,
+        path: `zones.${z.id}.name`,
+        fieldLabel: locale === "pt" ? "Coordenadas" : "Coordinates",
+        message:
+          locale === "pt"
+            ? `Zona "${z.name}" possui coordenadas fora dos limites da arena (${fieldL} × ${fieldW} m).`
+            : `Zone "${z.name}" has coordinates outside field bounds (${fieldL} × ${fieldW} m).`,
+      });
+    }
+  }
+
   // Controls checks
   const pilotButtons = new Set<string>();
   for (const entry of project.controls.pilotPriority) {
@@ -921,6 +1068,19 @@ export function validateProject(
               : `Sensor automation in pilot queue references a missing sensor.`,
         });
       }
+    } else if (entry.source === "zone") {
+      if (!entry.zoneId || !zoneById.has(entry.zoneId)) {
+        issues.push({
+          id: `pilot-zone-${entry.id}`,
+          severity: "error",
+          tab: "controls",
+          path: `controls.pilotPriority.${entry.id}.zoneId`,
+          message:
+            locale === "pt"
+              ? `Automação por zona na fila do piloto referencia zona inexistente.`
+              : `Zone automation in pilot queue references a missing zone.`,
+        });
+      }
     } else {
       const btn = entry.button;
       if (!btn) {
@@ -944,6 +1104,36 @@ export function validateProject(
         });
       } else {
         pilotButtons.add(btn);
+      }
+    }
+
+    for (const cond of entry.andConditions ?? []) {
+      if (cond.kind === "sensor") {
+        const owner = subsystemById.get(cond.sensorOwnerId);
+        const hasSensor = owner?.sensors?.some((s) => s.id === cond.sensorId);
+        if (!owner || !hasSensor) {
+          issues.push({
+            id: `pilot-and-sensor-${entry.id}-${cond.id}`,
+            severity: "error",
+            tab: "controls",
+            path: `controls.pilotPriority.${entry.id}.andConditions`,
+            message:
+              locale === "pt"
+                ? `Condição E da fila do piloto referencia sensor inexistente.`
+                : `AND condition in pilot queue references a missing sensor.`,
+          });
+        }
+      } else if (cond.kind === "zone" && !zoneById.has(cond.zoneId)) {
+        issues.push({
+          id: `pilot-and-zone-${entry.id}-${cond.id}`,
+          severity: "error",
+          tab: "controls",
+          path: `controls.pilotPriority.${entry.id}.andConditions`,
+          message:
+            locale === "pt"
+              ? `Condição E da fila do piloto referencia zona inexistente.`
+              : `AND condition in pilot queue references a missing zone.`,
+        });
       }
     }
   }

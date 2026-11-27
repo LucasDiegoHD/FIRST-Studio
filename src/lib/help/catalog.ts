@@ -1724,6 +1724,164 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "1.0",
     },
   },
+
+  // Arena Zones
+  "zones.*.name": {
+    pt: {
+      what: "Identificador Java da zona (UPPER_SNAKE_CASE) no enum ZoneId.",
+      why: "Nomeia a zona em FieldZones.java, logs AdvantageKit e automações.",
+      typical: "COLLECT_ZONE",
+    },
+    en: {
+      what: "Java enum identifier for the zone (UPPER_SNAKE_CASE) in ZoneId.",
+      why: "Identifies the zone in FieldZones.java, AdvantageKit logs, and automations.",
+      typical: "COLLECT_ZONE",
+    },
+  },
+  "zones.*.type": {
+    pt: {
+      what: "Comportamento da zona (Gatilho, Sucção, Repulsão, Velocidade ou Proibida).",
+      why: "Define se a zona dispara automações, aplica ZoneSuctionModifier/ZoneRepulsionModifier ou limita velocidade.",
+      typical: "trigger / speedLimit",
+    },
+    en: {
+      what: "Zone behavior (Trigger, Suction, Repulsion, Speed Limit, or Forbidden).",
+      why: "Chooses whether the zone triggers automations, applies drive modifiers, or caps speed.",
+      typical: "trigger / speedLimit",
+    },
+  },
+  "zones.*.mirror": {
+    pt: {
+      what: "Eixos espelhados para a aliança vermelha via AllianceFlipUtil.",
+      why: "Permite desenhar só no lado azul e gerar automaticamente o equivalente vermelho.",
+      typical: "both (rotação 180°) ou x",
+    },
+    en: {
+      what: "Axes mirrored for the Red alliance via AllianceFlipUtil.",
+      why: "Lets you draw once on the Blue side and auto-mirror for Red.",
+      typical: "both (180° flip) or x",
+    },
+  },
+  "zones.*.strength": {
+    pt: {
+      what: "Intensidade do ZoneSuctionModifier ou ZoneRepulsionModifier (0.05 a 1.0).",
+      why: "Controla quanta força de puxão ou empurrão é somada ao stick do piloto.",
+      typical: "0.4 (sucção) · 0.6–0.9 (repulsão)",
+    },
+    en: {
+      what: "Strength of ZoneSuctionModifier or ZoneRepulsionModifier (0.05 to 1.0).",
+      why: "Controls how much pull or push vector is added to the driver stick.",
+      typical: "0.4 (suction) · 0.6–0.9 (repulsion)",
+    },
+  },
+  "zones.*.speedFactor": {
+    pt: {
+      what: "Multiplicador de velocidade dentro da zona (0.1 a 1.0).",
+      why: "Reduz a velocidade máxima do robô ao entrar em áreas apertadas ou de coleta.",
+      typical: "0.5",
+    },
+    en: {
+      what: "Translation speed multiplier inside the zone (0.1 to 1.0).",
+      why: "Caps robot speed while inside tight scoring or intake areas.",
+      typical: "0.5",
+    },
+  },
+  "zones.*.alertMessage": {
+    pt: {
+      what: "Texto exibido no PersistentAlert quando o robô entra em zona proibida.",
+      why: "Alerta o piloto e a equipe no dashboard e fica registrado no AdvantageKit.",
+      typical: "Robô em zona proibida!",
+    },
+    en: {
+      what: "Message shown via PersistentAlert when entering a forbidden zone.",
+      why: "Alerts drivers on the dashboard and logs to AdvantageKit.",
+      typical: "Robot entered forbidden zone!",
+    },
+  },
+  "zones.*.shape.x1": {
+    pt: {
+      what: "Coordenada X do primeiro canto do retângulo em metros (origem azul).",
+      why: "Define o limite horizontal esquerdo/inicial da zona no referencial WPILib.",
+      typical: "1.0 m",
+    },
+    en: {
+      what: "X coordinate of the first rectangle corner in meters (Blue origin).",
+      why: "Sets the horizontal start bound in WPILib field coordinates.",
+      typical: "1.0 m",
+    },
+  },
+  "zones.*.shape.y1": {
+    pt: {
+      what: "Coordenada Y do primeiro canto do retângulo em metros (origem azul).",
+      why: "Define o limite vertical inferior/inicial da zona no referencial WPILib.",
+      typical: "1.0 m",
+    },
+    en: {
+      what: "Y coordinate of the first rectangle corner in meters (Blue origin).",
+      why: "Sets the vertical start bound in WPILib field coordinates.",
+      typical: "1.0 m",
+    },
+  },
+  "zones.*.shape.x2": {
+    pt: {
+      what: "Coordenada X do canto oposto do retângulo em metros.",
+      why: "Define o limite horizontal final da zona retangular.",
+      typical: "3.0 m",
+    },
+    en: {
+      what: "X coordinate of the opposite rectangle corner in meters.",
+      why: "Sets the horizontal end bound of the rectangular zone.",
+      typical: "3.0 m",
+    },
+  },
+  "zones.*.shape.y2": {
+    pt: {
+      what: "Coordenada Y do canto oposto do retângulo em metros.",
+      why: "Define o limite vertical final da zona retangular.",
+      typical: "3.0 m",
+    },
+    en: {
+      what: "Y coordinate of the opposite rectangle corner in meters.",
+      why: "Sets the vertical end bound of the rectangular zone.",
+      typical: "3.0 m",
+    },
+  },
+  "zones.*.shape.cx": {
+    pt: {
+      what: "Coordenada X do centro do círculo em metros.",
+      why: "Posiciona o centro da Circle2d no campo WPILib.",
+      typical: "4.0 m",
+    },
+    en: {
+      what: "Circle center X coordinate in meters.",
+      why: "Positions the Circle2d center in WPILib field coordinates.",
+      typical: "4.0 m",
+    },
+  },
+  "zones.*.shape.cy": {
+    pt: {
+      what: "Coordenada Y do centro do círculo em metros.",
+      why: "Posiciona o centro da Circle2d no campo WPILib.",
+      typical: "4.0 m",
+    },
+    en: {
+      what: "Circle center Y coordinate in meters.",
+      why: "Positions the Circle2d center in WPILib field coordinates.",
+      typical: "4.0 m",
+    },
+  },
+  "zones.*.shape.radius": {
+    pt: {
+      what: "Raio da zona circular em metros (mínimo 0,05 m).",
+      why: "Define a distância do centro até a borda da Circle2d.",
+      typical: "1.2 m",
+    },
+    en: {
+      what: "Circular zone radius in meters (minimum 0.05 m).",
+      why: "Sets the distance from center to boundary of Circle2d.",
+      typical: "1.2 m",
+    },
+  },
 };
 
 export const REGISTERED_FIELD_PATHS = Object.keys(HELP_CATALOG);
@@ -1772,6 +1930,10 @@ export function normalizeFieldPath(path: string): string {
     if (parts[1] === "pilotPriority" || parts[1] === "copilotOverrides") {
       return `controls.${parts[1]}.*.${parts.slice(3).join(".")}`;
     }
+  }
+
+  if (parts[0] === "zones" && parts.length >= 3) {
+    return `zones.*.${parts.slice(2).join(".")}`;
   }
 
   return path;

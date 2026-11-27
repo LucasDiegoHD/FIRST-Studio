@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Code2, Cog, Compass, Gamepad2, ImageDown, Plus, Radar, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Code2, Cog, Compass, Gamepad2, ImageDown, MapPin, Plus, Radar, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { requestToCommandMethod, toPascalCase } from "@/lib/generator/java-utils
 import {
   getPrimaryMotorAction,
   isMotorSubsystem,
+  type PilotCondition,
   type SubsystemAction,
   type XboxButton,
 } from "@/lib/schema/ciprix-project";
@@ -268,6 +269,7 @@ export function ControlsTab() {
     () => project.subsystems.filter((s) => (s.sensors?.length ?? 0) > 0),
     [project.subsystems],
   );
+  const zones = useMemo(() => project.zones ?? [], [project.zones]);
 
   const liveReaction = useMemo(() => {
     if (port === "pilot") {
@@ -633,6 +635,36 @@ export function ControlsTab() {
                     Sensor
                   </Button>
                 )}
+                {port === "pilot" && zones.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2.5 text-xs"
+                    onClick={() => {
+                      const firstZone = zones[0];
+                      if (!firstZone) return;
+                      updateProject((prev) => ({
+                        ...prev,
+                        controls: {
+                          ...prev.controls,
+                          pilotPriority: [
+                            ...prev.controls.pilotPriority,
+                            {
+                              id: `pilot-zone-${Date.now().toString(36)}`,
+                              source: "zone",
+                              zoneId: firstZone.id,
+                              zoneTrigger: "inZone",
+                              request: prev.superstructure.requests[0] ?? "IDLE",
+                            },
+                          ],
+                        },
+                      }));
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5 text-emerald-300" />
+                    Zona
+                  </Button>
+                )}
                 <Badge variant="outline">
                   {port === "pilot" ? "prioridade" : "whileTrue()"}
                 </Badge>
@@ -658,22 +690,24 @@ export function ControlsTab() {
                   <div className="space-y-2.5">
                     {project.controls.pilotPriority.map((rule, idx) => {
                       const isSensor = rule.source === "sensor";
+                      const isZone = rule.source === "zone";
+                      const isButton = !isSensor && !isZone;
                       const ruleButton = rule.button ?? "a";
                       const selectedOwner = sensorOwners.find((s) => s.id === rule.sensorOwnerId);
                       return (
                         <div
                           key={rule.id}
                           onClick={() => {
-                            if (!isSensor && rule.button) setSelectedButton(rule.button);
+                            if (isButton && rule.button) setSelectedButton(rule.button);
                           }}
                           onMouseEnter={() => {
-                            if (!isSensor && rule.button) setHoveredButton(rule.button);
+                            if (isButton && rule.button) setHoveredButton(rule.button);
                           }}
                           onMouseLeave={() => setHoveredButton(null)}
                           className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2.5 transition-all cursor-pointer ${
-                            !isSensor && selectedButton === rule.button
+                            isButton && selectedButton === rule.button
                               ? "border-[#60a5fa] bg-[#19253d]"
-                              : !isSensor && hoveredButton === rule.button
+                              : isButton && hoveredButton === rule.button
                                 ? "border-[#3b6bb5] bg-[#152036]"
                                 : "border-[#22304a] bg-[#0f1624] hover:border-[#3b6bb5]"
                           }`}
@@ -681,7 +715,64 @@ export function ControlsTab() {
                           <span className="rounded bg-[#142c4f] px-2 py-0.5 font-mono text-[11px] text-[#93c5fd]">
                             #{idx + 1}
                           </span>
-                          {isSensor ? (
+                          {isZone ? (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex flex-1 flex-wrap items-center gap-1.5"
+                            >
+                              <MapPin className="h-3.5 w-3.5 text-emerald-300 shrink-0" />
+                              <Select
+                                className="h-8 w-32 font-mono text-[11px]"
+                                value={rule.zoneId ?? ""}
+                                onChange={(e) =>
+                                  updateProject((prev) => ({
+                                    ...prev,
+                                    controls: {
+                                      ...prev.controls,
+                                      pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                        item.id === rule.id
+                                          ? { ...item, zoneId: e.target.value }
+                                          : item,
+                                      ),
+                                    },
+                                  }))
+                                }
+                              >
+                                {zones.map((z) => (
+                                  <option key={z.id} value={z.id}>
+                                    {z.name}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Select
+                                className="h-8 w-28 font-mono text-[11px]"
+                                value={rule.zoneTrigger ?? "inZone"}
+                                onChange={(e) =>
+                                  updateProject((prev) => ({
+                                    ...prev,
+                                    controls: {
+                                      ...prev.controls,
+                                      pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                        item.id === rule.id
+                                          ? {
+                                              ...item,
+                                              zoneTrigger: e.target.value as
+                                                | "inZone"
+                                                | "enteredZone"
+                                                | "leftZone",
+                                            }
+                                          : item,
+                                      ),
+                                    },
+                                  }))
+                                }
+                              >
+                                <option value="inZone">inZone</option>
+                                <option value="enteredZone">enteredZone</option>
+                                <option value="leftZone">leftZone</option>
+                              </Select>
+                            </div>
+                          ) : isSensor ? (
                             <div
                               onClick={(e) => e.stopPropagation()}
                               className="flex flex-1 flex-wrap items-center gap-1.5"
@@ -847,6 +938,54 @@ export function ControlsTab() {
                             <ArrowDown className="h-3.5 w-3.5" />
                           </Button>
                           <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-1.5 font-mono text-[10px]"
+                            title="Adicionar condição E"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const firstOwner = sensorOwners[0];
+                              const firstSensor = firstOwner?.sensors?.[0];
+                              const firstZone = zones[0];
+                              const nextCond: PilotCondition =
+                                firstOwner && firstSensor
+                                  ? {
+                                      id: `cond-${Date.now().toString(36)}`,
+                                      kind: "sensor",
+                                      sensorOwnerId: firstOwner.id,
+                                      sensorId: firstSensor.id,
+                                      negated: true,
+                                    }
+                                  : firstZone
+                                    ? {
+                                        id: `cond-${Date.now().toString(36)}`,
+                                        kind: "zone",
+                                        zoneId: firstZone.id,
+                                      }
+                                    : {
+                                        id: `cond-${Date.now().toString(36)}`,
+                                        kind: "button",
+                                        button: "leftBumper",
+                                      };
+                              updateProject((prev) => ({
+                                ...prev,
+                                controls: {
+                                  ...prev.controls,
+                                  pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                    item.id === rule.id
+                                      ? {
+                                          ...item,
+                                          andConditions: [...(item.andConditions ?? []), nextCond],
+                                        }
+                                      : item,
+                                  ),
+                                },
+                              }));
+                            }}
+                          >
+                            + E
+                          </Button>
+                          <Button
                             size="icon"
                             variant="ghost"
                             onClick={(e) => {
@@ -864,7 +1003,297 @@ export function ControlsTab() {
                           >
                             <Trash2 className="h-3.5 w-3.5 text-rose-400" />
                           </Button>
-                          {!isSensor && isAnalogTrigger(ruleButton) && (
+                          {(rule.andConditions ?? []).length > 0 && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="basis-full space-y-1.5 border-t border-[#22304a]/70 pt-2 mt-0.5"
+                            >
+                              {(rule.andConditions ?? []).map((cond, cIdx) => {
+                                const condOwner =
+                                  cond.kind === "sensor"
+                                    ? sensorOwners.find((s) => s.id === cond.sensorOwnerId)
+                                    : undefined;
+                                return (
+                                  <div
+                                    key={cond.id}
+                                    className="flex flex-wrap items-center gap-1.5 text-[11px]"
+                                  >
+                                    <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
+                                      E
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateProject((prev) => ({
+                                          ...prev,
+                                          controls: {
+                                            ...prev.controls,
+                                            pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                              item.id === rule.id
+                                                ? {
+                                                    ...item,
+                                                    andConditions: (item.andConditions ?? []).map(
+                                                      (c, i) =>
+                                                        i === cIdx
+                                                          ? { ...c, negated: !c.negated }
+                                                          : c,
+                                                    ),
+                                                  }
+                                                : item,
+                                            ),
+                                          },
+                                        }))
+                                      }
+                                      className={`rounded border px-1.5 py-0.5 font-mono text-[10px] cursor-pointer ${
+                                        cond.negated
+                                          ? "border-rose-500/60 bg-rose-500/15 text-rose-300"
+                                          : "border-[#253552] bg-[#0b0f17] text-slate-400"
+                                      }`}
+                                    >
+                                      {cond.negated ? "NÃO (!)" : "SIM"}
+                                    </button>
+                                    <Select
+                                      className="h-7 w-24 font-mono text-[11px]"
+                                      value={cond.kind}
+                                      onChange={(e) => {
+                                        const nextKind = e.target.value as PilotCondition["kind"];
+                                        const firstOwner = sensorOwners[0];
+                                        const firstSensor = firstOwner?.sensors?.[0];
+                                        const firstZone = zones[0];
+                                        const replacement: PilotCondition =
+                                          nextKind === "sensor" && firstOwner && firstSensor
+                                            ? {
+                                                id: cond.id,
+                                                kind: "sensor",
+                                                sensorOwnerId: firstOwner.id,
+                                                sensorId: firstSensor.id,
+                                                negated: cond.negated,
+                                              }
+                                            : nextKind === "zone" && firstZone
+                                              ? {
+                                                  id: cond.id,
+                                                  kind: "zone",
+                                                  zoneId: firstZone.id,
+                                                  negated: cond.negated,
+                                                }
+                                              : {
+                                                  id: cond.id,
+                                                  kind: "button",
+                                                  button: "leftBumper",
+                                                  negated: cond.negated,
+                                                };
+                                        updateProject((prev) => ({
+                                          ...prev,
+                                          controls: {
+                                            ...prev.controls,
+                                            pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                              item.id === rule.id
+                                                ? {
+                                                    ...item,
+                                                    andConditions: (item.andConditions ?? []).map(
+                                                      (c, i) => (i === cIdx ? replacement : c),
+                                                    ),
+                                                  }
+                                                : item,
+                                            ),
+                                          },
+                                        }));
+                                      }}
+                                    >
+                                      <option value="button">Botão</option>
+                                      {sensorOwners.length > 0 && (
+                                        <option value="sensor">Sensor</option>
+                                      )}
+                                      {zones.length > 0 && <option value="zone">Zona</option>}
+                                    </Select>
+
+                                    {cond.kind === "button" && (
+                                      <Select
+                                        className="h-7 w-24 font-mono text-[11px]"
+                                        value={cond.button}
+                                        onChange={(e) =>
+                                          updateProject((prev) => ({
+                                            ...prev,
+                                            controls: {
+                                              ...prev.controls,
+                                              pilotPriority: prev.controls.pilotPriority.map(
+                                                (item) =>
+                                                  item.id === rule.id
+                                                    ? {
+                                                        ...item,
+                                                        andConditions: (
+                                                          item.andConditions ?? []
+                                                        ).map((c, i) =>
+                                                          i === cIdx && c.kind === "button"
+                                                            ? {
+                                                                ...c,
+                                                                button: e.target
+                                                                  .value as XboxButton,
+                                                              }
+                                                            : c,
+                                                        ),
+                                                      }
+                                                    : item,
+                                              ),
+                                            },
+                                          }))
+                                        }
+                                      >
+                                        {XBOX_BUTTONS.map((btn) => (
+                                          <option key={btn.value} value={btn.value}>
+                                            {btn.label}
+                                          </option>
+                                        ))}
+                                      </Select>
+                                    )}
+
+                                    {cond.kind === "sensor" && (
+                                      <>
+                                        <Select
+                                          className="h-7 w-24 font-mono text-[11px]"
+                                          value={cond.sensorOwnerId}
+                                          onChange={(e) => {
+                                            const nextOwner = sensorOwners.find(
+                                              (s) => s.id === e.target.value,
+                                            );
+                                            updateProject((prev) => ({
+                                              ...prev,
+                                              controls: {
+                                                ...prev.controls,
+                                                pilotPriority: prev.controls.pilotPriority.map(
+                                                  (item) =>
+                                                    item.id === rule.id
+                                                      ? {
+                                                          ...item,
+                                                          andConditions: (
+                                                            item.andConditions ?? []
+                                                          ).map((c, i) =>
+                                                            i === cIdx && c.kind === "sensor"
+                                                              ? {
+                                                                  ...c,
+                                                                  sensorOwnerId: e.target.value,
+                                                                  sensorId:
+                                                                    nextOwner?.sensors?.[0]?.id ??
+                                                                    "",
+                                                                }
+                                                              : c,
+                                                          ),
+                                                        }
+                                                      : item,
+                                                ),
+                                              },
+                                            }));
+                                          }}
+                                        >
+                                          {sensorOwners.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                              {s.name}
+                                            </option>
+                                          ))}
+                                        </Select>
+                                        <Select
+                                          className="h-7 w-24 font-mono text-[11px]"
+                                          value={cond.sensorId}
+                                          onChange={(e) =>
+                                            updateProject((prev) => ({
+                                              ...prev,
+                                              controls: {
+                                                ...prev.controls,
+                                                pilotPriority: prev.controls.pilotPriority.map(
+                                                  (item) =>
+                                                    item.id === rule.id
+                                                      ? {
+                                                          ...item,
+                                                          andConditions: (
+                                                            item.andConditions ?? []
+                                                          ).map((c, i) =>
+                                                            i === cIdx && c.kind === "sensor"
+                                                              ? { ...c, sensorId: e.target.value }
+                                                              : c,
+                                                          ),
+                                                        }
+                                                      : item,
+                                                ),
+                                              },
+                                            }))
+                                          }
+                                        >
+                                          {(condOwner?.sensors ?? []).map((sen) => (
+                                            <option key={sen.id} value={sen.id}>
+                                              {sen.name}
+                                            </option>
+                                          ))}
+                                        </Select>
+                                      </>
+                                    )}
+
+                                    {cond.kind === "zone" && (
+                                      <Select
+                                        className="h-7 w-28 font-mono text-[11px]"
+                                        value={cond.zoneId}
+                                        onChange={(e) =>
+                                          updateProject((prev) => ({
+                                            ...prev,
+                                            controls: {
+                                              ...prev.controls,
+                                              pilotPriority: prev.controls.pilotPriority.map(
+                                                (item) =>
+                                                  item.id === rule.id
+                                                    ? {
+                                                        ...item,
+                                                        andConditions: (
+                                                          item.andConditions ?? []
+                                                        ).map((c, i) =>
+                                                          i === cIdx && c.kind === "zone"
+                                                            ? { ...c, zoneId: e.target.value }
+                                                            : c,
+                                                        ),
+                                                      }
+                                                    : item,
+                                              ),
+                                            },
+                                          }))
+                                        }
+                                      >
+                                        {zones.map((z) => (
+                                          <option key={z.id} value={z.id}>
+                                            {z.name}
+                                          </option>
+                                        ))}
+                                      </Select>
+                                    )}
+
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 ml-auto"
+                                      onClick={() =>
+                                        updateProject((prev) => ({
+                                          ...prev,
+                                          controls: {
+                                            ...prev.controls,
+                                            pilotPriority: prev.controls.pilotPriority.map((item) =>
+                                              item.id === rule.id
+                                                ? {
+                                                    ...item,
+                                                    andConditions: (
+                                                      item.andConditions ?? []
+                                                    ).filter((_, i) => i !== cIdx),
+                                                  }
+                                                : item,
+                                            ),
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <Trash2 className="h-3 w-3 text-rose-400" />
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {isButton && isAnalogTrigger(ruleButton) && (
                             <div
                               onClick={(e) => e.stopPropagation()}
                               className="flex basis-full items-center gap-2 border-t border-[#22304a]/70 pt-2 mt-0.5 text-[11px] text-slate-300"

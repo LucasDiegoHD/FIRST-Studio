@@ -422,11 +422,14 @@ export const SuperTransitionSchema = z.object({
     "afterSeconds",
     "sensorTrue",
     "sensorFalse",
+    "inZone",
+    "outOfZone",
   ]),
   subsystemIds: z.array(z.string()).optional(),
   seconds: z.number().positive().optional(),
   sensorOwnerId: z.string().min(1).optional(),
   sensorId: z.string().min(1).optional(),
+  zoneId: z.string().min(1).optional(),
 });
 export type SuperTransition = z.infer<typeof SuperTransitionSchema>;
 
@@ -447,14 +450,96 @@ export const SuperStructureSchema = z.object({
 });
 export type SuperStructureConfig = z.infer<typeof SuperStructureSchema>;
 
+export const ZoneTypeSchema = z.enum([
+  "trigger",
+  "suction",
+  "repulsion",
+  "speedLimit",
+  "forbidden",
+]);
+export type ZoneType = z.infer<typeof ZoneTypeSchema>;
+
+export const ZoneMirrorSchema = z.enum(["none", "x", "y", "both"]);
+export type ZoneMirror = z.infer<typeof ZoneMirrorSchema>;
+
+export const ZonePointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+export type ZonePoint = z.infer<typeof ZonePointSchema>;
+
+export const ZoneShapeSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("rectangle"),
+    x1: z.number(),
+    y1: z.number(),
+    x2: z.number(),
+    y2: z.number(),
+  }),
+  z.object({
+    kind: z.literal("circle"),
+    cx: z.number(),
+    cy: z.number(),
+    radius: z.number().min(0.05),
+  }),
+  z.object({
+    kind: z.literal("polygon"),
+    vertices: z.array(ZonePointSchema).min(3),
+  }),
+]);
+export type ZoneShape = z.infer<typeof ZoneShapeSchema>;
+
+export const FieldZoneSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  type: ZoneTypeSchema,
+  shape: ZoneShapeSchema,
+  mirror: ZoneMirrorSchema.default("both"),
+  colorHex: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional(),
+  strength: z.number().min(0.05).max(1.0).optional(),
+  speedFactor: z.number().min(0.1).max(1.0).optional(),
+  alertMessage: z.string().optional(),
+});
+export type FieldZone = z.infer<typeof FieldZoneSchema>;
+
+export const PilotConditionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    id: z.string().min(1),
+    kind: z.literal("button"),
+    button: XboxButtonSchema,
+    triggerThreshold: z.number().min(0.05).max(1.0).optional(),
+    negated: z.boolean().optional(),
+  }),
+  z.object({
+    id: z.string().min(1),
+    kind: z.literal("sensor"),
+    sensorOwnerId: z.string().min(1),
+    sensorId: z.string().min(1),
+    negated: z.boolean().optional(),
+  }),
+  z.object({
+    id: z.string().min(1),
+    kind: z.literal("zone"),
+    zoneId: z.string().min(1),
+    negated: z.boolean().optional(),
+  }),
+]);
+export type PilotCondition = z.infer<typeof PilotConditionSchema>;
+
 export const PilotPriorityBindingSchema = z.object({
   id: z.string().min(1),
-  source: z.enum(["button", "sensor"]).default("button"),
+  source: z.enum(["button", "sensor", "zone"]).default("button"),
   button: XboxButtonSchema.optional(),
   triggerThreshold: z.number().min(0.05).max(1.0).optional(),
   sensorOwnerId: z.string().min(1).optional(),
   sensorId: z.string().min(1).optional(),
   sensorTrigger: z.enum(["whileTrue", "onTrue", "whileFalse", "onFalse"]).optional(),
+  zoneId: z.string().min(1).optional(),
+  zoneTrigger: z.enum(["inZone", "enteredZone", "leftZone"]).optional(),
+  andConditions: z.array(PilotConditionSchema).optional(),
   request: z.string().min(1),
 });
 export type PilotPriorityBinding = z.infer<typeof PilotPriorityBindingSchema>;
@@ -577,6 +662,7 @@ export const CiprixProjectSchema = z.object({
   schemaVersion: z.literal(2),
   project: ProjectMetaSchema,
   drivetrain: DrivetrainConfigSchema.optional(),
+  zones: z.array(FieldZoneSchema).optional(),
   subsystems: z.array(SubsystemSchema),
   superstructure: SuperStructureSchema,
   controls: ControlsSchema,

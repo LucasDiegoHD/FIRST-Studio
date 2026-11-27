@@ -30,6 +30,7 @@ export function SuperStructureTab() {
   const motorSubsystems = project.subsystems.filter(isMotorSubsystem);
   const ledSubsystems = project.subsystems.filter(isLedSubsystem);
   const sensorOwners = project.subsystems.filter((s) => (s.sensors?.length ?? 0) > 0);
+  const zones = project.zones ?? [];
   const activeEffectState = sup.states.includes(effectState)
     ? effectState
     : (sup.states[0] ?? "IDLE");
@@ -291,6 +292,18 @@ export function SuperStructureTab() {
                                         ? item.subsystemIds ??
                                           (project.subsystems[0] ? [project.subsystems[0].id] : [])
                                         : undefined,
+                                    sensorOwnerId:
+                                      cond === "sensorTrue" || cond === "sensorFalse"
+                                        ? item.sensorOwnerId ?? sensorOwners[0]?.id
+                                        : undefined,
+                                    sensorId:
+                                      cond === "sensorTrue" || cond === "sensorFalse"
+                                        ? item.sensorId ?? sensorOwners[0]?.sensors?.[0]?.id
+                                        : undefined,
+                                    zoneId:
+                                      cond === "inZone" || cond === "outOfZone"
+                                        ? item.zoneId ?? zones[0]?.id
+                                        : undefined,
                                   }
                                 : item,
                             ),
@@ -301,6 +314,18 @@ export function SuperStructureTab() {
                       <option value="allAtGoal">allAtGoal()</option>
                       <option value="subsystemAtGoal">subsystemAtGoal()</option>
                       <option value="afterSeconds">afterSeconds(s)</option>
+                      {(sensorOwners.length > 0 || tr.condition === "sensorTrue" || tr.condition === "sensorFalse") && (
+                        <>
+                          <option value="sensorTrue">sensorTrue()</option>
+                          <option value="sensorFalse">sensorFalse()</option>
+                        </>
+                      )}
+                      {(zones.length > 0 || tr.condition === "inZone" || tr.condition === "outOfZone") && (
+                        <>
+                          <option value="inZone">inZone()</option>
+                          <option value="outOfZone">outOfZone()</option>
+                        </>
+                      )}
                     </Select>
                     <Select
                       value={tr.toState}
@@ -412,6 +437,31 @@ export function SuperStructureTab() {
                         {(sensorOwners.find((s) => s.id === tr.sensorOwnerId)?.sensors ?? []).map((s) => (
                           <option key={s.id} value={s.id}>
                             {s.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  )}
+                  {(tr.condition === "inZone" || tr.condition === "outOfZone") && (
+                    <div className="pt-1 border-t border-[#22304a]/70">
+                      <Select
+                        value={tr.zoneId ?? zones[0]?.id ?? ""}
+                        className="h-7 font-mono text-[11px]"
+                        onChange={(e) =>
+                          updateProject((prev) => ({
+                            ...prev,
+                            superstructure: {
+                              ...prev.superstructure,
+                              transitions: (prev.superstructure.transitions ?? []).map((item, i) =>
+                                i === idx ? { ...item, zoneId: e.target.value } : item,
+                              ),
+                            },
+                          }))
+                        }
+                      >
+                        {zones.map((z) => (
+                          <option key={z.id} value={z.id}>
+                            {z.name}
                           </option>
                         ))}
                       </Select>

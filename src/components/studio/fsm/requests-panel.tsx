@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Link2, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -53,9 +53,15 @@ function RequestNameInput({
   );
 }
 
-export function RequestsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }) {
+export function RequestsPanel({
+  subsystem,
+  onSwitchToBindings,
+}: {
+  subsystem: MotorSubsystemConfig;
+  onSwitchToBindings?: () => void;
+}) {
   const { updateSubsystem, t } = useProject();
-  const boundSet = new Set(subsystem.fsm.bindings.map((b) => b.request));
+  const bindingByReq = new Map(subsystem.fsm.bindings.map((b) => [b.request, b]));
 
   const patchFsm = (fn: (fsm: MotorSubsystemConfig["fsm"]) => MotorSubsystemConfig["fsm"]) => {
     updateSubsystem(subsystem.id, (prev) =>
@@ -64,11 +70,11 @@ export function RequestsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       <div className="rounded-lg border border-[#22304a] bg-[#0f1624] p-3">
         <Field path={`subsystems.${subsystem.id}.fsm.initialRequest`} label={t("fsm.initial_request")}>
           <Select
-            className="font-mono h-8 text-xs"
+            className="font-mono h-8 py-0 text-xs"
             value={subsystem.fsm.initialRequest}
             onChange={(e) =>
               patchFsm((fsm) => ({ ...fsm, initialRequest: e.target.value }))
@@ -83,7 +89,7 @@ export function RequestsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
         </Field>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-slate-300">{t("fsm.requests_title")}</span>
           <Badge variant="default">{subsystem.fsm.requests.length}</Badge>
@@ -104,11 +110,13 @@ export function RequestsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
         </Button>
       </div>
 
-      <p className="text-[11px] text-slate-400">{t("fsm.rename_hint")}</p>
+      <p className="text-[11px] leading-relaxed text-slate-400">
+        Comandos que o piloto ou a SuperStructure podem pedir para este mecanismo (ex: STOP, INTAKE). {t("fsm.rename_hint")}
+      </p>
 
       <div className="space-y-2">
         {subsystem.fsm.requests.map((req, idx) => {
-          const isBound = boundSet.has(req);
+          const binding = bindingByReq.get(req);
           return (
             <Field
               key={`${req}-${idx}`}
@@ -118,15 +126,54 @@ export function RequestsPanel({ subsystem }: { subsystem: MotorSubsystemConfig }
                 <div className="flex-1 min-w-0">
                   <RequestNameInput subsystemId={subsystem.id} requestName={req} />
                 </div>
-                <Badge
-                  variant={isBound ? "success" : "outline"}
-                  className={isBound ? "shrink-0 text-[10px]" : "shrink-0 text-[10px] text-amber-300 border-amber-700/60"}
-                >
-                  {isBound ? t("fsm.bound") : t("fsm.unbound")}
-                </Badge>
+                {binding ? (
+                  <button
+                    type="button"
+                    onClick={onSwitchToBindings}
+                    className="shrink-0 rounded-md border border-emerald-700/50 bg-emerald-950/50 px-2 py-1 font-mono text-[10px] text-emerald-300 hover:border-emerald-500 transition-colors cursor-pointer"
+                    title="Ver na aba Ligações"
+                  >
+                    → {binding.goalState}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] text-amber-300 border-amber-700/60"
+                    >
+                      {t("fsm.unbound")}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-[11px]"
+                      onClick={() => {
+                        const fallbackState =
+                          subsystem.fsm.initialState || subsystem.fsm.states[0]?.name || "STOPPED";
+                        patchFsm((fsm) => ({
+                          ...fsm,
+                          bindings: [
+                            ...fsm.bindings,
+                            {
+                              request: req,
+                              entryState: fallbackState,
+                              goalState: fallbackState,
+                              intermediateStates: [],
+                            },
+                          ],
+                        }));
+                        onSwitchToBindings?.();
+                      }}
+                    >
+                      <Link2 className="h-3 w-3" />
+                      Ligar
+                    </Button>
+                  </div>
+                )}
                 <Button
                   size="icon"
                   variant="ghost"
+                  className="h-8 w-8 shrink-0"
                   disabled={subsystem.fsm.requests.length <= 1}
                   onClick={() =>
                     patchFsm((fsm) => ({

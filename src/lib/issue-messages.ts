@@ -269,6 +269,76 @@ export const FIELD_META: Record<string, FieldMeta> = {
     section: { pt: "Ligações", en: "Bindings" },
     tab: "fsm",
   },
+  "zones.*.name": {
+    fieldLabel: { pt: "Nome da Zona", en: "Zone Name" },
+    section: { pt: "Arena", en: "Arena" },
+    tab: "arena",
+  },
+  "zones.*.type": {
+    fieldLabel: { pt: "Tipo de Zona", en: "Zone Type" },
+    section: { pt: "Arena", en: "Arena" },
+    tab: "arena",
+  },
+  "zones.*.mirror": {
+    fieldLabel: { pt: "Espelhamento", en: "Alliance Mirror" },
+    section: { pt: "Arena", en: "Arena" },
+    tab: "arena",
+  },
+  "zones.*.strength": {
+    fieldLabel: { pt: "Força", en: "Strength" },
+    section: { pt: "Arena", en: "Arena" },
+    tab: "arena",
+    min: 0.05,
+    max: 1.0,
+  },
+  "zones.*.speedFactor": {
+    fieldLabel: { pt: "Fator de Velocidade", en: "Speed Factor" },
+    section: { pt: "Arena", en: "Arena" },
+    tab: "arena",
+    min: 0.1,
+    max: 1.0,
+  },
+  "zones.*.alertMessage": {
+    fieldLabel: { pt: "Mensagem de Alerta", en: "Alert Message" },
+    section: { pt: "Arena", en: "Arena" },
+    tab: "arena",
+  },
+  "zones.*.shape.x1": {
+    fieldLabel: { pt: "X1 (m)", en: "X1 (m)" },
+    section: { pt: "Geometria", en: "Geometry" },
+    tab: "arena",
+  },
+  "zones.*.shape.y1": {
+    fieldLabel: { pt: "Y1 (m)", en: "Y1 (m)" },
+    section: { pt: "Geometria", en: "Geometry" },
+    tab: "arena",
+  },
+  "zones.*.shape.x2": {
+    fieldLabel: { pt: "X2 (m)", en: "X2 (m)" },
+    section: { pt: "Geometria", en: "Geometry" },
+    tab: "arena",
+  },
+  "zones.*.shape.y2": {
+    fieldLabel: { pt: "Y2 (m)", en: "Y2 (m)" },
+    section: { pt: "Geometria", en: "Geometry" },
+    tab: "arena",
+  },
+  "zones.*.shape.cx": {
+    fieldLabel: { pt: "Centro X (m)", en: "Center X (m)" },
+    section: { pt: "Geometria", en: "Geometry" },
+    tab: "arena",
+  },
+  "zones.*.shape.cy": {
+    fieldLabel: { pt: "Centro Y (m)", en: "Center Y (m)" },
+    section: { pt: "Geometria", en: "Geometry" },
+    tab: "arena",
+  },
+  "zones.*.shape.radius": {
+    fieldLabel: { pt: "Raio (m)", en: "Radius (m)" },
+    section: { pt: "Geometria", en: "Geometry" },
+    tab: "arena",
+    min: 0.05,
+  },
 };
 
 export function getFieldMeta(path: string): FieldMeta | undefined {
@@ -340,6 +410,11 @@ export function resolveZodPath(
   } else if (rawPath[0] === "superstructure") {
     tab = "superstructure";
     segs.push(...rawPath.map(String));
+  } else if (rawPath[0] === "zones" && typeof rawPath[1] === "number") {
+    tab = "arena";
+    const zone = project.zones?.[rawPath[1]];
+    targetId = zone?.id;
+    segs.push("zones", zone?.id ?? String(rawPath[1]), ...rawPath.slice(2).map(String));
   } else if (rawPath[0] === "controls") {
     tab = "controls";
     if (rawPath[1] === "pilotPriority" && typeof rawPath[2] === "number") {

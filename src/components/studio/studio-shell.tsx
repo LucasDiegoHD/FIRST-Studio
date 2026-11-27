@@ -19,6 +19,7 @@ import {
   Keyboard,
   LayoutGrid,
   LayoutTemplate,
+  Map as MapIcon,
   Package,
   PanelLeft,
   Redo2,
@@ -46,6 +47,7 @@ import type { SubsystemConfig } from "@/lib/schema/ciprix-project";
 import { parseProjectWithMigration } from "@/lib/schema/migrations";
 import type { StudioTab } from "@/lib/validator";
 import { cn } from "@/lib/utils";
+import { ArenaTab } from "./arena-tab";
 import { CodeTab } from "./code-tab";
 import { CommandPalette } from "./command-palette";
 import { ControlsTab } from "./controls-tab";
@@ -53,10 +55,11 @@ import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { RobotFlowView } from "./robot-flow-view";
 import { StatesView } from "./states-view";
 
-type GuidedStep = "robot" | "states" | "controls" | "export";
+type GuidedStep = "robot" | "states" | "arena" | "controls" | "export";
 
 function tabToStep(tab: StudioTab): GuidedStep {
   if (tab === "fsm" || tab === "superstructure") return "states";
+  if (tab === "arena") return "arena";
   if (tab === "controls") return "controls";
   if (tab === "code") return "export";
   return "robot";
@@ -367,12 +370,20 @@ export function StudioShell({
       shortcut: "Alt+2",
     },
     {
+      id: "arena",
+      tab: "arena",
+      label: "Arena",
+      icon: <MapIcon className="h-4 w-4 shrink-0" />,
+      badge: String(project.zones?.length ?? 0),
+      shortcut: "Alt+3",
+    },
+    {
       id: "controls",
       tab: "controls",
       label: "Controles",
       icon: <Gamepad2 className="h-4 w-4 shrink-0" />,
       badge: String(totalBindings),
-      shortcut: "Alt+3",
+      shortcut: "Alt+4",
     },
     {
       id: "export",
@@ -381,7 +392,7 @@ export function StudioShell({
       icon: <Package className="h-4 w-4 shrink-0" />,
       badge: errorCount === 0 ? "OK" : `${errorCount}!`,
       badgeVariant: errorCount === 0 ? "success" : "destructive",
-      shortcut: "Alt+4",
+      shortcut: "Alt+5",
     },
   ];
 
@@ -999,6 +1010,7 @@ export function StudioShell({
                     initialTarget={activeTab === "superstructure" ? "superstructure" : "subsystem"}
                   />
                 )}
+                {currentStep === "arena" && <ArenaTab />}
                 {currentStep === "controls" && <ControlsTab />}
                 {currentStep === "export" && (
                   <CodeTab
