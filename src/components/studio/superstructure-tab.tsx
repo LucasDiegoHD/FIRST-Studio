@@ -71,7 +71,7 @@ export function SuperStructureTab() {
   };
 
   return (
-    <Card>
+    <Card data-tour="superstructure-matrix">
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0 border-b border-[#22304a] pb-4">
         <div>
           <CardTitle>{t("super.title")}</CardTitle>

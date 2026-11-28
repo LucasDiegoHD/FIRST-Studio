@@ -387,7 +387,7 @@ export function ControlsTab() {
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
         {/* Left Interactive Stage: Xbox Series X + Quick-Bind Dock */}
-        <Card className="xl:col-span-7 overflow-hidden bg-studio-glow">
+        <Card data-tour="controls-editor" className="xl:col-span-7 overflow-hidden bg-studio-glow">
           <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b border-[#22304a] bg-[#0f1624]/80 py-4">
             <CardTitle className="text-lg">
               {port === "pilot" ? "Controle do Piloto (Port 0)" : "Controle do Copiloto (Port 1)"}

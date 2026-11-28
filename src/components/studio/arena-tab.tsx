@@ -58,6 +58,11 @@ import type {
   ZoneShape,
   ZoneType,
 } from "@/lib/schema/ciprix-project";
+import {
+  applyTutorialZoneExample,
+  buildTutorialZonePreview,
+  TUTORIAL_EXAMPLE_ZONE_ID,
+} from "@/lib/tutorial/steps";
 import { CodeViewer } from "./code-viewer";
 
 type ArenaMode = "edit" | "simulate";
@@ -147,11 +152,16 @@ function formatMirrorLabel(mirror: ZoneMirror, locale: "pt" | "en"): string {
   return mirror === "none" ? "Blue only" : `Mirror ${mirror}`;
 }
 
-export function ArenaTab() {
+export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolean }) {
   const { project, generatedFiles, updateProject, setActiveTab, locale } = useProject();
   const fieldL = project.project.fieldLengthMeters;
   const fieldW = project.project.fieldWidthMeters;
-  const zones = useMemo(() => project.zones ?? [], [project.zones]);
+  const userZones = useMemo(() => project.zones ?? [], [project.zones]);
+  const isTutorialDemo = Boolean(tutorialPreview && userZones.length === 0);
+  const zones = useMemo(
+    () => (isTutorialDemo ? buildTutorialZonePreview(project) : userZones),
+    [isTutorialDemo, project, userZones],
+  );
 
   const [mode, setMode] = useState<ArenaMode>("edit");
   const [innerTab, setInnerTab] = useState<ArenaInnerTab>(
@@ -450,13 +460,13 @@ export function ArenaTab() {
 
   const uniqueZoneName = useCallback(
     (baseName: string) => {
-      const used = new Set(zones.map((z) => z.name.toUpperCase()));
+      const used = new Set(userZones.map((z) => z.name.toUpperCase()));
       if (!used.has(baseName)) return baseName;
       let idx = 2;
       while (used.has(`${baseName}_${idx}`)) idx += 1;
       return `${baseName}_${idx}`;
     },
-    [zones],
+    [userZones],
   );
 
   const addZoneObject = useCallback(
@@ -493,12 +503,18 @@ export function ArenaTab() {
 
   const updateZone = useCallback(
     (zoneId: string, updater: (prev: FieldZone) => FieldZone) => {
-      updateProject((prev) => ({
-        ...prev,
-        zones: (prev.zones ?? []).map((z) => (z.id === zoneId ? updater(z) : z)),
-      }));
+      updateProject((prev) => {
+        const list =
+          isTutorialDemo && zoneId === TUTORIAL_EXAMPLE_ZONE_ID && (prev.zones ?? []).length === 0
+            ? buildTutorialZonePreview(prev)
+            : (prev.zones ?? []);
+        return {
+          ...prev,
+          zones: list.map((z) => (z.id === zoneId ? updater(z) : z)),
+        };
+      });
     },
-    [updateProject],
+    [isTutorialDemo, updateProject],
   );
 
   const deleteZone = useCallback(
@@ -954,9 +970,27 @@ export function ArenaTab() {
         </div>
       )}
 
+      {isTutorialDemo && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-xs text-sky-200">
+          <span>
+            {locale === "pt"
+              ? "Demonstração do Tutorial: esta zona exemplo não altera seu projeto a menos que você a aplique."
+              : "Tutorial Demo: this example zone does not modify your project unless you apply it."}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2.5 text-xs border-sky-400/50 text-sky-100"
+            onClick={() => updateProject(applyTutorialZoneExample)}
+          >
+            {locale === "pt" ? "Usar no projeto" : "Use in project"}
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
         {/* Left: Blueprint Stage */}
-        <Card className="xl:col-span-8 overflow-hidden bg-[#0b0f17] border-[#22304a]">
+        <Card data-tour="arena-zones" className="xl:col-span-8 overflow-hidden bg-[#0b0f17] border-[#22304a]">
           {/* Compact Blueprint Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#22304a] bg-[#0f1624] px-3.5 py-2.5">
             {mode === "edit" ? (

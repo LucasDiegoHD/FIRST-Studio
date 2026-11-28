@@ -311,11 +311,12 @@ export function CodeTab({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Exportar Projeto"
-        description="Revise os arquivos Ciprix 2026.3.0 gerados e baixe o projeto pronto para WPILib."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
+      <Card data-tour="export-actions" className="p-5">
+        <PageHeader
+          title="Exportar Projeto"
+          description="Revise os arquivos Ciprix 2026.3.0 gerados e baixe o projeto pronto para WPILib."
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
             {fsSupported && (
               <>
                 {!dirHandle || needsReconnect ? (
@@ -375,6 +376,7 @@ export function CodeTab({
           </div>
         }
       />
+      </Card>
 
       {folderFeedback && (
         <div className="rounded-lg border border-[#3b6bb5]/60 bg-[#131c2e] px-4 py-2.5 text-xs text-slate-200">

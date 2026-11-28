@@ -72,6 +72,11 @@ import {
   type PathPlannerPathDoc,
   type PathPoint2d,
 } from "@/lib/schema/ciprix-project";
+import {
+  applyTutorialAutoExample,
+  buildTutorialAutoPreview,
+  hasAnyUserAutonomous,
+} from "@/lib/tutorial/steps";
 import { CodeViewer } from "./code-viewer";
 import { RebuiltFieldBackdrop } from "./rebuilt-field-svg";
 
@@ -138,7 +143,13 @@ function TreeSection({ title, count, open, onToggle, action, children }: TreeSec
   );
 }
 
-export function AutonomousTab() {
+export function AutonomousTab({
+  autoPlaySignal = 0,
+  tutorialPreview = false,
+}: {
+  autoPlaySignal?: number;
+  tutorialPreview?: boolean;
+}) {
   const { project, generatedFiles, issues, updateProject, setActiveTab, locale } = useProject();
   const fieldL = project.project.fieldLengthMeters;
   const fieldW = project.project.fieldWidthMeters;
@@ -181,9 +192,14 @@ export function AutonomousTab() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  const hasUserAuto = hasAnyUserAutonomous(project);
+  const isTutorialDemo = Boolean(tutorialPreview && !hasUserAuto);
   const auto: AutonomousConfig = useMemo(
-    () => project.autonomous ?? createDefaultAutonomousConfig(),
-    [project.autonomous],
+    () =>
+      isTutorialDemo
+        ? buildTutorialAutoPreview(project)
+        : (project.autonomous ?? createDefaultAutonomousConfig()),
+    [isTutorialDemo, project],
   );
   const paths = useMemo(() => auto.paths ?? [], [auto.paths]);
   const dtEnabled = Boolean(project.drivetrain?.enabled);
@@ -221,6 +237,42 @@ export function AutonomousTab() {
     view === "paths"
       ? (pathTrajectory?.totalTimeSec ?? 0)
       : autoSimulation.totalTimeSec;
+
+  const handledAutoPlayRef = useRef(0);
+  useEffect(() => {
+    if (autoPlaySignal <= 0 || handledAutoPlayRef.current === autoPlaySignal) return;
+    handledAutoPlayRef.current = autoPlaySignal;
+
+    if (isTutorialDemo) {
+      setView("routines");
+      setSimTimeSec(0);
+      setSimPlaying(true);
+      return;
+    }
+
+    if (autoSimulation.totalTimeSec > 0.05) {
+      setView((curr) =>
+        curr === "config" || (curr === "paths" && (pathTrajectory?.totalTimeSec ?? 0) <= 0.05)
+          ? "routines"
+          : curr,
+      );
+      setSimTimeSec(0);
+      setSimPlaying(true);
+    } else if ((pathTrajectory?.totalTimeSec ?? 0) > 0.05) {
+      setView("paths");
+      setSimTimeSec(0);
+      setSimPlaying(true);
+    }
+  }, [autoPlaySignal, isTutorialDemo, autoSimulation.totalTimeSec, pathTrajectory?.totalTimeSec]);
+
+  const prevDemoRef = useRef(isTutorialDemo);
+  useEffect(() => {
+    if (prevDemoRef.current && !isTutorialDemo && !hasUserAuto) {
+      setSimPlaying(false);
+      setSimTimeSec(0);
+    }
+    prevDemoRef.current = isTutorialDemo;
+  }, [isTutorialDemo, hasUserAuto]);
 
   const clampedSimTime =
     activeTotalTimeSec > 0 ? clamp(simTimeSec, 0, activeTotalTimeSec) : 0;
@@ -338,12 +390,20 @@ export function AutonomousTab() {
   const updateActivePath = useCallback(
     (updater: (prev: PathPlannerPathDoc) => PathPlannerPathDoc) => {
       if (!activePath) return;
-      patchAuto((prev) => ({
-        ...prev,
-        paths: (prev.paths ?? []).map((p) => (p.id === activePath.id ? updater(p) : p)),
-      }));
+      updateProject((prev) => {
+        const base = isTutorialDemo
+          ? buildTutorialAutoPreview(prev)
+          : (prev.autonomous ?? createDefaultAutonomousConfig());
+        return {
+          ...prev,
+          autonomous: {
+            ...base,
+            paths: (base.paths ?? []).map((p) => (p.id === activePath.id ? updater(p) : p)),
+          },
+        };
+      });
     },
-    [activePath, patchAuto],
+    [activePath, isTutorialDemo, updateProject],
   );
 
   const uniquePathName = useCallback(
@@ -1024,6 +1084,24 @@ export function AutonomousTab() {
         actions={modeSwitcher}
       />
 
+      {isTutorialDemo && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-500/40 bg-sky-950/25 px-4 py-2 text-xs text-sky-200">
+          <span>
+            {locale === "pt"
+              ? "Demonstração do Tutorial: esta rota de exemplo não altera seu projeto a menos que você a aplique."
+              : "Tutorial Demo: this example route does not modify your project unless you apply it."}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2.5 text-xs border-sky-400/50 text-sky-100"
+            onClick={() => updateProject(applyTutorialAutoExample)}
+          >
+            {locale === "pt" ? "Usar no projeto" : "Use in project"}
+          </Button>
+        </div>
+      )}
+
       {!auto.enabled && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
           <div className="flex items-center gap-2">
@@ -1084,7 +1162,7 @@ export function AutonomousTab() {
       {view !== "config" ? (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
           {/* LEFT (8 cols): PathPlanner Field Canvas + PreviewSeekbar */}
-          <Card className="xl:col-span-8 overflow-hidden bg-[#0b0f17] border-[#22304a]">
+          <Card data-tour="autonomous-editor" className="xl:col-span-8 overflow-hidden bg-[#0b0f17] border-[#22304a]">
             {/* Fixed Single-Row PathPlanner Toolbar */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#22304a] bg-[#0f1624] px-3.5 py-2.5">
               {view === "paths" ? (
@@ -2804,7 +2882,10 @@ export function AutonomousTab() {
       ) : (
         /* ==================== CONFIG & CÓDIGO VIEW ==================== */
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#22304a] bg-[#0f1624] p-3">
+          <div
+            data-tour="autonomous-editor"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#22304a] bg-[#0f1624] p-3"
+          >
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" onClick={handleScanLocalFolder} disabled={scanning}>
                 <FolderSearch className="h-3.5 w-3.5" />

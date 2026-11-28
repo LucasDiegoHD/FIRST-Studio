@@ -409,8 +409,10 @@ const fsmNodeTypes = {
 
 export function StatesView({
   initialTarget = "subsystem",
+  forcedInnerTab = null,
 }: {
   initialTarget?: "subsystem" | "superstructure";
+  forcedInnerTab?: { tab: FsmInnerTab; seq: number } | null;
 }) {
   const {
     project,
@@ -438,6 +440,12 @@ export function StatesView({
   useEffect(() => {
     setTarget(initialTarget);
   }, [initialTarget]);
+
+  useEffect(() => {
+    if (!forcedInnerTab) return;
+    setTarget("subsystem");
+    setInnerTab(forcedInnerTab.tab);
+  }, [forcedInnerTab]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -1377,7 +1385,7 @@ export function StatesView({
           </Card>
 
           {/* Right Split 3-Tab FSM Editor */}
-          <Card className="xl:col-span-5">
+          <Card data-tour="fsm-editor" className="xl:col-span-5">
             <CardHeader className="border-b border-[#22304a] p-2">
               <div className="grid grid-cols-3 gap-1 rounded-lg bg-[#0b0f17] p-1">
                 {(

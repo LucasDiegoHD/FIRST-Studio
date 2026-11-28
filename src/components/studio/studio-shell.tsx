@@ -15,6 +15,7 @@ import {
   Gamepad2,
   GitBranch,
   Globe,
+  GraduationCap,
   Home,
   Keyboard,
   LayoutGrid,
@@ -44,8 +45,13 @@ import {
   resolveShortcutAction,
   SHORTCUT_GUIDE,
 } from "@/lib/keyboard-shortcuts";
-import type { SubsystemConfig } from "@/lib/schema/ciprix-project";
+import { isMotorSubsystem, type SubsystemConfig } from "@/lib/schema/ciprix-project";
 import { parseProjectWithMigration } from "@/lib/schema/migrations";
+import {
+  loadTutorialProgress,
+  saveTutorialProgress,
+  TUTORIAL_STEPS,
+} from "@/lib/tutorial/steps";
 import type { StudioTab } from "@/lib/validator";
 import { cn } from "@/lib/utils";
 import { ArenaTab } from "./arena-tab";
@@ -56,6 +62,7 @@ import { ControlsTab } from "./controls-tab";
 import { ProjectSettingsDialog } from "./project-settings-dialog";
 import { RobotFlowView } from "./robot-flow-view";
 import { StatesView } from "./states-view";
+import { TutorialOverlay } from "./tutorial-overlay";
 
 type GuidedStep = "robot" | "states" | "arena" | "controls" | "autonomous" | "export";
 
@@ -123,6 +130,16 @@ export function StudioShell({
   const [exporting, setExporting] = useState(false);
   const [bridgeOpenSignal, setBridgeOpenSignal] = useState(0);
   const [bridgeDeploySignal, setBridgeDeploySignal] = useState(0);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [tutorialStepIdx, setTutorialStepIdx] = useState(0);
+  const [tutorialCompleted, setTutorialCompleted] = useState(false);
+  const [tutorialHydrated, setTutorialHydrated] = useState(false);
+  const [advHardwareSignal, setAdvHardwareSignal] = useState(0);
+  const [autoPlaySignal, setAutoPlaySignal] = useState(0);
+  const [forcedFsmTab, setForcedFsmTab] = useState<{
+    tab: "states" | "requests" | "bindings";
+    seq: number;
+  } | null>(null);
   const bridgeStatus = useBridgeStatus(project.project.teamNumber);
   const [toastMsg, setToastMsg] = useState<{
     text: string;
@@ -154,6 +171,95 @@ export function StudioShell({
 
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const currentStep = tabToStep(activeTab);
+
+  const syncStudioToTutorialStep = useCallback(
+    (idx: number) => {
+      const clamped = Math.max(0, Math.min(TUTORIAL_STEPS.length - 1, idx));
+      const step = TUTORIAL_STEPS[clamped];
+      if (!step) return;
+
+      if (step.tab === "project") {
+        if (activeRoute !== "studio") router.push("/studio");
+        setSettingsOpen(true);
+        return;
+      }
+
+      setSettingsOpen(false);
+      navigateToTab(step.tab);
+
+      if (step.id === "autonomous") {
+        setAutoPlaySignal((n) => n + 1);
+        return;
+      }
+
+      if (step.id === "drivetrain") {
+        setSelectedSubsystemId("drivetrain");
+        return;
+      }
+
+      if (step.id === "subsystem-hardware" || step.id === "sensors" || step.fsmInnerTab) {
+        const currentMotor =
+          project.subsystems.find((s) => s.id === selectedSubsystemId && isMotorSubsystem(s)) ??
+          project.subsystems.find(isMotorSubsystem);
+        if (currentMotor) {
+          setSelectedSubsystemId(currentMotor.id);
+        }
+        if (step.openAdvancedHardware) {
+          setAdvHardwareSignal((n) => n + 1);
+        }
+        if (step.fsmInnerTab) {
+          setForcedFsmTab({ tab: step.fsmInnerTab, seq: Date.now() });
+        }
+      }
+    },
+    [
+      activeRoute,
+      navigateToTab,
+      project.subsystems,
+      router,
+      selectedSubsystemId,
+      setSelectedSubsystemId,
+    ],
+  );
+
+  const didHydrateSyncRef = useRef(false);
+  useEffect(() => {
+    const saved = loadTutorialProgress();
+    setTutorialStepIdx(saved.stepIndex);
+    setTutorialCompleted(saved.completed);
+    setTutorialHydrated(true);
+    if (saved.active && !saved.completed) {
+      setTutorialOpen(true);
+      if (!didHydrateSyncRef.current) {
+        didHydrateSyncRef.current = true;
+        syncStudioToTutorialStep(saved.stepIndex);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!tutorialHydrated) return;
+    saveTutorialProgress({
+      stepIndex: tutorialStepIdx,
+      completed: tutorialCompleted,
+      active: tutorialOpen,
+    });
+  }, [tutorialHydrated, tutorialStepIdx, tutorialCompleted, tutorialOpen]);
+
+  const prevTutorialSubCountRef = useRef(project.subsystems.length);
+  useEffect(() => {
+    const prevCount = prevTutorialSubCountRef.current;
+    prevTutorialSubCountRef.current = project.subsystems.length;
+    if (!tutorialOpen || project.subsystems.length <= prevCount) return;
+    if (TUTORIAL_STEPS[tutorialStepIdx]?.id === "subsystem-hardware") {
+      const firstMotor = project.subsystems.find(isMotorSubsystem);
+      if (firstMotor) {
+        setSelectedSubsystemId(firstMotor.id);
+        setAdvHardwareSignal((n) => n + 1);
+      }
+    }
+  }, [project.subsystems, setSelectedSubsystemId, tutorialOpen, tutorialStepIdx]);
 
   const handleSaveJson = useCallback(() => {
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
@@ -622,6 +728,8 @@ export function StudioShell({
     </div>
   );
 
+  const activeTutorialStepId = tutorialOpen ? TUTORIAL_STEPS[tutorialStepIdx]?.id : undefined;
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#0b0f17] text-[#f8fafc]">
       {/* Desktop Collapsible Sidebar */}
@@ -681,6 +789,47 @@ export function StudioShell({
 
           {/* EditorHeader Utility Cluster */}
           <div className="flex items-center gap-1.5">
+            {/* Guided Tutorial Trigger */}
+            <Tooltip.Root>
+              <Tooltip.Trigger asChild>
+                <Button
+                  data-tour="tutorial-trigger"
+                  size="sm"
+                  variant={tutorialOpen ? "primary" : "outline"}
+                  onClick={() => {
+                    if (tutorialOpen) {
+                      setTutorialOpen(false);
+                      return;
+                    }
+                    const nextIdx = tutorialCompleted ? 0 : tutorialStepIdx;
+                    if (tutorialCompleted) {
+                      setTutorialStepIdx(0);
+                      setTutorialCompleted(false);
+                    }
+                    setTutorialOpen(true);
+                    syncStudioToTutorialStep(nextIdx);
+                  }}
+                  className="gap-1.5 px-2.5"
+                >
+                  <GraduationCap className="h-3.5 w-3.5 text-sky-400" />
+                  <span className="hidden sm:inline">{t("header.tutorial")}</span>
+                  {!tutorialCompleted && (tutorialOpen || tutorialStepIdx > 0) && (
+                    <span className="rounded bg-[#0b0f17]/80 px-1.5 py-0 font-mono text-[10px] text-[#93c5fd]">
+                      {tutorialStepIdx + 1}/{TUTORIAL_STEPS.length}
+                    </span>
+                  )}
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content
+                  sideOffset={6}
+                  className="z-50 rounded border border-[#3b6bb5] bg-[#131c2e] px-2.5 py-1 text-xs text-slate-100 shadow-lg"
+                >
+                  {t("header.tutorial_hint")}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+
             {/* Templates Dropdown */}
             <DropdownMenu.Root>
               <Tooltip.Root>
@@ -1016,16 +1165,25 @@ export function StudioShell({
                     onGoToControls={() => setActiveTab("controls")}
                     onRequestDeleteSubsystem={(sub) => setPendingDeleteSub(sub)}
                     onDuplicateSubsystem={handleDuplicateSubsystem}
+                    forceShowAdvancedSignal={advHardwareSignal}
                   />
                 )}
                 {currentStep === "states" && (
                   <StatesView
                     initialTarget={activeTab === "superstructure" ? "superstructure" : "subsystem"}
+                    forcedInnerTab={forcedFsmTab}
                   />
                 )}
-                {currentStep === "arena" && <ArenaTab />}
+                {currentStep === "arena" && (
+                  <ArenaTab tutorialPreview={activeTutorialStepId === "zones"} />
+                )}
                 {currentStep === "controls" && <ControlsTab />}
-                {currentStep === "autonomous" && <AutonomousTab />}
+                {currentStep === "autonomous" && (
+                  <AutonomousTab
+                    autoPlaySignal={autoPlaySignal}
+                    tutorialPreview={activeTutorialStepId === "autonomous"}
+                  />
+                )}
                 {currentStep === "export" && (
                   <CodeTab
                     onDownloadZip={handleDownloadZip}
@@ -1040,7 +1198,38 @@ export function StudioShell({
         </main>
       </div>
 
-      <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <ProjectSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        tutorialActive={tutorialOpen}
+      />
+
+      <TutorialOverlay
+        open={tutorialOpen}
+        stepIndex={tutorialStepIdx}
+        onStepChange={(nextIdx) => {
+          setTutorialStepIdx(nextIdx);
+          setTutorialCompleted(false);
+          syncStudioToTutorialStep(nextIdx);
+        }}
+        onClose={() => setTutorialOpen(false)}
+        onComplete={() => {
+          setTutorialOpen(false);
+          setTutorialCompleted(true);
+          setSettingsOpen(false);
+          showToast(t("tutorial.completed_toast"));
+        }}
+        onResetSkeleton={() => {
+          resetToSkeleton();
+          showToast(t("header.preset_skeleton"), "ok", true);
+        }}
+        onResetBlank={() => {
+          resetToBlank();
+          showToast(t("header.preset_blank"), "ok", true);
+        }}
+        onDownloadZip={() => void handleDownloadZip()}
+        exporting={exporting}
+      />
 
       <CommandPalette
         open={paletteOpen}

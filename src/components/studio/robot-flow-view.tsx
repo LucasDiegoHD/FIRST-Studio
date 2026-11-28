@@ -399,11 +399,13 @@ export function RobotFlowView({
   onGoToControls,
   onRequestDeleteSubsystem,
   onDuplicateSubsystem,
+  forceShowAdvancedSignal = 0,
 }: {
   onGoToStates: () => void;
   onGoToControls: () => void;
   onRequestDeleteSubsystem?: (sub: SubsystemConfig) => void;
   onDuplicateSubsystem?: (sub: SubsystemConfig) => void;
+  forceShowAdvancedSignal?: number;
 }) {
   const {
     project,
@@ -433,6 +435,12 @@ export function RobotFlowView({
       setShowAdvanced(true);
     }
   }, [focusRequest]);
+
+  useEffect(() => {
+    if (forceShowAdvancedSignal > 0) {
+      setShowAdvanced(true);
+    }
+  }, [forceShowAdvancedSignal]);
   const [simRequest, setSimRequest] = useState<string>(project.superstructure.initialRequest);
   const [autoSim, setAutoSim] = useState(false);
   const [selectedJavaIdx, setSelectedJavaIdx] = useState(0);
@@ -786,7 +794,7 @@ export function RobotFlowView({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Zone 1: Left Component Library Sidebar */}
-        <Card className="lg:col-span-3 flex flex-col">
+        <Card data-tour="subsystem-palette" className="lg:col-span-3 flex flex-col">
           <CardHeader>
             <CardTitle>Componentes</CardTitle>
             <CardDescription>Arraste para o canvas ou clique para adicionar</CardDescription>
@@ -1261,7 +1269,10 @@ export function RobotFlowView({
           {/* Zone 3: Bottom Split — ConfigPanel + Code/Hardware Preview */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
             {/* Left: FGCLib-style ConfigPanel Card */}
-            <Card className="xl:col-span-7">
+            <Card
+              data-tour={isDrivetrainSelected ? "drivetrain-panel" : "subsystem-inspector"}
+              className="xl:col-span-7"
+            >
               {isDrivetrainSelected ? (
                 <DrivetrainPanel />
               ) : !selected ? (
@@ -1593,7 +1604,10 @@ export function RobotFlowView({
                           </div>
 
                           {/* Presence Sensors */}
-                          <div className="border-t border-[#22304a] pt-4 space-y-2.5">
+                          <div
+                            data-tour="subsystem-sensors"
+                            className="rounded-xl border border-[#22304a] bg-[#0b111e]/60 p-3.5 space-y-2.5"
+                          >
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <Radar className="h-4 w-4 text-cyan-300" />

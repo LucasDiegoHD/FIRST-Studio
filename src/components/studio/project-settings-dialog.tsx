@@ -4,22 +4,36 @@ import React from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { useProject } from "@/context/project-context";
+import { cn } from "@/lib/utils";
 import { ProjectTab } from "./project-tab";
 
 export function ProjectSettingsDialog({
   open,
   onOpenChange,
+  tutorialActive = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  tutorialActive?: boolean;
 }) {
   const { t } = useProject();
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={onOpenChange} modal={!tutorialActive}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-[#0b0f17]/80 backdrop-blur-xs" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[92vw] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-[#2c3f61] bg-[#0f1624] shadow-2xl">
+        <Dialog.Content
+          data-tour="project-identity"
+          onInteractOutside={(e) => {
+            if (tutorialActive) e.preventDefault();
+          }}
+          className={cn(
+            "fixed left-1/2 z-50 flex w-[92vw] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-xl border border-[#2c3f61] bg-[#0f1624] shadow-2xl transition-all duration-200",
+            tutorialActive
+              ? "top-16 max-h-fit [&_section:not(:first-of-type)]:hidden"
+              : "top-1/2 max-h-[85vh] -translate-y-1/2",
+          )}
+        >
           <div className="flex items-center justify-between border-b border-[#22304a] px-5 py-3.5">
             <Dialog.Title className="text-[15px] font-semibold text-white">
               {t("tabs.project")}

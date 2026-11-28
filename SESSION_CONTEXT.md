@@ -1,6 +1,6 @@
 # Contexto de Sessão — FIRST Studio
 
-> Documento de retomada atualizado em **2026-11-27 (00:21)**. Leia este arquivo no início da próxima sessão para continuar exatamente de onde paramos (pronto para a **Fase 7 — Modo Tutorial** e/ou polimentos no Visualizer do PathPlanner).
+> Documento de retomada atualizado em **2026-11-27 (21:15)**. Leia este arquivo para ver o histórico completo — **Fases 1 a 7 concluídas** (polimentos opcionais no PathPlanner Visualizer listados na Fase 7).
 
 ---
 
@@ -12,11 +12,10 @@
 - **Referência de UI original:** `D:\FGCLib Studio\FGCLibStudio` · Referência PathPlanner: `mjansen4857/pathplanner` (`2025.0`)
 - **Alvo FRC:** **Ciprix `2026.3.0`** (WPILib 2026 + AdvantageKit + `@AutoCommandFactory`)
 - **Stack:** Next.js `15.5.29`, React `19.1.0`, Tailwind CSS v4, TypeScript `5.8`, Zod `3.24` (`schemaVersion: 2`), JSZip `3.10`, Vitest `3.2.7`, `@xyflow/react` `13.0.3`, `prism-react-renderer` `2.4.1`, Radix UI, `lucide-react`.
-- **Verificações mais recentes (pós-Visualizer PathPlanner):**
+- **Verificações mais recentes (pós-Fase 7 — Modo Tutorial):**
   - `.\node_modules\.bin\tsc.cmd --noEmit`: passou (`0` erros).
   - `.\node_modules\.bin\eslint.cmd src scripts`: passou (`0` erros, `0` avisos).
-  - `.\node_modules\.bin\vitest.cmd run`: **8 arquivos, 47/47 testes passando** (`shortcuts`, `phase1`–`phase6`, `generator`).
-  - `/studio` em Next.js dev (`task-163`): `HTTP 200` com compilação limpa.
+  - `.\node_modules\.bin\vitest.cmd run`: **9 arquivos, 55/55 testes passando** (`shortcuts`, `phase1`–`phase7`, `generator`).
 - **Pendências de verificação em máquina com hardware/JDK/app:**
   - `./gradlew build` do Java gerado não rodou localmente (falta JDK 17+ / WPILib 2026 no `PATH`).
   - Deploy real no **roboRIO** via FIRST Studio Bridge (`USB`, `Wi-Fi`, `Ethernet`) ainda não testado com hardware real.
@@ -26,7 +25,7 @@
 
 ## 2. Task Inteira — Plano Completo (Fases 1 a 7)
 
-> **Progresso geral:** **6 de 7 fases concluídas**. Próximos alvos: **Fase 7 — Modo Tutorial** + **polimentos opcionais no PathPlanner Visualizer**.
+> **Progresso geral:** **7 de 7 fases concluídas**. Polimentos opcionais futuros no PathPlanner Visualizer permanecem mapeados abaixo.
 
 ### ✅ Fase 1 — Base, Validação, Ajuda, Créditos & FSM Modular *(CONCLUÍDA — `f04c9e8`, `2d397b8`, `ba50eb6`, `227d30d`)*
 - **Erros precisos por campo:** validador aponta aba, subsistema, estado, caminho do campo e foco/scroll direto ao erro (incluindo correção de limites de exemplo `-0.5` → `0.3`).
@@ -82,15 +81,10 @@
 
 ---
 
-### ⏳ Fase 7 — Modo Tutorial & Polimentos do Visualizer *(PRÓXIMO PASSO)*
-- **Polimentos futuros no PathPlanner Visualizer (caminho já traçado):** zonas de restrição (`constraintZones`), `pointTowardsZones`, `linkedName` entre waypoints, zoom/pan no SVG e prévia visual de trajetórias Choreo `.traj`.
-- **Funcionamento (Tutorial):** botão **Tutorial** no topo inicia um passo a passo guiado com spotlight (fundo escurecido + recorte no elemento destacado) e cartão em 3 partes:
-  1. *O que preencher*
-  2. *Por que isso importa*
-  3. **De onde tirar o dado no robô** (ex.: ID CAN/firmware no Phoenix Tuner X ou REV Hardware Client; redução na gearbox/CAD; limites medidos no fim de curso; corrente na ficha técnica do motor; porta DIO no roboRIO).
-- **Avanço automático & Persistência:** o botão *Próximo* só libera quando o campo fica válido pelo validador da Fase 1; progresso salvo para continuar depois; funciona começando do zero ou a partir do preset `skeleton`.
-- **Roteiro completo:** projeto e equipe → drivetrain → primeiro subsistema (motor, ID CAN, relação, limites) → sensores → estados → requisições → ligações → SuperStructure → controles → zonas → autos → gerar e enviar.
-- **Implementação:** `src/lib/tutorial/steps.ts` + atributos `data-tour="<id>"` nos componentes, reaproveitando `Popover` do Radix UI já instalado (sem depender de lib externa).
+### ✅ Fase 7 — Modo Tutorial *(CONCLUÍDA — sessão atual)*
+- **Roteiro & Validação (`src/lib/tutorial/steps.ts`):** 12 etapas guiadas (`project-team` → `drivetrain` → `subsystem-hardware` → `sensors` → `fsm-states` → `fsm-requests` → `fsm-bindings` → `superstructure` → `controls` → `zones` → `autonomous` → `export-deploy`) em `pt` e `en`, com *1. O que preencher*, *2. Por que isso importa* e *3. De onde tirar no robô*, bloqueio de avanço pelo validador da Fase 1 e persistência em `localStorage`.
+- **Spotlight & Popover (`src/components/studio/tutorial-overlay.tsx`, `studio-shell.tsx`):** botão **Tutorial** no topo, máscara SVG spotlight sem bloquear interação nos campos destacados, `Popover` do `@radix-ui/react-popover` já instalado e alvos `data-tour` em todas as abas e no diálogo de projeto (`modal={!tutorialActive}`).
+- **Polimentos opcionais futuros no PathPlanner Visualizer:** zonas de restrição (`constraintZones`), `pointTowardsZones`, `linkedName` entre waypoints, zoom/pan no SVG e prévia visual de trajetórias Choreo `.traj`.
 
 ---
 
@@ -101,6 +95,7 @@
 | Schema & Migrações | `src/lib/schema/ciprix-project.ts`, `src/lib/schema/migrations.ts` |
 | Presets | `src/lib/presets/skeleton.ts`, `src/lib/presets/drivetrain.ts` |
 | Validador & Catálogo de Ajuda | `src/lib/validator.ts`, `src/lib/help/catalog.ts`, `src/lib/i18n.ts` |
+| Modo Tutorial (Fase 7) | `src/lib/tutorial/steps.ts`, `src/components/studio/tutorial-overlay.tsx` |
 | Arena 2026 REBUILT & Autônomos | `src/lib/arena/rebuilt-2026.ts`, `src/lib/autonomous/pathplanner-engine.ts`, `src/lib/autonomous/pathplanner-parser.ts`, `src/lib/autonomous/templates.ts` |
 | Parser Tuner X | `src/lib/drivetrain/tuner-parser.ts` |
 | Geradores Java & JSON | `src/lib/generator/index.ts`, `src/lib/generator/core/robot-files.ts`, `src/lib/generator/drivetrain/index.ts`, `src/lib/generator/zones/index.ts`, `src/lib/generator/autonomous/index.ts`, `src/lib/generator/subsystems/roller.ts`, `src/lib/generator/sensors.ts`, `src/lib/generator/leds/index.ts` |
@@ -108,7 +103,7 @@
 | Bridge Client & Server (Fase 3.2) | `src/lib/bridge/`, `src/components/studio/bridge-deploy-panel.tsx`, `bridge/` |
 | UI Principal do Studio | `src/components/studio/studio-shell.tsx`, `robot-flow-view.tsx`, `drivetrain-panel.tsx`, `states-view.tsx`, `superstructure-tab.tsx`, `arena-tab.tsx`, `autonomous-tab.tsx`, `rebuilt-field-svg.tsx`, `controls-tab.tsx`, `code-tab.tsx` |
 | Vendordeps 2026 | `public/skeleton/vendordeps/` (inclui `PathplannerLib.json`) |
-| Testes Vitest | `src/lib/__tests__/` (`phase1`–`phase6`, `generator`, `shortcuts`) |
+| Testes Vitest | `src/lib/__tests__/` (`phase1`–`phase7`, `generator`, `shortcuts`) |
 
 ---
 
