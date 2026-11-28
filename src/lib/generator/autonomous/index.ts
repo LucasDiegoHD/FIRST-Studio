@@ -1,10 +1,35 @@
 import type {
+  AutoNamedCommand,
+  AutonomousConfig,
   AutoRoutine,
   AutoStep,
   CiprixProject,
   PathPlannerPathDoc,
 } from "../../schema/ciprix-project";
 import type { GeneratedFile } from "../subsystems/roller";
+
+/** Combines explicit `auto.namedCommands` with Event Markers bound directly to a `RobotRequest`. */
+export function resolveEffectiveNamedCommands(auto: AutonomousConfig): AutoNamedCommand[] {
+  const out: AutoNamedCommand[] = [...auto.namedCommands];
+  const seen = new Set(auto.namedCommands.map((c) => c.name.trim()).filter(Boolean));
+  for (const p of auto.paths ?? []) {
+    for (const em of p.eventMarkers) {
+      const cmd = em.commandName.trim();
+      const req = em.request?.trim();
+      if (cmd && req && !seen.has(cmd)) {
+        seen.add(cmd);
+        out.push({
+          id: `em-nc-${em.id}`,
+          name: cmd,
+          request: req,
+          waitForGoal: Boolean(em.waitForGoal),
+          timeoutSec: em.timeoutSec ?? 2.5,
+        });
+      }
+    }
+  }
+  return out;
+}
 
 function escapeJavaString(text: string): string {
   return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, "\\n");
@@ -98,11 +123,23 @@ export function generatePathPlannerPathJsonFile(
       rotation: round3(rt.rotationDegrees),
     })),
     constraintZones: [],
-    pointTowardsZones: [],
+    pointTowardsZones: (pathDoc.pointTowardsZones ?? []).map((z) => ({
+      fieldPosition: {
+        x: round3(z.fieldPosition.x),
+        y: round3(z.fieldPosition.y),
+      },
+      rotationOffset: round3(z.rotationOffsetDegrees ?? 0),
+      minWaypointRelativePos: round3(Math.min(z.minWaypointRelativePos, z.maxWaypointRelativePos)),
+      maxWaypointRelativePos: round3(Math.max(z.minWaypointRelativePos, z.maxWaypointRelativePos)),
+      name: z.name,
+    })),
     eventMarkers: pathDoc.eventMarkers.map((em) => ({
       name: em.name,
       waypointRelativePos: round3(em.waypointRelativePos),
-      endWaypointRelativePos: null,
+      endWaypointRelativePos:
+        typeof em.endWaypointRelativePos === "number"
+          ? round3(em.endWaypointRelativePos)
+          : null,
       command: {
         type: "named",
         data: { name: em.commandName },
@@ -206,9 +243,10 @@ export function generateAutonomousSetupFile(
   const chooserName = escapeJavaString(auto.chooserName.trim() || "Auto");
   const slots = Math.min(5, Math.max(1, Math.round(auto.chooserSlots || 1)));
 
+  const effectiveNamedCommands = resolveEffectiveNamedCommands(auto);
   const hasPathPlanner = auto.routines.some((r) => r.source === "pathplanner");
   const hasChoreo = auto.routines.some((r) => r.source === "choreo");
-  const hasNamed = auto.namedCommands.length > 0;
+  const hasNamed = effectiveNamedCommands.length > 0;
 
   const importSet = new Set<string>([
     "import edu.wpi.first.wpilibj2.command.Command;",
@@ -229,7 +267,7 @@ export function generateAutonomousSetupFile(
     importSet.add("import org.ciprix.util.ChoreoAuto;");
   }
 
-  const namedCommandLines = auto.namedCommands.map((cmd) => {
+  const namedCommandLines = effectiveNamedCommands.map((cmd) => {
     const escaped = escapeJavaString(cmd.name.trim());
     return `    NamedCommands.registerCommand(\n        "${escaped}",\n        SuperStructureCommands.autoRequest(superStructure, RobotRequest.${cmd.request}, ${cmd.waitForGoal}, ${formatDouble(cmd.timeoutSec)}));`;
   });

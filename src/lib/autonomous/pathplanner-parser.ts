@@ -2,6 +2,7 @@ import type {
   AutoStep,
   PathEventMarker,
   PathPlannerPathDoc,
+  PathPointTowardsZone,
   PathRotationTarget,
   PathWaypoint,
 } from "../schema/ciprix-project";
@@ -191,12 +192,48 @@ export function parseFullPathPlannerPathJson(
       });
     }
 
+    const pointTowardsZones: PathPointTowardsZone[] = [];
+    if (Array.isArray(parsed.pointTowardsZones)) {
+      parsed.pointTowardsZones.forEach((rawPz, idx) => {
+        if (!rawPz || typeof rawPz !== "object") return;
+        const pz = rawPz as Record<string, unknown>;
+        const fp = readPt(pz.fieldPosition);
+        if (!fp) return;
+        const minPos =
+          typeof pz.minWaypointRelativePos === "number"
+            ? Math.max(0, pz.minWaypointRelativePos)
+            : 0;
+        const maxPos =
+          typeof pz.maxWaypointRelativePos === "number"
+            ? Math.max(minPos, pz.maxWaypointRelativePos)
+            : minPos + 0.5;
+        const offset =
+          typeof pz.rotationOffset === "number"
+            ? pz.rotationOffset
+            : typeof pz.rotationOffsetDegrees === "number"
+              ? pz.rotationOffsetDegrees
+              : 0;
+        pointTowardsZones.push({
+          id: `ptz-imp-${idx + 1}-${Math.random().toString(36).slice(2, 5)}`,
+          name: typeof pz.name === "string" && pz.name.trim() ? pz.name.trim() : `Aim_${idx + 1}`,
+          fieldPosition: fp,
+          minWaypointRelativePos: minPos,
+          maxWaypointRelativePos: maxPos,
+          rotationOffsetDegrees: offset,
+        });
+      });
+    }
+
     const eventMarkers: PathEventMarker[] = [];
     if (Array.isArray(parsed.eventMarkers)) {
       parsed.eventMarkers.forEach((rawEm, idx) => {
         if (!rawEm || typeof rawEm !== "object") return;
         const em = rawEm as Record<string, unknown>;
         const pos = typeof em.waypointRelativePos === "number" ? em.waypointRelativePos : 0.25;
+        const endPos =
+          typeof em.endWaypointRelativePos === "number"
+            ? Math.max(0, em.endWaypointRelativePos)
+            : null;
         const markerCmds: string[] = [];
         const seen = new Set<string>();
         if (em.command) {
@@ -209,6 +246,7 @@ export function parseFullPathPlannerPathJson(
           id: `em-imp-${idx + 1}-${Math.random().toString(36).slice(2, 5)}`,
           name: typeof em.name === "string" && em.name.trim() ? em.name.trim() : cmdName,
           waypointRelativePos: Math.max(0, pos),
+          ...(endPos !== null ? { endWaypointRelativePos: endPos } : {}),
           commandName: cmdName,
         });
       });
@@ -237,6 +275,7 @@ export function parseFullPathPlannerPathJson(
       name: stripAutoExtension(fallbackName) || "ImportedPath",
       waypoints,
       rotationTargets,
+      pointTowardsZones,
       eventMarkers,
       globalConstraints,
       idealStartingState: {

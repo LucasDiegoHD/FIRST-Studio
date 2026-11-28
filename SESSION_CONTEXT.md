@@ -12,10 +12,10 @@
 - **Referência de UI original:** `D:\FGCLib Studio\FGCLibStudio` · Referência PathPlanner: `mjansen4857/pathplanner` (`2025.0`)
 - **Alvo FRC:** **Ciprix `2026.3.0`** (WPILib 2026 + AdvantageKit + `@AutoCommandFactory`)
 - **Stack:** Next.js `15.5.29`, React `19.1.0`, Tailwind CSS v4, TypeScript `5.8`, Zod `3.24` (`schemaVersion: 2`), JSZip `3.10`, Vitest `3.2.7`, `@xyflow/react` `13.0.3`, `prism-react-renderer` `2.4.1`, Radix UI, `lucide-react`.
-- **Verificações mais recentes (pós-Fase 7 — Modo Tutorial):**
+- **Verificações mais recentes (pós-polimentos de Autônomos + Event Markers + Mira):**
   - `.\node_modules\.bin\tsc.cmd --noEmit`: passou (`0` erros).
   - `.\node_modules\.bin\eslint.cmd src scripts`: passou (`0` erros, `0` avisos).
-  - `.\node_modules\.bin\vitest.cmd run`: **9 arquivos, 55/55 testes passando** (`shortcuts`, `phase1`–`phase7`, `generator`).
+  - `.\node_modules\.bin\vitest.cmd run`: `phase1`–`phase7`, `generator`, `shortcuts` passando.
 - **Pendências de verificação em máquina com hardware/JDK/app:**
   - `./gradlew build` do Java gerado não rodou localmente (falta JDK 17+ / WPILib 2026 no `PATH`).
   - Deploy real no **roboRIO** via FIRST Studio Bridge (`USB`, `Wi-Fi`, `Ethernet`) ainda não testado com hardware real.
@@ -84,7 +84,11 @@
 ### ✅ Fase 7 — Modo Tutorial *(CONCLUÍDA — sessão atual)*
 - **Roteiro & Validação (`src/lib/tutorial/steps.ts`):** 12 etapas guiadas (`project-team` → `drivetrain` → `subsystem-hardware` → `sensors` → `fsm-states` → `fsm-requests` → `fsm-bindings` → `superstructure` → `controls` → `zones` → `autonomous` → `export-deploy`) em `pt` e `en`, com *1. O que preencher*, *2. Por que isso importa* e *3. De onde tirar no robô*, bloqueio de avanço pelo validador da Fase 1 e persistência em `localStorage`.
 - **Spotlight & Popover (`src/components/studio/tutorial-overlay.tsx`, `studio-shell.tsx`):** botão **Tutorial** no topo, máscara SVG spotlight sem bloquear interação nos campos destacados, `Popover` do `@radix-ui/react-popover` já instalado e alvos `data-tour` em todas as abas e no diálogo de projeto (`modal={!tutorialActive}`).
-- **Polimentos opcionais futuros no PathPlanner Visualizer:** zonas de restrição (`constraintZones`), `pointTowardsZones`, `linkedName` entre waypoints, zoom/pan no SVG e prévia visual de trajetórias Choreo `.traj`.
+- **Polimentos de Autônomos aplicados (sessão atual):**
+  - **Mira Contínua (`pointTowardsZones`):** suporte completo no schema (`PathPointTowardsZoneSchema`), parser/gerador PathPlanner `"2025.0"`, motor (`aimAtZone` + inversão em `reversePathDoc`) e editor SVG interativo (botão `+ Hub`, alvo arrastável no campo, raios tracejados e controles de faixa + offset `0°/180°`).
+  - **Event Markers + `RobotRequest`:** seleção direta de `RobotRequest` da SuperStructure no card do marcador (auto-registrado em `AutonomousSetup.java`), suporte a marcadores em trecho (`endWaypointRelativePos`) e badges no canvas.
+  - **Chassi & Rotação Inicial/Final:** quadrado completo do robô com seta e manopla arrastável de ângulo no início (`idealStartingState.rotation`) e no **fim da trajetória** (`goalEndState.rotation`).
+- **Polimentos opcionais futuros no PathPlanner Visualizer:** zonas de restrição (`constraintZones`), `linkedName` entre waypoints, zoom/pan no SVG e prévia visual de trajetórias Choreo `.traj`.
 
 ---
 
@@ -117,9 +121,9 @@
   $env:NEXT_TELEMETRY_DISABLED = "1"
   ```
 - **Windows PowerShell 5.1:** não aceita `&&`; usar quebras de linha com `if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`.
-- **GitHub push (`.github/workflows/ci.yml`):** token `gh` local não tem escopo `workflow`; sempre excluir do stage:
+- **GitHub push (`.github/workflows/ci.yml`):** token `gh` local não tem escopo `workflow`; sempre fazer `commit` **e `git push origin main`** após concluir mudanças, excluindo `.github` do stage:
   ```powershell
-  git add -A -- ":!.github/workflows/ci.yml"
+  git add -A -- ":!.github/workflows/ci.yml" ":!.github"
   ```
 - **Regra do teste `phase1.test.ts` (`HELP_CATALOG`):** todo `<Field path="...">` nos componentes precisa existir em `src/lib/help/catalog.ts` (`pt` e `en`) ou casar com `normalizeFieldPath()`. O scanner estático converte `${...}` em `*` e expande `${gain}` para todos de `["kP", "kI", "kD", "kS", "kV", "kA", "kG"]` — então **nunca** use variável como base dentro de `path={\`${base}.campo\`}` e prefira `<Field path="autonomous.translationPid.kP">` explícito em blocos PID sem feedforward (`kS`/`kV`/`kA`/`kG`).
 - **APIs exatas do Ciprix `2026.3.0`:** ao iniciar as Fases 5 e 6, inspecionar os fontes/assinaturas reais do Ciprix (`D:\.tmp\ciprix-sources.jar` se ainda existir, ou pacote WPILib/Gradle cache) antes de gerar código Java (`Zone2d`, `AllianceFlipUtil`, `AutoEngine`, `LoggedSequentialDashboardChooser`, `LocalADStarAK`, `ChoreoAuto`).

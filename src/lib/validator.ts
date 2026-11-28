@@ -1274,6 +1274,27 @@ export function validateProject(
       }
     }
 
+    for (const p of auto.paths ?? []) {
+      for (const em of p.eventMarkers) {
+        if (em.request) {
+          const emCmd = em.commandName.trim();
+          if (emCmd) mappedCmdNames.add(emCmd);
+          if (!validSuperRequests.has(em.request)) {
+            issues.push({
+              id: `auto-marker-req-${p.id}-${em.id}`,
+              severity: "error",
+              tab: "autonomous",
+              path: `autonomous.paths.${p.id}.eventMarkers.${em.id}.request`,
+              message:
+                locale === "pt"
+                  ? `Event Marker "${em.name}" em ${p.name}.path aponta para RobotRequest "${em.request}" inexistente.`
+                  : `Event Marker "${em.name}" in ${p.name}.path references missing RobotRequest "${em.request}".`,
+            });
+          }
+        }
+      }
+    }
+
     for (const routine of auto.routines) {
       if (!routine.fileName.trim()) {
         issues.push({
@@ -1310,6 +1331,26 @@ export function validateProject(
               locale === "pt"
                 ? `Rotina "${routine.name}" usa NamedCommand "${disc}" sem ligação configurada.`
                 : `Routine "${routine.name}" uses NamedCommand "${disc}" with no RobotRequest binding.`,
+          });
+        }
+      }
+    }
+
+    const reportedUnmappedMarkers = new Set<string>();
+    for (const p of auto.paths ?? []) {
+      for (const em of p.eventMarkers) {
+        const emCmd = em.commandName.trim();
+        if (emCmd && !mappedCmdNames.has(emCmd) && !reportedUnmappedMarkers.has(emCmd)) {
+          reportedUnmappedMarkers.add(emCmd);
+          issues.push({
+            id: `auto-unmapped-marker-${p.id}-${em.id}`,
+            severity: "warning",
+            tab: "autonomous",
+            path: `autonomous.paths.${p.id}.eventMarkers.${em.id}.commandName`,
+            message:
+              locale === "pt"
+                ? `Event Marker "${em.name}" em ${p.name}.path usa "${emCmd}" sem RobotRequest associado.`
+                : `Event Marker "${em.name}" in ${p.name}.path uses "${emCmd}" with no RobotRequest binding.`,
           });
         }
       }

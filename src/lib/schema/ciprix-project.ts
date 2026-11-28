@@ -683,11 +683,25 @@ export const PathRotationTargetSchema = z.object({
 });
 export type PathRotationTarget = z.infer<typeof PathRotationTargetSchema>;
 
+export const PathPointTowardsZoneSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  fieldPosition: PathPoint2dSchema,
+  minWaypointRelativePos: z.number().min(0),
+  maxWaypointRelativePos: z.number().min(0),
+  rotationOffsetDegrees: z.number().optional(),
+});
+export type PathPointTowardsZone = z.infer<typeof PathPointTowardsZoneSchema>;
+
 export const PathEventMarkerSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   waypointRelativePos: z.number().min(0),
+  endWaypointRelativePos: z.number().min(0).nullable().optional(),
   commandName: z.string().min(1),
+  request: z.string().min(1).optional(),
+  waitForGoal: z.boolean().optional(),
+  timeoutSec: z.number().min(0.2).max(15).optional(),
 });
 export type PathEventMarker = z.infer<typeof PathEventMarkerSchema>;
 
@@ -704,6 +718,7 @@ export const PathPlannerPathDocSchema = z.object({
   name: z.string().min(1),
   waypoints: z.array(PathWaypointSchema).min(2),
   rotationTargets: z.array(PathRotationTargetSchema).default([]),
+  pointTowardsZones: z.array(PathPointTowardsZoneSchema).optional(),
   eventMarkers: z.array(PathEventMarkerSchema).default([]),
   globalConstraints: PathConstraintsSchema.optional(),
   idealStartingState: z

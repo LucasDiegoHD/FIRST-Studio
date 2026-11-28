@@ -35,7 +35,9 @@ export interface TrajectoryMarkerEvent {
   id: string;
   name: string;
   commandName: string;
+  request?: string;
   timeSec: number;
+  endTimeSec?: number;
   x: number;
   y: number;
 }
@@ -435,11 +437,31 @@ export function reversePathDoc(pathDoc: PathPlannerPathDoc): PathPlannerPathDoc 
         waypointRelativePos: round2(clamp(maxPos - rt.waypointRelativePos, 0, maxPos)),
       }))
       .sort((a, b) => a.waypointRelativePos - b.waypointRelativePos),
+    pointTowardsZones: pathDoc.pointTowardsZones?.map((z) => {
+      const a = round2(clamp(maxPos - z.maxWaypointRelativePos, 0, maxPos));
+      const b = round2(clamp(maxPos - z.minWaypointRelativePos, 0, maxPos));
+      return {
+        ...z,
+        minWaypointRelativePos: Math.min(a, b),
+        maxWaypointRelativePos: Math.max(a, b),
+      };
+    }),
     eventMarkers: pathDoc.eventMarkers
-      .map((em) => ({
-        ...em,
-        waypointRelativePos: round2(clamp(maxPos - em.waypointRelativePos, 0, maxPos)),
-      }))
+      .map((em) => {
+        if (typeof em.endWaypointRelativePos === "number") {
+          const a = round2(clamp(maxPos - em.endWaypointRelativePos, 0, maxPos));
+          const b = round2(clamp(maxPos - em.waypointRelativePos, 0, maxPos));
+          return {
+            ...em,
+            waypointRelativePos: Math.min(a, b),
+            endWaypointRelativePos: Math.max(a, b),
+          };
+        }
+        return {
+          ...em,
+          waypointRelativePos: round2(clamp(maxPos - em.waypointRelativePos, 0, maxPos)),
+        };
+      })
       .sort((a, b) => a.waypointRelativePos - b.waypointRelativePos),
     idealStartingState: pathDoc.goalEndState
       ? { ...pathDoc.goalEndState }
@@ -476,6 +498,7 @@ export function createDefaultPathDoc(
       },
     ],
     rotationTargets: [],
+    pointTowardsZones: [],
     eventMarkers: [],
     idealStartingState: { velocity: 0, rotation: 0 },
     goalEndState: { velocity: 0, rotation: 0 },
@@ -576,20 +599,71 @@ export function generatePathTrajectory(
     vels[i] = Math.min(vels[i], maxReach);
   }
 
-  // Holonomic rotation interpolation through sorted rotationTargets
+  // Holonomic rotation interpolation through sorted rotationTargets & pointTowardsZones
   const startRotRad = degToRad(pathDoc.idealStartingState?.rotation ?? 0);
   const endRotRad = degToRad(pathDoc.goalEndState?.rotation ?? 0);
-  const rotStops: { dist: number; rotRad: number }[] = [
-    { dist: 0, rotRad: startRotRad },
-    ...[...pathDoc.rotationTargets]
-      .sort((a, b) => a.waypointRelativePos - b.waypointRelativePos)
-      .map((rt) => {
-        const clampedRel = clamp(rt.waypointRelativePos, 0, segCount);
-        const idx = clamp(Math.round((clampedRel / segCount) * (n - 1)), 0, n - 1);
-        return { dist: rawPts[idx].distAlong, rotRad: degToRad(rt.rotationDegrees) };
-      }),
-    { dist: cumulativeDist, rotRad: endRotRad },
-  ];
+
+  const ptZones = (pathDoc.pointTowardsZones ?? []).map((z) => {
+    const minRel = clamp(Math.min(z.minWaypointRelativePos, z.maxWaypointRelativePos), 0, segCount);
+    const maxRel = clamp(Math.max(z.minWaypointRelativePos, z.maxWaypointRelativePos), 0, segCount);
+    const startIdx = clamp(Math.round((minRel / segCount) * (n - 1)), 0, n - 1);
+    const endIdx = clamp(Math.round((maxRel / segCount) * (n - 1)), startIdx, n - 1);
+    const offsetRad = degToRad(z.rotationOffsetDegrees ?? 0);
+    return { zone: z, minRel, maxRel, startIdx, endIdx, offsetRad };
+  });
+
+  const findActiveZone = (idx: number) => {
+    for (let k = ptZones.length - 1; k >= 0; k -= 1) {
+      if (idx >= ptZones[k].startIdx && idx <= ptZones[k].endIdx) return ptZones[k];
+    }
+    return undefined;
+  };
+
+  const aimAtZone = (
+    pt: { x: number; y: number },
+    zEntry: (typeof ptZones)[number],
+    fallbackRad: number,
+  ) => {
+    const dx = zEntry.zone.fieldPosition.x - pt.x;
+    const dy = zEntry.zone.fieldPosition.y - pt.y;
+    if (Math.hypot(dx, dy) < 1e-3) return fallbackRad;
+    return normalizeAngleRad(Math.atan2(dy, dx) + zEntry.offsetRad);
+  };
+
+  const rotStops: { dist: number; rotRad: number }[] = [];
+  if (!findActiveZone(0)) {
+    rotStops.push({ dist: 0, rotRad: startRotRad });
+  }
+  for (const rt of [...pathDoc.rotationTargets].sort(
+    (a, b) => a.waypointRelativePos - b.waypointRelativePos,
+  )) {
+    const clampedRel = clamp(rt.waypointRelativePos, 0, segCount);
+    const idx = clamp(Math.round((clampedRel / segCount) * (n - 1)), 0, n - 1);
+    if (!findActiveZone(idx)) {
+      rotStops.push({ dist: rawPts[idx].distAlong, rotRad: degToRad(rt.rotationDegrees) });
+    }
+  }
+  for (const pz of ptZones) {
+    rotStops.push({
+      dist: rawPts[pz.startIdx].distAlong,
+      rotRad: aimAtZone(rawPts[pz.startIdx], pz, startRotRad),
+    });
+    if (pz.endIdx > pz.startIdx) {
+      rotStops.push({
+        dist: rawPts[pz.endIdx].distAlong,
+        rotRad: aimAtZone(rawPts[pz.endIdx], pz, endRotRad),
+      });
+    }
+  }
+  if (!findActiveZone(n - 1)) {
+    rotStops.push({ dist: cumulativeDist, rotRad: endRotRad });
+  }
+  rotStops.sort((a, b) => a.dist - b.dist);
+  if (rotStops.length === 0) {
+    rotStops.push({ dist: 0, rotRad: startRotRad }, { dist: cumulativeDist, rotRad: endRotRad });
+  } else if (rotStops.length === 1) {
+    rotStops.push({ dist: cumulativeDist, rotRad: endRotRad });
+  }
 
   // Time integration
   const times = new Array<number>(n).fill(0);
@@ -615,15 +689,20 @@ export function generatePathTrajectory(
         ? normalizeAngleRad(rawPts[i].headingRad + Math.PI)
         : rawPts[i].headingRad;
     } else {
-      const d = rawPts[i].distAlong;
-      let seg = 0;
-      while (seg < rotStops.length - 2 && d > rotStops[seg + 1].dist) {
-        seg += 1;
+      const activePz = findActiveZone(i);
+      if (activePz) {
+        rotations[i] = aimAtZone(rawPts[i], activePz, i > 0 ? rotations[i - 1] : startRotRad);
+      } else {
+        const d = rawPts[i].distAlong;
+        let seg = 0;
+        while (seg < rotStops.length - 2 && d > rotStops[seg + 1].dist) {
+          seg += 1;
+        }
+        const a = rotStops[seg];
+        const b = rotStops[seg + 1];
+        const span = Math.max(1e-5, b.dist - a.dist);
+        rotations[i] = cosineInterpolateAngle(a.rotRad, b.rotRad, (d - a.dist) / span);
       }
-      const a = rotStops[seg];
-      const b = rotStops[seg + 1];
-      const span = Math.max(1e-5, b.dist - a.dist);
-      rotations[i] = cosineInterpolateAngle(a.rotRad, b.rotRad, (d - a.dist) / span);
     }
   }
 
@@ -671,11 +750,19 @@ export function generatePathTrajectory(
     const rel = clamp(em.waypointRelativePos, 0, segCount);
     const idx = clamp(Math.round((rel / segCount) * (n - 1)), 0, n - 1);
     const st = states[idx];
+    let endTimeSec: number | undefined;
+    if (typeof em.endWaypointRelativePos === "number") {
+      const endRel = clamp(Math.max(rel, em.endWaypointRelativePos), 0, segCount);
+      const endIdx = clamp(Math.round((endRel / segCount) * (n - 1)), idx, n - 1);
+      endTimeSec = states[endIdx].timeSec;
+    }
     return {
       id: em.id,
       name: em.name,
       commandName: em.commandName,
+      request: em.request,
       timeSec: st.timeSec,
+      endTimeSec,
       x: st.x,
       y: st.y,
     };
@@ -857,7 +944,11 @@ export function simulateAutoRoutine(
       }
 
       for (const ev of traj.markerEvents) {
-        events.push({ ...ev, timeSec: round2(elapsed + ev.timeSec) });
+        events.push({
+          ...ev,
+          timeSec: round2(elapsed + ev.timeSec),
+          endTimeSec: ev.endTimeSec !== undefined ? round2(elapsed + ev.endTimeSec) : undefined,
+        });
       }
 
       segments.push({
@@ -911,11 +1002,20 @@ export function simulateAutoRoutine(
         if (seg.kind === "path" && seg.trajectory) {
           const localT = t - seg.startTimeSec;
           const st = sampleTrajectoryAtTime(seg.trajectory, localT);
-          const nearEv = seg.trajectory.markerEvents.find((ev) => Math.abs(ev.timeSec - localT) <= 0.35);
+          const nearEv = seg.trajectory.markerEvents.find((ev) =>
+            ev.endTimeSec !== undefined && ev.endTimeSec > ev.timeSec + 0.05
+              ? localT >= ev.timeSec && localT <= ev.endTimeSec
+              : Math.abs(ev.timeSec - localT) <= 0.35,
+          );
+          const cmdLabel = nearEv
+            ? nearEv.request && nearEv.request !== nearEv.commandName
+              ? `${nearEv.commandName} → ${nearEv.request}`
+              : nearEv.commandName
+            : null;
           return {
             state: { ...st, timeSec: t },
             activeSegmentIndex: i,
-            activeCommand: nearEv?.commandName ?? null,
+            activeCommand: cmdLabel,
           };
         }
         return {

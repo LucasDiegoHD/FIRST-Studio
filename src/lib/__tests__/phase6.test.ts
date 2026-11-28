@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildRobotSimConfig,
   generatePathTrajectory,
+  reversePathDoc,
   simulateAutoRoutine,
 } from "../autonomous/pathplanner-engine";
 import {
+  parseFullPathPlannerAutoJson,
   parseFullPathPlannerPathJson,
   parsePathPlannerAutoJson,
   parsePathPlannerPathJson,
@@ -12,7 +14,10 @@ import {
 } from "../autonomous/pathplanner-parser";
 import { REBUILT_AUTO_TEMPLATES } from "../autonomous/templates";
 import { generateProjectFiles, getRequiredVendordeps } from "../generator";
-import { generatePathPlannerPathJsonFile } from "../generator/autonomous";
+import {
+  generateAutonomousSetupFile,
+  generatePathPlannerPathJsonFile,
+} from "../generator/autonomous";
 import { createDefaultDrivetrain } from "../presets/drivetrain";
 import { createSkeletonPreset } from "../presets/skeleton";
 import {
@@ -345,5 +350,127 @@ describe("Phase 6: PathPlanner & Choreo Autonomous", () => {
     );
     expect(breakSim.breaks.length).toBeGreaterThan(0);
     expect(breakSim.breaks[0].gapMeters).toBeGreaterThan(0.25);
+  });
+
+  it("aims continuously toward pointTowardsZones, reverses zones, and round-trips zoned markers", () => {
+    const project = createSkeletonPreset();
+    project.drivetrain = createDefaultDrivetrain("ctre_swerve");
+    const targetPt = { x: 4.6, y: 4.03 };
+    const pathDoc = {
+      id: "p-aim",
+      name: "StrafeAimHub",
+      waypoints: [
+        { anchor: { x: 2.0, y: 2.0 }, prevControl: null, nextControl: { x: 2.4, y: 3.0 } },
+        { anchor: { x: 2.0, y: 6.0 }, prevControl: { x: 2.4, y: 5.0 }, nextControl: null },
+      ],
+      rotationTargets: [],
+      pointTowardsZones: [
+        {
+          id: "pz-1",
+          name: "Mirar Hub",
+          fieldPosition: targetPt,
+          minWaypointRelativePos: 0.1,
+          maxWaypointRelativePos: 0.9,
+          rotationOffsetDegrees: 0,
+        },
+      ],
+      eventMarkers: [
+        {
+          id: "em-zone",
+          name: "IntakeSpan",
+          commandName: "IntakeSpan",
+          request: "INTAKE",
+          waypointRelativePos: 0.2,
+          endWaypointRelativePos: 0.8,
+          waitForGoal: false,
+          timeoutSec: 2.5,
+        },
+      ],
+      idealStartingState: { velocity: 0, rotation: 0 },
+      goalEndState: { velocity: 0, rotation: 45 },
+    };
+
+    const simCfg = buildRobotSimConfig(project, pathDoc);
+    const traj = generatePathTrajectory(pathDoc, simCfg);
+    const midSamples = traj.states.filter(
+      (s) => s.waypointRelativePos >= 0.15 && s.waypointRelativePos <= 0.85,
+    );
+    expect(midSamples.length).toBeGreaterThan(5);
+    for (const st of midSamples) {
+      const expectedAngle = Math.atan2(targetPt.y - st.y, targetPt.x - st.x);
+      let diff = expectedAngle - st.rotationRad;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      expect(Math.abs(diff)).toBeLessThan(0.05);
+    }
+
+    expect(traj.markerEvents[0]?.timeSec).toBeLessThan(traj.markerEvents[0]?.endTimeSec ?? 0);
+
+    const reversed = reversePathDoc(pathDoc);
+    expect(reversed.pointTowardsZones?.[0]?.minWaypointRelativePos).toBeCloseTo(0.1, 2);
+    expect(reversed.pointTowardsZones?.[0]?.maxWaypointRelativePos).toBeCloseTo(0.9, 2);
+    expect(reversed.eventMarkers[0]?.waypointRelativePos).toBeCloseTo(0.2, 2);
+    expect(reversed.eventMarkers[0]?.endWaypointRelativePos).toBeCloseTo(0.8, 2);
+    expect(reversed.goalEndState?.rotation).toBe(0);
+    expect(reversed.idealStartingState?.rotation).toBe(45);
+
+    const exported = generatePathPlannerPathJsonFile(pathDoc, project);
+    expect(exported).not.toBeNull();
+    const parsedBack = parseFullPathPlannerPathJson(exported!.content, "StrafeAimHub");
+    expect(parsedBack?.pointTowardsZones).toHaveLength(1);
+    expect(parsedBack?.pointTowardsZones?.[0]?.fieldPosition).toEqual(targetPt);
+    expect(parsedBack?.eventMarkers[0]?.endWaypointRelativePos).toBeCloseTo(0.8, 2);
+
+    const parsedAuto = parseFullPathPlannerAutoJson(
+      JSON.stringify({
+        version: "2025.0",
+        command: { type: "sequential", data: { commands: [{ type: "path", data: { pathName: "StrafeAimHub" } }] } },
+      }),
+    );
+    expect(parsedAuto.pathNames).toEqual(["StrafeAimHub"]);
+  });
+
+  it("registers Event Markers bound directly to RobotRequest in AutonomousSetup and validates missing requests", () => {
+    const project = createSkeletonPreset();
+    project.drivetrain = createDefaultDrivetrain("ctre_swerve");
+    project.autonomous = {
+      ...createDefaultAutonomousConfig(),
+      enabled: true,
+      paths: [
+        {
+          id: "p-ev",
+          name: "MarkerReqPath",
+          waypoints: [
+            { anchor: { x: 2.0, y: 4.0 }, prevControl: null, nextControl: { x: 2.6, y: 4.0 } },
+            { anchor: { x: 4.0, y: 4.0 }, prevControl: { x: 3.4, y: 4.0 }, nextControl: null },
+          ],
+          rotationTargets: [],
+          eventMarkers: [
+            {
+              id: "em-req",
+              name: "SpinIntake",
+              commandName: "SpinIntake",
+              request: "INTAKE",
+              waypointRelativePos: 0.5,
+              waitForGoal: true,
+              timeoutSec: 2.0,
+            },
+          ],
+        },
+      ],
+    };
+
+    const setup = generateAutonomousSetupFile(project);
+    expect(setup?.content).toContain('NamedCommands.registerCommand(\n        "SpinIntake"');
+    expect(setup?.content).toContain(
+      "SuperStructureCommands.autoRequest(superStructure, RobotRequest.INTAKE, true, 2.0)",
+    );
+
+    const cleanIssues = validateProject(project, "pt").filter((i) => i.tab === "autonomous");
+    expect(cleanIssues).toHaveLength(0);
+
+    project.autonomous.paths![0].eventMarkers[0].request = "MISSING_REQ";
+    const errIssues = validateProject(project, "pt").filter((i) => i.tab === "autonomous");
+    expect(errIssues.some((i) => i.id === "auto-marker-req-p-ev-em-req")).toBe(true);
   });
 });
