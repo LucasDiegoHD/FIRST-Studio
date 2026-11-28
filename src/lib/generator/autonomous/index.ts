@@ -1,3 +1,9 @@
+import {
+  getRebuilt2026Landmarks,
+  isPointInShape,
+  mirrorShape,
+  type FieldRect,
+} from "../../arena/rebuilt-2026";
 import type {
   AutoNamedCommand,
   AutonomousConfig,
@@ -334,31 +340,108 @@ ${bodyLines}
   };
 }
 
+/** Generates `deploy/pathplanner/navgrid.json` for LocalADStar obstacle avoidance. */
+export function generatePathPlannerNavgridJsonFile(
+  project: CiprixProject,
+): GeneratedFile {
+  const fieldL = project.project.fieldLengthMeters;
+  const fieldW = project.project.fieldWidthMeters;
+  const nodeSizeMeters = 0.2;
+  const cols = Math.max(4, Math.ceil(fieldL / nodeSizeMeters));
+  const rows = Math.max(4, Math.ceil(fieldW / nodeSizeMeters));
+
+  const landmarks = getRebuilt2026Landmarks(fieldL, fieldW);
+  const pad = 0.22;
+  const staticRects: FieldRect[] = [
+    landmarks.blueHub,
+    landmarks.redHub,
+    landmarks.blueTower,
+    landmarks.redTower,
+  ];
+  const forbiddenZones = (project.zones ?? []).filter((z) => z.type === "forbidden");
+
+  const grid: boolean[][] = [];
+  for (let row = 0; row < rows; row += 1) {
+    const line: boolean[] = [];
+    const y = (row + 0.5) * nodeSizeMeters;
+    for (let col = 0; col < cols; col += 1) {
+      const x = (col + 0.5) * nodeSizeMeters;
+      let blocked = staticRects.some(
+        (r) =>
+          x >= Math.min(r.x1, r.x2) - pad &&
+          x <= Math.max(r.x1, r.x2) + pad &&
+          y >= Math.min(r.y1, r.y2) - pad &&
+          y <= Math.max(r.y1, r.y2) + pad,
+      );
+      if (!blocked && forbiddenZones.length > 0) {
+        for (const z of forbiddenZones) {
+          if (
+            isPointInShape(z.shape, { x, y }) ||
+            (z.mirror !== "none" && isPointInShape(mirrorShape(z.shape, z.mirror, fieldL, fieldW), { x, y }))
+          ) {
+            blocked = true;
+            break;
+          }
+        }
+      }
+      line.push(blocked);
+    }
+    grid.push(line);
+  }
+
+  return {
+    path: "src/main/deploy/pathplanner/navgrid.json",
+    content:
+      JSON.stringify(
+        {
+          field_size: { x: round3(fieldL), y: round3(fieldW) },
+          nodeSizeMeters,
+          grid,
+        },
+        null,
+        2,
+      ) + "\n",
+  };
+}
+
 /**
  * Generates `AutonomousSetup.java`, `deploy/pathplanner/settings.json` (when enabled),
- * and `.auto` JSON files for routines edited with visual step sequences.
+ * `deploy/pathplanner/navgrid.json` (for LocalADStarAK), `.auto` and `.path` files.
  */
 export function generateAutonomousFiles(project: CiprixProject): GeneratedFile[] {
   const auto = project.autonomous;
-  if (!auto?.enabled || !project.drivetrain?.enabled) return [];
+  const dtEnabled = Boolean(project.drivetrain?.enabled);
+  if (!dtEnabled) return [];
+
+  const hasTeleopAdStar = (project.drivetrain?.teleopPathfinding?.length ?? 0) > 0;
+  const autoActive = Boolean(auto?.enabled);
+  if (!autoActive && !hasTeleopAdStar) return [];
 
   const files: GeneratedFile[] = [];
-  const setupJava = generateAutonomousSetupFile(project);
-  if (setupJava) files.push(setupJava);
+  if (autoActive) {
+    const setupJava = generateAutonomousSetupFile(project);
+    if (setupJava) files.push(setupJava);
+  }
 
-  if (auto.generateSettingsJson !== false) {
+  if ((autoActive && auto?.generateSettingsJson !== false) || (!autoActive && hasTeleopAdStar)) {
     const settingsFile = generatePathPlannerSettingsJsonFile(project);
     if (settingsFile) files.push(settingsFile);
   }
 
-  for (const r of auto.routines) {
-    const autoJson = generatePathPlannerAutoJsonFile(r);
-    if (autoJson) files.push(autoJson);
+  if ((autoActive && auto?.useLocalADStarAK !== false) || hasTeleopAdStar) {
+    files.push(generatePathPlannerNavgridJsonFile(project));
   }
 
-  for (const p of auto.paths ?? []) {
-    const pathJson = generatePathPlannerPathJsonFile(p, project);
-    if (pathJson) files.push(pathJson);
+  if (autoActive && auto) {
+    for (const r of auto.routines) {
+      const autoJson = generatePathPlannerAutoJsonFile(r);
+      if (autoJson) files.push(autoJson);
+    }
+
+    for (const p of auto.paths ?? []) {
+      const pathJson = generatePathPlannerPathJsonFile(p, project);
+      if (pathJson) files.push(pathJson);
+    }
   }
 
   return files;

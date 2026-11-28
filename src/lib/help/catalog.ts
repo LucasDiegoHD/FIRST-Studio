@@ -1724,6 +1724,90 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
       typical: "1.0",
     },
   },
+  "drivetrain.antiTipping.enabled": {
+    pt: {
+      what: "Ativa a proteção AntiTipping / AntiTippingAccel do Ciprix usando Pitch/Roll e aceleração do IMU.",
+      why: "Recomendação: programe e teste todo o robô primeiro em quadra antes de ligar, para evitar correções erradas caso IMU ou CG estejam descalibrados.",
+      typical: "false no início · true após testar direção e IMU",
+    },
+    en: {
+      what: "Enables Ciprix AntiTipping / AntiTippingAccel protection using IMU tilt and acceleration.",
+      why: "Recommendation: program and field-test the robot first before enabling so inverted IMU axes or uncalibrated CG do not trigger unwanted recovery.",
+      typical: "false initially · true after drive & IMU check",
+    },
+  },
+  "drivetrain.antiTipping.mode": {
+    pt: {
+      what: "Estratégia Anti-Tipping do Ciprix: AntiTippingAccel (preventivo + limite dinâmico de aceleração) ou AntiTipping (proporcional simples).",
+      why: "AntiTippingAccel avalia risco usando centro de gravidade e aceleração antes de tombar; o modo simples só reage ao ângulo.",
+      typical: "accel",
+    },
+    en: {
+      what: "Ciprix Anti-Tipping strategy: AntiTippingAccel (preventative + dynamic accel limits) or AntiTipping (simple proportional).",
+      why: "AntiTippingAccel estimates tipping risk from IMU accel and CG before tip-over; simple mode only reacts to tilt degrees.",
+      typical: "accel",
+    },
+  },
+  "drivetrain.antiTipping.tippingThresholdDeg": {
+    pt: {
+      what: "Ângulo mínimo de inclinação (Pitch ou Roll em graus) para disparar correção ativa.",
+      why: "Evita correção sobre pequenas folgas ou irregularidades no carpete enquanto protege contra tombamento real.",
+      typical: "10.0°",
+    },
+    en: {
+      what: "Tilt threshold (Pitch/Roll degrees) to trigger active recovery correction.",
+      why: "Avoids nuisance triggers over carpet seams while catching real tip-overs.",
+      typical: "10.0°",
+    },
+  },
+  "drivetrain.antiTipping.maxCorrectionSpeedMps": {
+    pt: {
+      what: "Velocidade linear máxima (m/s) da reação Anti-Tipping na direção da queda.",
+      why: "Limita o tranco de recuperação para manter o controle previsível para o piloto.",
+      typical: "2.0 m/s",
+    },
+    en: {
+      what: "Maximum recovery speed (m/s) driven toward the low side during a tip.",
+      why: "Caps recovery speed so stabilization stays controllable for the driver.",
+      typical: "2.0 m/s",
+    },
+  },
+  "drivetrain.antiTipping.kP": {
+    pt: {
+      what: "Ganho proporcional kP da recuperação (m/s por grau de inclinação).",
+      why: "Define o quanto de velocidade corretiva é somado por grau além do limiar.",
+      typical: "0.20",
+    },
+    en: {
+      what: "Proportional recovery gain kP (m/s per tilt degree).",
+      why: "Scales corrective chassis velocity per degree of inclination.",
+      typical: "0.20",
+    },
+  },
+  "drivetrain.antiTipping.comHeightMeters": {
+    pt: {
+      what: "Altura estimada do centro de massa (CG) acima das rodas em metros.",
+      why: "Usado pelo AntiTippingAccel para calcular risco por aceleração lateral/longitudinal.",
+      typical: "0.25 m",
+    },
+    en: {
+      what: "Estimated center of mass (CoM) height in meters.",
+      why: "Used by AntiTippingAccel to weight acceleration tipping risk.",
+      typical: "0.25 m",
+    },
+  },
+  "drivetrain.antiTipping.dynamicAccelLimits": {
+    pt: {
+      what: "Permite que o AntiTippingAccel reduza dinamicamente DriveAccelerationLimits antes do tombamento.",
+      why: "Suaviza arrancadas e freadas quando o risco sobe, evitando que o robô chegue a inclinar.",
+      typical: "true",
+    },
+    en: {
+      what: "Lets AntiTippingAccel dynamically scale DriveAccelerationLimits before tip-over.",
+      why: "Prevents tipping proactively by smoothing linear/angular acceleration under high risk.",
+      typical: "true",
+    },
+  },
 
   // Arena Zones
   "zones.*.name": {
@@ -1740,14 +1824,50 @@ export const HELP_CATALOG: Record<string, { pt: HelpEntry; en: HelpEntry }> = {
   },
   "zones.*.type": {
     pt: {
-      what: "Comportamento da zona (Gatilho, Sucção, Repulsão, Velocidade ou Proibida).",
-      why: "Define se a zona dispara automações, aplica ZoneSuctionModifier/ZoneRepulsionModifier ou limita velocidade.",
-      typical: "trigger / speedLimit",
+      what: "Comportamento da zona (Gatilho, Sucção, Ímã de Borda, Repulsão, Velocidade ou Proibida).",
+      why: "Define se a zona dispara automações, atrai a borda do bumper até a área (Ímã de Borda), aplica ZoneSuction/Repulsion ou limita velocidade.",
+      typical: "magnet / trigger / speedLimit",
     },
     en: {
-      what: "Zone behavior (Trigger, Suction, Repulsion, Speed Limit, or Forbidden).",
-      why: "Chooses whether the zone triggers automations, applies drive modifiers, or caps speed.",
-      typical: "trigger / speedLimit",
+      what: "Zone behavior (Trigger, Suction, Border Magnet, Repulsion, Speed Limit, or Forbidden).",
+      why: "Chooses whether the zone triggers automations, pulls robot bumper borders flush (Border Magnet), applies suction/repulsion, or caps speed.",
+      typical: "magnet / trigger / speedLimit",
+    },
+  },
+  "zones.*.magnetSide": {
+    pt: {
+      what: "Lado da borda/bumper do robô que será atraído pela zona (Qualquer, Frente, Costas, Esquerda ou Direita).",
+      why: "Permite encostar só a frente do intake no Outpost ou a traseira no Hub.",
+      typical: "front / any",
+    },
+    en: {
+      what: "Robot bumper border side pulled toward the zone (Any, Front, Back, Left, or Right).",
+      why: "Lets you align only the intake front or shooter side flush against an arena area.",
+      typical: "front / any",
+    },
+  },
+  "zones.*.magnetRangeMeters": {
+    pt: {
+      what: "Distância máxima de alcance (em metros) entre a borda do robô e a borda da zona para o ímã atuar.",
+      why: "Controla a partir de quão perto o bumper começa a puxar suavemente até encostar.",
+      typical: "0.45 m – 0.60 m",
+    },
+    en: {
+      what: "Maximum capture range (meters) from robot bumper edge to zone perimeter.",
+      why: "Controls how close the bumper needs to be before magnetic snap engagement.",
+      typical: "0.45 m – 0.60 m",
+    },
+  },
+  "zones.*.magnetButton": {
+    pt: {
+      what: "Botão opcional do controle do piloto para ativar esse ímã só enquanto segurado.",
+      why: "Se vazio, atrai sempre que a borda do robô entrar no alcance; se mapeado, evita puxões acidentais ao passar perto.",
+      typical: "(Sempre ativo) ou LB / X",
+    },
+    en: {
+      what: "Optional pilot button to gate this border magnet while held.",
+      why: "When empty, pulls whenever bumper enters range; when mapped, prevents accidental pulls when driving past.",
+      typical: "(Always active) or LB / X",
     },
   },
   "zones.*.mirror": {

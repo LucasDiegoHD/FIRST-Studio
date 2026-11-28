@@ -90,6 +90,16 @@ export function createDefaultDrivetrain(
         },
       ],
     },
+    antiTipping: {
+      enabled: false,
+      mode: "accel",
+      tippingThresholdDeg: 10.0,
+      maxCorrectionSpeedMps: 2.0,
+      kP: 0.2,
+      comHeightMeters: 0.25,
+      dynamicAccelLimits: true,
+    },
+    teleopPathfinding: [],
   };
 }
 

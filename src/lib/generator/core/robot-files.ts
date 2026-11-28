@@ -665,6 +665,27 @@ ${autoManageBranch}${requestSelectionBody}
     }
   }
 
+  const teleopPathfinding = hasDrivetrain ? (dt?.teleopPathfinding ?? []) : [];
+  if (teleopPathfinding.length > 0) {
+    containerImportSet.add("import com.pathplanner.lib.path.PathConstraints;");
+    containerImportSet.add("import edu.wpi.first.math.geometry.Pose2d;");
+    containerImportSet.add("import edu.wpi.first.math.geometry.Rotation2d;");
+    if (
+      teleopPathfinding.some(
+        (tp) =>
+          tp.onArrivalRequest && project.superstructure.requests.includes(tp.onArrivalRequest),
+      )
+    ) {
+      containerImportSet.add(`import ${pkg}.Constants.RobotRequest;`);
+    }
+  }
+  const magnetGateZones = zonesWired
+    ? zones.filter((z) => z.type === "magnet" && z.magnetButton)
+    : [];
+  if (magnetGateZones.length > 0) {
+    containerImportSet.add(`import ${pkg}.field.FieldZones.ZoneId;`);
+  }
+
   const visionCameras = hasDrivetrain && dt?.vision.enabled ? dt.vision.cameras : [];
   const hasVision = visionCameras.length > 0;
 
@@ -875,6 +896,32 @@ ${autoManageBranch}${requestSelectionBody}
     if (dt.controls.toggleFieldOrientedButton) {
       driveBindingLines.push(
         `    pilot.${xboxButtonToJavaMethod(dt.controls.toggleFieldOrientedButton)}.onTrue(Commands.runOnce(drive::toggleFieldOriented).ignoringDisable(true));`,
+      );
+    }
+    for (const mz of magnetGateZones) {
+      const zEnum = zoneEnumById.get(mz.id);
+      if (zEnum && mz.magnetButton) {
+        driveBindingLines.push(
+          `    fieldZones.setMagnetGate(ZoneId.${zEnum}, () -> pilot.${xboxButtonToJavaMethod(mz.magnetButton)}.getAsBoolean());`,
+        );
+      }
+    }
+    for (const tp of teleopPathfinding) {
+      const ctrlVar = tp.controller === "copilot" ? "copilot" : "pilot";
+      const btnCall = xboxButtonToJavaMethod(tp.button, tp.triggerThreshold);
+      const maxVel = tp.maxVelocityMps ?? Math.min(dt.maxSpeedMps, 3.8);
+      const maxAcc = tp.maxAccelMps2 ?? Math.min(dt.maxLinearAccelMps2, 3.5);
+      const constraintsExpr = `new PathConstraints(${formatDouble(maxVel)}, ${formatDouble(maxAcc)}, ${formatDouble(dt.maxAngularSpeedRadPerSec)}, ${formatDouble(dt.maxAngularAccelRadPerSec2)})`;
+      const baseCmd =
+        tp.mode === "path" && tp.pathName?.trim()
+          ? `drive.pathfindThenFollow("${escapeJavaString(tp.pathName.trim().replace(/\.path$/i, ""))}", ${constraintsExpr})`
+          : `drive.pathfindToFieldPose(new Pose2d(${formatDouble(tp.x)}, ${formatDouble(tp.y)}, Rotation2d.fromDegrees(${formatDouble(tp.rotationDeg)})), ${constraintsExpr}, ${formatDouble(tp.goalEndVelocityMps)}, ${tp.allianceFlip})`;
+      const fullCmd =
+        tp.onArrivalRequest && project.superstructure.requests.includes(tp.onArrivalRequest)
+          ? `${baseCmd}.andThen(Commands.runOnce(() -> superStructure.setRequest(RobotRequest.${tp.onArrivalRequest})))`
+          : baseCmd;
+      driveBindingLines.push(
+        `    ${ctrlVar}.${btnCall}.${tp.triggerMode}(${fullCmd});`,
       );
     }
   }

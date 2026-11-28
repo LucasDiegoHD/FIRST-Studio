@@ -1,5 +1,6 @@
 import type {
   FieldZone,
+  RobotBorderSide,
   ZoneMirror,
   ZonePoint,
   ZoneShape,
@@ -53,6 +54,13 @@ export interface ZoneEvalResult {
   speedFactor: number;
   forceVec: ZonePoint;
   forbiddenAlerts: string[];
+  magnetSnap?: {
+    zoneId: string;
+    zoneName: string;
+    fromBorder: ZonePoint;
+    toZone: ZonePoint;
+    gapMeters: number;
+  };
 }
 
 export function round2(n: number): number {
@@ -316,6 +324,50 @@ export const REBUILT_ZONE_PRESETS: RebuiltPresetDef[] = [
     },
   },
   {
+    id: "outpost-border-magnet",
+    title: { pt: "Ímã de Borda: Outpost", en: "Border Magnet: Outpost" },
+    description: {
+      pt: "Alinha e atraca a borda frontal do bumper no Outpost ao aproximar.",
+      en: "Magnetically aligns and pulls the front robot bumper flush to the Outpost.",
+    },
+    createZone: (fieldL, fieldW) => {
+      const lm = getRebuilt2026Landmarks(fieldL, fieldW);
+      const o = lm.blueOutpost;
+      return {
+        name: "OUTPOST_MAGNET",
+        type: "magnet",
+        shape: { kind: "rectangle", x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 },
+        mirror: "both",
+        magnetSide: "front",
+        magnetRangeMeters: 0.55,
+        strength: 0.55,
+        colorHex: "#c084fc",
+      };
+    },
+  },
+  {
+    id: "hub-border-magnet",
+    title: { pt: "Ímã de Borda: Face do Hub", en: "Border Magnet: Hub Face" },
+    description: {
+      pt: "Encosta a frente do robô na face do Hub ao chegar próximo da área.",
+      en: "Pulls the front robot bumper flush against the Hub face when close.",
+    },
+    createZone: (fieldL, fieldW) => {
+      const lm = getRebuilt2026Landmarks(fieldL, fieldW);
+      const h = lm.blueHub;
+      return {
+        name: "HUB_MAGNET",
+        type: "magnet",
+        shape: { kind: "rectangle", x1: h.x1, y1: h.y1, x2: h.x2, y2: h.y2 },
+        mirror: "x",
+        magnetSide: "front",
+        magnetRangeMeters: 0.5,
+        strength: 0.5,
+        colorHex: "#c084fc",
+      };
+    },
+  },
+  {
     id: "opponent-forbidden",
     title: { pt: "Área Adversária Proibida", en: "Opponent Forbidden Zone" },
     description: {
@@ -479,21 +531,175 @@ export function isPointInZone(
   return isPointInShape(getActiveZoneShape(zone, alliance, fieldL, fieldW), point);
 }
 
+function closestPointOnSegment(a: ZonePoint, b: ZonePoint, p: ZonePoint): ZonePoint {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq <= 1e-8) return a;
+  const t = clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq, 0, 1);
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
+export function closestPointOnShapePerimeter(shape: ZoneShape, point: ZonePoint): ZonePoint {
+  if (shape.kind === "rectangle") {
+    const minX = Math.min(shape.x1, shape.x2);
+    const maxX = Math.max(shape.x1, shape.x2);
+    const minY = Math.min(shape.y1, shape.y2);
+    const maxY = Math.max(shape.y1, shape.y2);
+    if (point.x > minX && point.x < maxX && point.y > minY && point.y < maxY) {
+      const dLeft = point.x - minX;
+      const dRight = maxX - point.x;
+      const dBot = point.y - minY;
+      const dTop = maxY - point.y;
+      const m = Math.min(dLeft, dRight, dBot, dTop);
+      if (m === dLeft) return { x: minX, y: point.y };
+      if (m === dRight) return { x: maxX, y: point.y };
+      if (m === dBot) return { x: point.x, y: minY };
+      return { x: point.x, y: maxY };
+    }
+    return { x: clamp(point.x, minX, maxX), y: clamp(point.y, minY, maxY) };
+  }
+  if (shape.kind === "circle") {
+    const dx = point.x - shape.cx;
+    const dy = point.y - shape.cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= 1e-6) return { x: shape.cx + shape.radius, y: shape.cy };
+    return {
+      x: shape.cx + (dx / dist) * shape.radius,
+      y: shape.cy + (dy / dist) * shape.radius,
+    };
+  }
+  const verts = shape.vertices;
+  let best = verts[0];
+  let bestDistSq = Infinity;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i, i += 1) {
+    const cand = closestPointOnSegment(verts[j], verts[i], point);
+    const dSq = (cand.x - point.x) ** 2 + (cand.y - point.y) ** 2;
+    if (dSq < bestDistSq) {
+      bestDistSq = dSq;
+      best = cand;
+    }
+  }
+  return best;
+}
+
+export function getRobotBumperSamplePoints(
+  pose: ZonePoint,
+  thetaRad: number,
+  side: RobotBorderSide = "any",
+  halfL = 0.38,
+  halfW = 0.38,
+): ZonePoint[] {
+  const locals: ZonePoint[] =
+    side === "front"
+      ? [
+          { x: halfL, y: 0 },
+          { x: halfL, y: halfW },
+          { x: halfL, y: -halfW },
+        ]
+      : side === "back"
+        ? [
+            { x: -halfL, y: 0 },
+            { x: -halfL, y: halfW },
+            { x: -halfL, y: -halfW },
+          ]
+        : side === "left"
+          ? [
+              { x: 0, y: halfW },
+              { x: halfL, y: halfW },
+              { x: -halfL, y: halfW },
+            ]
+          : side === "right"
+            ? [
+                { x: 0, y: -halfW },
+                { x: halfL, y: -halfW },
+                { x: -halfL, y: -halfW },
+              ]
+            : [
+                { x: halfL, y: 0 },
+                { x: -halfL, y: 0 },
+                { x: 0, y: halfW },
+                { x: 0, y: -halfW },
+                { x: halfL, y: halfW },
+                { x: halfL, y: -halfW },
+                { x: -halfL, y: halfW },
+                { x: -halfL, y: -halfW },
+              ];
+  const cos = Math.cos(thetaRad);
+  const sin = Math.sin(thetaRad);
+  return locals.map((l) => ({
+    x: pose.x + l.x * cos - l.y * sin,
+    y: pose.y + l.x * sin + l.y * cos,
+  }));
+}
+
 export function evaluateRobotInZones(
   zones: FieldZone[],
   pose: ZonePoint,
   alliance: "Blue" | "Red",
   fieldL: number,
   fieldW: number,
+  robotThetaRad = 0,
+  halfL = 0.38,
+  halfW = 0.38,
 ): ZoneEvalResult {
   const activeZones: FieldZone[] = [];
   let speedFactor = 1.0;
   let fx = 0;
   let fy = 0;
   const forbiddenAlerts: string[] = [];
+  let magnetSnap: ZoneEvalResult["magnetSnap"];
 
   for (const zone of zones) {
     const activeShape = getActiveZoneShape(zone, alliance, fieldL, fieldW);
+
+    if (zone.type === "magnet") {
+      const side = zone.magnetSide ?? "any";
+      const range = zone.magnetRangeMeters ?? 0.45;
+      const strength = zone.strength ?? 0.5;
+      const borderPts = getRobotBumperSamplePoints(pose, robotThetaRad, side, halfL, halfW);
+      let bestBp = borderPts[0];
+      let bestTarget = bestBp;
+      let bestGap = Infinity;
+      let touchesInside = false;
+
+      for (const bp of borderPts) {
+        if (isPointInShape(activeShape, bp)) {
+          touchesInside = true;
+          bestBp = bp;
+          bestTarget = bp;
+          bestGap = 0;
+          break;
+        }
+        const closest = closestPointOnShapePerimeter(activeShape, bp);
+        const gap = Math.hypot(closest.x - bp.x, closest.y - bp.y);
+        if (gap < bestGap) {
+          bestGap = gap;
+          bestBp = bp;
+          bestTarget = closest;
+        }
+      }
+
+      if (touchesInside || bestGap <= range) {
+        activeZones.push(zone);
+        if (!magnetSnap || bestGap < magnetSnap.gapMeters) {
+          magnetSnap = {
+            zoneId: zone.id,
+            zoneName: zone.name,
+            fromBorder: bestBp,
+            toZone: bestTarget,
+            gapMeters: bestGap,
+          };
+        }
+        if (!touchesInside && bestGap > 0.015) {
+          const pullMag = strength * (1.0 - 0.65 * (bestGap / range));
+          fx += ((bestTarget.x - bestBp.x) / bestGap) * pullMag;
+          fy += ((bestTarget.y - bestBp.y) / bestGap) * pullMag;
+        }
+      }
+      continue;
+    }
+
     if (!isPointInShape(activeShape, pose)) continue;
 
     activeZones.push(zone);
@@ -535,5 +741,6 @@ export function evaluateRobotInZones(
     speedFactor,
     forceVec: { x: fx, y: fy },
     forbiddenAlerts,
+    magnetSnap,
   };
 }

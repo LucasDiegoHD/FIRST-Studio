@@ -53,6 +53,8 @@ import { toUpperSnake } from "@/lib/generator/java-utils";
 import { isEditableTarget } from "@/lib/keyboard-shortcuts";
 import type {
   FieldZone,
+  RobotBorderSide,
+  XboxButton,
   ZoneMirror,
   ZonePoint,
   ZoneShape,
@@ -107,6 +109,15 @@ const ZONE_META: Record<
     },
     icon: <Magnet className="h-3.5 w-3.5 text-emerald-400" />,
   },
+  magnet: {
+    color: "#c084fc",
+    label: { pt: "Ímã de Borda", en: "Border Magnet" },
+    hint: {
+      pt: "Atrai a borda/bumper do robô até encostar na área da arena.",
+      en: "Pulls the selected robot bumper border flush against this arena zone.",
+    },
+    icon: <Magnet className="h-3.5 w-3.5 text-purple-400" />,
+  },
   repulsion: {
     color: "#fb923c",
     label: { pt: "Repulsão", en: "Repulsion" },
@@ -135,6 +146,25 @@ const ZONE_META: Record<
     icon: <ShieldAlert className="h-3.5 w-3.5 text-rose-400" />,
   },
 };
+
+const MAGNET_SIDE_OPTIONS: { value: RobotBorderSide; pt: string; en: string }[] = [
+  { value: "any", pt: "Qualquer borda", en: "Any border" },
+  { value: "front", pt: "Frente (+X)", en: "Front (+X)" },
+  { value: "back", pt: "Costas (-X)", en: "Back (-X)" },
+  { value: "left", pt: "Esquerda (+Y)", en: "Left (+Y)" },
+  { value: "right", pt: "Direita (-Y)", en: "Right (-Y)" },
+];
+
+const MAGNET_BUTTON_OPTIONS: { value: XboxButton; label: string }[] = [
+  { value: "leftBumper", label: "LB" },
+  { value: "rightBumper", label: "RB" },
+  { value: "leftTrigger", label: "LT" },
+  { value: "rightTrigger", label: "RT" },
+  { value: "a", label: "A" },
+  { value: "b", label: "B" },
+  { value: "x", label: "X" },
+  { value: "y", label: "Y" },
+];
 
 function formatShapeLabel(kind: ZoneShape["kind"], locale: "pt" | "en"): string {
   if (kind === "rectangle") return locale === "pt" ? "Retângulo" : "Rect";
@@ -218,9 +248,22 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
     [fieldL, fieldW],
   );
 
+  const bumperHalfL = (project.drivetrain?.wheelBaseMeters ?? 0.56) / 2 + 0.08;
+  const bumperHalfW = (project.drivetrain?.trackWidthMeters ?? 0.56) / 2 + 0.08;
+
   const simEval = useMemo(
-    () => evaluateRobotInZones(zones, robotPose, simAlliance, fieldL, fieldW),
-    [zones, robotPose, simAlliance, fieldL, fieldW],
+    () =>
+      evaluateRobotInZones(
+        zones,
+        robotPose,
+        simAlliance,
+        fieldL,
+        fieldW,
+        robotPose.thetaRad,
+        bumperHalfL,
+        bumperHalfW,
+      ),
+    [zones, robotPose, simAlliance, fieldL, fieldW, bumperHalfL, bumperHalfW],
   );
 
   useEffect(() => {
@@ -344,7 +387,16 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
       }
 
       if (drag?.kind !== "dragRobot") {
-        const ev = evaluateRobotInZones(zones, cur, simAlliance, fieldL, fieldW);
+        const ev = evaluateRobotInZones(
+          zones,
+          cur,
+          simAlliance,
+          fieldL,
+          fieldW,
+          cur.thetaRad,
+          bumperHalfL,
+          bumperHalfW,
+        );
         const vx = (ix + ev.forceVec.x * 1.35) * maxSpeed * ev.speedFactor;
         const vy = (iy + ev.forceVec.y * 1.35) * maxSpeed * ev.speedFactor;
         const speedMag = Math.hypot(vx, vy);
@@ -390,11 +442,13 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
                 ? ` · Freio ${Math.round((az.speedFactor ?? 0.5) * 100)}%`
                 : az.type === "suction"
                   ? " · Puxando ao eixo"
-                  : az.type === "repulsion"
-                    ? " · Repulsão ativa"
-                    : az.type === "forbidden"
-                      ? " · ALERTA PROIBIDA"
-                      : " · Gatilho ativo";
+                  : az.type === "magnet"
+                    ? ` · Ímã (${az.magnetSide ?? "any"})`
+                    : az.type === "repulsion"
+                      ? " · Repulsão ativa"
+                      : az.type === "forbidden"
+                        ? " · ALERTA PROIBIDA"
+                        : " · Gatilho ativo";
             events.push({
               id: `in-${az.id}-${now}`,
               text: `Entrou em ${az.name}${effect}`,
@@ -434,6 +488,8 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
     autoPatrol,
     drag,
     landmarks,
+    bumperHalfL,
+    bumperHalfW,
   ]);
 
   const toFieldPoint = useCallback(
@@ -2089,18 +2145,46 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
                         </text>
                       </g>
 
+                      {/* Magnet Border Snap Link (bumper perimeter -> zone perimeter) */}
+                      {simEval.magnetSnap && (
+                        <g className="pointer-events-none">
+                          <line
+                            x1={simEval.magnetSnap.fromBorder.x}
+                            y1={fieldW - simEval.magnetSnap.fromBorder.y}
+                            x2={simEval.magnetSnap.toZone.x}
+                            y2={fieldW - simEval.magnetSnap.toZone.y}
+                            stroke="#c084fc"
+                            strokeWidth={0.075}
+                            strokeDasharray="0.12 0.08"
+                          />
+                          <circle
+                            cx={simEval.magnetSnap.fromBorder.x}
+                            cy={fieldW - simEval.magnetSnap.fromBorder.y}
+                            r={0.09}
+                            fill="#e879f9"
+                          />
+                          <circle
+                            cx={simEval.magnetSnap.toZone.x}
+                            cy={fieldW - simEval.magnetSnap.toZone.y}
+                            r={0.09}
+                            fill="#c084fc"
+                          />
+                        </g>
+                      )}
+
                       {/* Suction / Repulsion force vector arrow */}
                       {Math.hypot(simEval.forceVec.x, simEval.forceVec.y) > 0.02 && (() => {
                         const hasRepel = simEval.activeZones.some(
                           (z) => z.type === "repulsion" || z.type === "forbidden",
                         );
+                        const hasMagnet = Boolean(simEval.magnetSnap);
                         return (
                           <line
                             x1={robotPose.x}
                             y1={fieldW - robotPose.y}
                             x2={robotPose.x + simEval.forceVec.x * 1.4}
                             y2={fieldW - (robotPose.y + simEval.forceVec.y * 1.4)}
-                            stroke={hasRepel ? "#fb7185" : "#34d399"}
+                            stroke={hasRepel ? "#fb7185" : hasMagnet ? "#c084fc" : "#34d399"}
                             strokeWidth={0.075}
                             strokeLinecap="round"
                             markerEnd={hasRepel ? "url(#force-arrow-repel)" : "url(#force-arrow-suction)"}
@@ -2111,6 +2195,47 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
                     </g>
                   );
                 })()}
+
+                {/* Teleop AD* Real-Time Pose Targets from Controls */}
+                {(project.drivetrain?.teleopPathfinding ?? [])
+                  .filter((tp) => tp.mode === "pose")
+                  .map((tp) => {
+                    const dispX = simAlliance === "Red" && tp.allianceFlip ? fieldL - tp.x : tp.x;
+                    const dispY = simAlliance === "Red" && tp.allianceFlip ? fieldW - tp.y : tp.y;
+                    return (
+                      <g
+                        key={`adstar-${tp.id}`}
+                        className={mode === "simulate" ? "cursor-pointer" : "pointer-events-none"}
+                        onClick={(e) => {
+                          if (mode !== "simulate") return;
+                          e.stopPropagation();
+                          setAutoPatrol(false);
+                          setDriveTarget({ x: dispX, y: dispY });
+                        }}
+                      >
+                        <circle
+                          cx={dispX}
+                          cy={fieldW - dispY}
+                          r={0.22}
+                          fill="#0ea5e9"
+                          fillOpacity={0.25}
+                          stroke="#38bdf8"
+                          strokeWidth={0.045}
+                        />
+                        <text
+                          x={dispX}
+                          y={fieldW - dispY - 0.32}
+                          textAnchor="middle"
+                          fill="#bae6fd"
+                          fontSize={0.18}
+                          fontFamily="monospace"
+                          fontWeight={700}
+                        >
+                          AD* {tp.name}
+                        </text>
+                      </g>
+                    );
+                  })}
               </svg>
             </div>
 
@@ -2487,13 +2612,23 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
                                     strength:
                                       nextType === "suction"
                                         ? (z.strength ?? 0.4)
-                                        : nextType === "repulsion"
-                                          ? (z.strength ?? 0.6)
-                                          : nextType === "forbidden"
-                                            ? (z.strength ?? 0.9)
-                                            : undefined,
+                                        : nextType === "magnet"
+                                          ? (z.strength ?? 0.5)
+                                          : nextType === "repulsion"
+                                            ? (z.strength ?? 0.6)
+                                            : nextType === "forbidden"
+                                              ? (z.strength ?? 0.9)
+                                              : undefined,
                                     speedFactor:
                                       nextType === "speedLimit" ? (z.speedFactor ?? 0.5) : undefined,
+                                    magnetSide:
+                                      nextType === "magnet" ? (z.magnetSide ?? "front") : undefined,
+                                    magnetRangeMeters:
+                                      nextType === "magnet"
+                                        ? (z.magnetRangeMeters ?? 0.45)
+                                        : undefined,
+                                    magnetButton:
+                                      nextType === "magnet" ? z.magnetButton : undefined,
                                   }));
                                 }}
                               >
@@ -2539,6 +2674,7 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
                           </Field>
 
                           {(selectedZone.type === "suction" ||
+                            selectedZone.type === "magnet" ||
                             selectedZone.type === "repulsion" ||
                             selectedZone.type === "forbidden") && (
                             <Field
@@ -2578,6 +2714,86 @@ export function ArenaTab({ tutorialPreview = false }: { tutorialPreview?: boolea
                                 />
                               </div>
                             </Field>
+                          )}
+
+                          {selectedZone.type === "magnet" && (
+                            <div className="space-y-2.5 rounded-lg border border-purple-500/35 bg-purple-950/20 p-2.5">
+                              <Field
+                                path={`zones.${selectedZone.id}.magnetSide`}
+                                label={locale === "pt" ? "Borda do robô atraída" : "Robot border side"}
+                              >
+                                <Select
+                                  className="h-8 py-0 text-xs"
+                                  value={selectedZone.magnetSide ?? "front"}
+                                  onChange={(e) =>
+                                    updateZone(selectedZone.id, (z) => ({
+                                      ...z,
+                                      magnetSide: e.target.value as RobotBorderSide,
+                                    }))
+                                  }
+                                >
+                                  {MAGNET_SIDE_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt[locale]}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </Field>
+
+                              <Field
+                                path={`zones.${selectedZone.id}.magnetRangeMeters`}
+                                label={locale === "pt" ? "Alcance da borda (m)" : "Capture range (m)"}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="range"
+                                    min={0.1}
+                                    max={2.0}
+                                    step={0.05}
+                                    value={selectedZone.magnetRangeMeters ?? 0.45}
+                                    onChange={(e) =>
+                                      updateZone(selectedZone.id, (z) => ({
+                                        ...z,
+                                        magnetRangeMeters: Number.parseFloat(e.target.value),
+                                      }))
+                                    }
+                                    className="flex-1 accent-purple-400"
+                                  />
+                                  <span className="w-14 text-right font-mono text-[11px] text-purple-200">
+                                    {(selectedZone.magnetRangeMeters ?? 0.45).toFixed(2)} m
+                                  </span>
+                                </div>
+                              </Field>
+
+                              <Field
+                                path={`zones.${selectedZone.id}.magnetButton`}
+                                label={locale === "pt" ? "Botão Piloto (opcional)" : "Pilot button (optional)"}
+                              >
+                                <Select
+                                  className="h-8 py-0 text-xs font-mono"
+                                  value={selectedZone.magnetButton ?? ""}
+                                  onChange={(e) =>
+                                    updateZone(selectedZone.id, (z) => ({
+                                      ...z,
+                                      magnetButton: (e.target.value || undefined) as
+                                        | XboxButton
+                                        | undefined,
+                                    }))
+                                  }
+                                >
+                                  <option value="">
+                                    {locale === "pt"
+                                      ? "(Sempre ativo ao aproximar)"
+                                      : "(Always active near zone)"}
+                                  </option>
+                                  {MAGNET_BUTTON_OPTIONS.map((b) => (
+                                    <option key={b.value} value={b.value}>
+                                      Hold {b.label}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </Field>
+                            </div>
                           )}
 
                           {selectedZone.type === "speedLimit" && (

@@ -68,7 +68,7 @@ export function getRequiredVendordeps(project: CiprixProject): string[] {
       deps.add("REVLib.json");
       deps.add("ThriftyLib.json");
     }
-    if (project.autonomous?.enabled) {
+    if (project.autonomous?.enabled || (dt.teleopPathfinding?.length ?? 0) > 0) {
       deps.add("PathplannerLib.json");
     }
   }
@@ -88,7 +88,7 @@ export function generateProjectFiles(project: CiprixProject): GeneratedFile[] {
     files.push(generateRumbleArbiterFile(project.project.packageName));
   }
   if (hasZones) {
-    files.push(generateFieldZonesFile(zones, project.project.packageName));
+    files.push(generateFieldZonesFile(zones, project.project.packageName, project.drivetrain));
   }
 
   files.push(...generateAutonomousFiles(project));

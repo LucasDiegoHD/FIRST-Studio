@@ -1,4 +1,4 @@
-import type { FieldZone, ZoneMirror } from "../../schema/ciprix-project";
+import type { DrivetrainConfig, FieldZone, ZoneMirror } from "../../schema/ciprix-project";
 import { formatDouble, isValidJavaIdentifier, toCamelCase, toUpperSnake } from "../java-utils";
 import type { GeneratedFile } from "../subsystems/roller";
 
@@ -42,6 +42,7 @@ function flipCoordExpr(axis: "X" | "Y", value: number, flip: boolean): string {
 export function generateFieldZonesFile(
   zones: FieldZone[],
   basePackage: string,
+  drivetrain?: DrivetrainConfig,
 ): GeneratedFile {
   const pkgPath = basePackage.replace(/\./g, "/");
   const fullPkg = `${basePackage}.field`;
@@ -50,8 +51,11 @@ export function generateFieldZonesFile(
   const hasRect = zones.some((z) => z.shape.kind === "rectangle");
   const hasCircle = zones.some((z) => z.shape.kind === "circle");
   const hasSuction = zones.some((z) => z.type === "suction");
+  const hasMagnet = zones.some((z) => z.type === "magnet");
   const hasRepulsion = zones.some((z) => z.type === "repulsion" || z.type === "forbidden");
   const hasForbidden = zones.some((z) => z.type === "forbidden");
+  const halfLenStr = formatDouble((drivetrain?.wheelBaseMeters ?? 0.56) / 2 + 0.08);
+  const halfWidthStr = formatDouble((drivetrain?.trackWidthMeters ?? 0.56) / 2 + 0.08);
 
   const imports = [
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -71,6 +75,12 @@ export function generateFieldZonesFile(
     ...(hasRect ? ["import org.ciprix.zones.Rectangle2d;"] : []),
     ...(hasCircle ? ["import org.ciprix.zones.Circle2d;"] : []),
     ...(hasSuction ? ["import org.ciprix.util.drivetrain.ZoneSuctionModifier;"] : []),
+    ...(hasMagnet
+      ? [
+          "import edu.wpi.first.math.geometry.Rotation2d;",
+          "import java.util.function.BooleanSupplier;",
+        ]
+      : []),
     ...(hasRepulsion ? ["import org.ciprix.util.drivetrain.ZoneRepulsionModifier;"] : []),
     ...(hasForbidden ? ["import org.ciprix.util.PersistentAlert;"] : []),
   ]
@@ -149,6 +159,14 @@ export function generateFieldZonesFile(
         `    blueModifiers.add(new ZoneSuctionModifier(${varBase}BluePoly, ${strength}));`,
         `    redModifiers.add(new ZoneSuctionModifier(${varBase}RedPoly, ${strength}));`,
       );
+    } else if (zone.type === "magnet") {
+      const side = zone.magnetSide ?? "any";
+      const rangeStr = formatDouble(zone.magnetRangeMeters ?? 0.45);
+      const strength = formatDouble(zone.strength ?? 0.5);
+      lines.push(
+        `    blueModifiers.add((drive, in) -> applyBorderMagnet(drive, in, ${varBase}BluePoly, "${side}", ${rangeStr}, ${strength}, magnetGates.get(ZoneId.${enumName})));`,
+        `    redModifiers.add((drive, in) -> applyBorderMagnet(drive, in, ${varBase}RedPoly, "${side}", ${rangeStr}, ${strength}, magnetGates.get(ZoneId.${enumName})));`,
+      );
     } else if (zone.type === "repulsion" || zone.type === "forbidden") {
       const strength = formatDouble(zone.strength ?? (zone.type === "forbidden" ? 0.9 : 0.6));
       lines.push(
@@ -200,6 +218,96 @@ export function generateFieldZonesFile(
   }`);
   }
 
+  if (hasMagnet) {
+    helperMethods.push(`  private static final double ROBOT_HALF_LENGTH_M = ${halfLenStr};
+  private static final double ROBOT_HALF_WIDTH_M = ${halfWidthStr};
+
+  private static Translation2d applyBorderMagnet(
+      DriveContext drive,
+      Translation2d input,
+      Polygon2d zonePoly,
+      String side,
+      double rangeMeters,
+      double strength,
+      BooleanSupplier gate) {
+    if (gate != null && !gate.getAsBoolean()) {
+      return input;
+    }
+    Pose2d pose = drive.getPose();
+    Translation2d center = pose.getTranslation();
+    Rotation2d rot = pose.getRotation();
+    Translation2d[] localPts =
+        switch (side) {
+          case "front" -> new Translation2d[] {
+            new Translation2d(ROBOT_HALF_LENGTH_M, 0.0),
+            new Translation2d(ROBOT_HALF_LENGTH_M, ROBOT_HALF_WIDTH_M),
+            new Translation2d(ROBOT_HALF_LENGTH_M, -ROBOT_HALF_WIDTH_M)
+          };
+          case "back" -> new Translation2d[] {
+            new Translation2d(-ROBOT_HALF_LENGTH_M, 0.0),
+            new Translation2d(-ROBOT_HALF_LENGTH_M, ROBOT_HALF_WIDTH_M),
+            new Translation2d(-ROBOT_HALF_LENGTH_M, -ROBOT_HALF_WIDTH_M)
+          };
+          case "left" -> new Translation2d[] {
+            new Translation2d(0.0, ROBOT_HALF_WIDTH_M),
+            new Translation2d(ROBOT_HALF_LENGTH_M, ROBOT_HALF_WIDTH_M),
+            new Translation2d(-ROBOT_HALF_LENGTH_M, ROBOT_HALF_WIDTH_M)
+          };
+          case "right" -> new Translation2d[] {
+            new Translation2d(0.0, -ROBOT_HALF_WIDTH_M),
+            new Translation2d(ROBOT_HALF_LENGTH_M, -ROBOT_HALF_WIDTH_M),
+            new Translation2d(-ROBOT_HALF_LENGTH_M, -ROBOT_HALF_WIDTH_M)
+          };
+          default -> new Translation2d[] {
+            new Translation2d(ROBOT_HALF_LENGTH_M, 0.0),
+            new Translation2d(-ROBOT_HALF_LENGTH_M, 0.0),
+            new Translation2d(0.0, ROBOT_HALF_WIDTH_M),
+            new Translation2d(0.0, -ROBOT_HALF_WIDTH_M),
+            new Translation2d(ROBOT_HALF_LENGTH_M, ROBOT_HALF_WIDTH_M),
+            new Translation2d(ROBOT_HALF_LENGTH_M, -ROBOT_HALF_WIDTH_M),
+            new Translation2d(-ROBOT_HALF_LENGTH_M, ROBOT_HALF_WIDTH_M),
+            new Translation2d(-ROBOT_HALF_LENGTH_M, -ROBOT_HALF_WIDTH_M)
+          };
+        };
+
+    double bestGap = Double.POSITIVE_INFINITY;
+    Translation2d bestDelta = null;
+    for (Translation2d local : localPts) {
+      Translation2d borderField = center.plus(local.rotateBy(rot));
+      if (zonePoly.contains(borderField)) {
+        return input;
+      }
+      Translation2d closest = zonePoly.getClosestPoint(borderField);
+      double gap = borderField.getDistance(closest);
+      if (gap < bestGap) {
+        bestGap = gap;
+        bestDelta = closest.minus(borderField);
+      }
+    }
+
+    if (bestDelta == null || bestGap <= 0.015 || bestGap > rangeMeters) {
+      return input;
+    }
+
+    Translation2d dirDriver = TranslationModifier.fieldToDriver(bestDelta.div(bestGap));
+    // Release magnet when driver pushes firmly in the opposite direction.
+    if (input.getX() * dirDriver.getX() + input.getY() * dirDriver.getY() < -0.35) {
+      return input;
+    }
+
+    double pullMag = strength * (1.0 - 0.65 * (bestGap / rangeMeters));
+    Translation2d out = input.plus(dirDriver.times(pullMag));
+    return out.getNorm() > 1.0 ? out.div(out.getNorm()) : out;
+  }`);
+  }
+
+  const magnetField = hasMagnet
+    ? "\n  private final Map<ZoneId, BooleanSupplier> magnetGates = new EnumMap<>(ZoneId.class);"
+    : "";
+  const magnetSetter = hasMagnet
+    ? `\n  public void setMagnetGate(ZoneId id, BooleanSupplier gate) {\n    if (id != null && id != ZoneId.NONE && gate != null) {\n      magnetGates.put(id, gate);\n    }\n  }\n`
+    : "";
+
   const content = `package ${fullPkg};
 
 ${imports}
@@ -215,11 +323,12 @@ public class FieldZones {
   private final Map<ZoneId, Polygon2d> bluePolygons = new EnumMap<>(ZoneId.class);
   private final Map<ZoneId, Polygon2d> redPolygons = new EnumMap<>(ZoneId.class);
   private final List<TranslationModifier> blueModifiers = new ArrayList<>();
-  private final List<TranslationModifier> redModifiers = new ArrayList<>();
+  private final List<TranslationModifier> redModifiers = new ArrayList<>();${magnetField}
 ${alertFields.length > 0 ? alertFields.join("\n") + "\n" : ""}
   public FieldZones() {
 ${initBlocks.join("\n\n")}
   }
+${magnetSetter}
 
   public Zone2d<ZoneId> getZone(ZoneId id) {
     if (id == null || id == ZoneId.NONE) return null;

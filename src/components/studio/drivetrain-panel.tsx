@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Camera,
   Compass,
   Cpu,
@@ -9,6 +10,7 @@ import {
   FileUp,
   HelpCircle,
   Plus,
+  ShieldAlert,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -65,7 +67,11 @@ function classifyDtPath(path?: string): DrivetrainSubTab {
   if (path.startsWith("drivetrain.modules.") || path.startsWith("drivetrain.differential.")) {
     return "modules";
   }
-  if (path.startsWith("drivetrain.assistants.") || path.startsWith("drivetrain.controls.")) {
+  if (
+    path.startsWith("drivetrain.assistants.") ||
+    path.startsWith("drivetrain.controls.") ||
+    path.startsWith("drivetrain.antiTipping.")
+  ) {
     return "assistants";
   }
   if (path.startsWith("drivetrain.vision.")) {
@@ -1168,6 +1174,176 @@ export function DrivetrainPanel() {
                       ))}
                     </Select>
                   </Field>
+                </div>
+
+                {/* Anti-Tipping Mode + First-Test Safety Recommendation */}
+                <div className="rounded-xl border border-[#22304a] bg-[#0f1624] p-3.5 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-amber-400" />
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-300">
+                        Anti-Tipping Ciprix (org.ciprix.util.security.antitipping)
+                      </p>
+                    </div>
+                    <Field path="drivetrain.antiTipping.enabled" label="Ativar" layout="row">
+                      <Switch
+                        checked={Boolean(dt.antiTipping?.enabled)}
+                        onCheckedChange={(checked) =>
+                          setDrivetrain((curr) => ({
+                            ...curr,
+                            antiTipping: {
+                              mode: curr.antiTipping?.mode ?? "accel",
+                              tippingThresholdDeg: curr.antiTipping?.tippingThresholdDeg ?? 10.0,
+                              maxCorrectionSpeedMps: curr.antiTipping?.maxCorrectionSpeedMps ?? 2.0,
+                              kP: curr.antiTipping?.kP ?? 0.2,
+                              comHeightMeters: curr.antiTipping?.comHeightMeters ?? 0.25,
+                              dynamicAccelLimits: curr.antiTipping?.dynamicAccelLimits ?? true,
+                              enabled: checked,
+                            },
+                          }))
+                        }
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/45 bg-amber-950/25 px-3 py-2 text-xs text-amber-200">
+                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5 leading-relaxed">
+                      <p className="font-semibold text-amber-100">
+                        Recomendação: programe e teste o robô primeiro!
+                      </p>
+                      <p className="text-[11px] text-amber-200/90">
+                        Deixe o Anti-Tipping <strong>desativado</strong> enquanto calibra módulos, reduzões,
+                        PIDs e valida a direção normal em quadra. Confira no AdvantageScope se o Pitch/Roll
+                        do IMU apontam para o lado correto e só ative depois que o robô já estiver estável.
+                      </p>
+                    </div>
+                  </div>
+
+                  {dt.antiTipping?.enabled && (() => {
+                    const at = dt.antiTipping;
+                    const patchAt = (
+                      patch: Partial<NonNullable<DrivetrainConfig["antiTipping"]>>,
+                    ) =>
+                      setDrivetrain((curr) => ({
+                        ...curr,
+                        antiTipping: {
+                          enabled: curr.antiTipping?.enabled ?? true,
+                          mode: curr.antiTipping?.mode ?? "accel",
+                          tippingThresholdDeg: curr.antiTipping?.tippingThresholdDeg ?? 10.0,
+                          maxCorrectionSpeedMps: curr.antiTipping?.maxCorrectionSpeedMps ?? 2.0,
+                          kP: curr.antiTipping?.kP ?? 0.2,
+                          comHeightMeters: curr.antiTipping?.comHeightMeters ?? 0.25,
+                          dynamicAccelLimits: curr.antiTipping?.dynamicAccelLimits ?? true,
+                          ...patch,
+                        },
+                      }));
+
+                    return (
+                      <div className="space-y-3 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <Field path="drivetrain.antiTipping.mode" label="Algoritmo Ciprix">
+                            <Select
+                              className="h-8 text-xs font-mono"
+                              value={at.mode}
+                              onChange={(e) =>
+                                patchAt({ mode: e.target.value as "accel" | "simple" })
+                              }
+                            >
+                              <option value="accel">AntiTippingAccel (Preventivo + IMU Accel)</option>
+                              <option value="simple">AntiTipping (Proporcional Simples)</option>
+                            </Select>
+                          </Field>
+                          <Field
+                            path="drivetrain.antiTipping.tippingThresholdDeg"
+                            label="Limiar de inclinação (°)"
+                          >
+                            <Input
+                              type="number"
+                              step="0.5"
+                              min={3}
+                              max={35}
+                              className="h-8 font-mono text-xs"
+                              value={at.tippingThresholdDeg}
+                              onChange={(e) =>
+                                patchAt({
+                                  tippingThresholdDeg: Number.parseFloat(e.target.value) || 10,
+                                })
+                              }
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          <Field
+                            path="drivetrain.antiTipping.maxCorrectionSpeedMps"
+                            label="Vel. Corr. (m/s)"
+                          >
+                            <Input
+                              type="number"
+                              step="0.1"
+                              min={0.2}
+                              max={6}
+                              className="h-8 font-mono text-xs"
+                              value={at.maxCorrectionSpeedMps}
+                              onChange={(e) =>
+                                patchAt({
+                                  maxCorrectionSpeedMps: Number.parseFloat(e.target.value) || 2.0,
+                                })
+                              }
+                            />
+                          </Field>
+                          <Field path="drivetrain.antiTipping.kP" label="Ganho kP">
+                            <Input
+                              type="number"
+                              step="0.02"
+                              min={0.02}
+                              max={2}
+                              className="h-8 font-mono text-xs"
+                              value={at.kP}
+                              onChange={(e) =>
+                                patchAt({ kP: Number.parseFloat(e.target.value) || 0.2 })
+                              }
+                            />
+                          </Field>
+                          {at.mode === "accel" && (
+                            <>
+                              <Field
+                                path="drivetrain.antiTipping.comHeightMeters"
+                                label="Altura CG (m)"
+                              >
+                                <Input
+                                  type="number"
+                                  step="0.05"
+                                  min={0.05}
+                                  max={1.5}
+                                  className="h-8 font-mono text-xs"
+                                  value={at.comHeightMeters}
+                                  onChange={(e) =>
+                                    patchAt({
+                                      comHeightMeters: Number.parseFloat(e.target.value) || 0.25,
+                                    })
+                                  }
+                                />
+                              </Field>
+                              <Field
+                                path="drivetrain.antiTipping.dynamicAccelLimits"
+                                label="Limitar Acel."
+                                layout="row"
+                              >
+                                <Switch
+                                  checked={at.dynamicAccelLimits}
+                                  onCheckedChange={(checked) =>
+                                    patchAt({ dynamicAccelLimits: checked })
+                                  }
+                                />
+                              </Field>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}

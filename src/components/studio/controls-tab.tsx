@@ -1,21 +1,24 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Code2, Cog, Compass, Gamepad2, ImageDown, MapPin, Plus, Radar, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Code2, Cog, Compass, Gamepad2, ImageDown, MapPin, Navigation, Plus, Radar, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Hint } from "@/components/ui/hint";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useProject } from "@/context/project-context";
+import { getRebuilt2026Landmarks, round2 } from "@/lib/arena/rebuilt-2026";
 import { requestToCommandMethod, toPascalCase } from "@/lib/generator/java-utils";
 import {
   getPrimaryMotorAction,
   isMotorSubsystem,
   type PilotCondition,
   type SubsystemAction,
+  type TeleopPathfindTarget,
   type XboxButton,
 } from "@/lib/schema/ciprix-project";
 import { CodeViewer } from "./code-viewer";
@@ -186,6 +189,13 @@ export function ControlsTab() {
               ? ` (${Math.round(ov.triggerThreshold * 100)}%)`
               : "";
           map.set(ov.button, { label: `${sub?.name ?? "?"}.${ov.request}${thr}` });
+        }
+      }
+    }
+    if (project.drivetrain?.enabled) {
+      for (const tp of project.drivetrain.teleopPathfinding ?? []) {
+        if (tp.controller === port && !map.has(tp.button)) {
+          map.set(tp.button, { label: `AD*: ${tp.name}` });
         }
       }
     }
@@ -1499,6 +1509,435 @@ export function ControlsTab() {
               )}
             </CardContent>
           </Card>
+
+          {project.drivetrain?.enabled && (() => {
+            const dt = project.drivetrain;
+            const list = dt.teleopPathfinding ?? [];
+            const fieldL = project.project.fieldLengthMeters;
+            const fieldW = project.project.fieldWidthMeters;
+            const lm = getRebuilt2026Landmarks(fieldL, fieldW);
+            const autoPaths = project.autonomous?.paths ?? [];
+
+            const patchTeleopPathfinding = (
+              updater: (prevList: TeleopPathfindTarget[]) => TeleopPathfindTarget[],
+            ) => {
+              updateProject((prev) =>
+                prev.drivetrain
+                  ? {
+                      ...prev,
+                      drivetrain: {
+                        ...prev.drivetrain,
+                        teleopPathfinding: updater(prev.drivetrain.teleopPathfinding ?? []),
+                      },
+                    }
+                  : prev,
+              );
+            };
+
+            const addAdStarTarget = (preset: {
+              name: string;
+              x: number;
+              y: number;
+              rotationDeg: number;
+            }) => {
+              const nextItem: TeleopPathfindTarget = {
+                id: `adstar-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+                name: preset.name,
+                controller: port,
+                button: selectedButton,
+                triggerThreshold: isAnalogTrigger(selectedButton) ? 0.5 : undefined,
+                triggerMode: "whileTrue",
+                mode: "pose",
+                x: round2(preset.x),
+                y: round2(preset.y),
+                rotationDeg: preset.rotationDeg,
+                allianceFlip: true,
+                goalEndVelocityMps: 0,
+              };
+              patchTeleopPathfinding((prev) => [...prev, nextItem]);
+            };
+
+            const quickPresets = [
+              {
+                label: "+ Outpost",
+                name: "Ir Outpost",
+                x: lm.blueOutpost.x2 + 0.55,
+                y: (lm.blueOutpost.y1 + lm.blueOutpost.y2) / 2,
+                rotationDeg: 180,
+              },
+              {
+                label: "+ Depot",
+                name: "Ir Depot",
+                x: lm.blueDepot.x2 + 0.65,
+                y: (lm.blueDepot.y1 + lm.blueDepot.y2) / 2,
+                rotationDeg: 180,
+              },
+              {
+                label: "+ Disparo Hub",
+                name: "Alinhar Hub",
+                x: lm.blueHub.x1 - 1.25,
+                y: (lm.blueHub.y1 + lm.blueHub.y2) / 2,
+                rotationDeg: 0,
+              },
+              {
+                label: "+ Torre",
+                name: "Ir Torre",
+                x: lm.blueTower.x2 + 0.55,
+                y: (lm.blueTower.y1 + lm.blueTower.y2) / 2,
+                rotationDeg: 180,
+              },
+            ];
+
+            return (
+              <Card>
+                <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b border-[#22304a] pb-3">
+                  <div className="flex items-center gap-2">
+                    <Navigation className="h-4 w-4 text-cyan-400" />
+                    <CardTitle className="text-base">
+                      Rotas AD* em Tempo Real (Ciprix LocalADStarAK)
+                    </CardTitle>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2.5 text-xs"
+                    onClick={() =>
+                      addAdStarTarget({
+                        name: `Ponto ${list.length + 1}`,
+                        x: round2(lm.blueAllianceLineX - 0.8),
+                        y: round2(fieldW * 0.5),
+                        rotationDeg: 0,
+                      })
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5 text-cyan-400" />
+                    Nova Rota
+                  </Button>
+                </CardHeader>
+
+                <CardContent className="space-y-3 pt-4 text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-slate-400 mr-1">
+                      Mapear em <strong className="font-mono text-white">{selectedBtnMeta?.label ?? selectedButton}</strong> ({port === "pilot" ? "Piloto" : "Copiloto"}):
+                    </span>
+                    {quickPresets.map((qp) => (
+                      <Button
+                        key={qp.name}
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px]"
+                        onClick={() => addAdStarTarget(qp)}
+                      >
+                        {qp.label}
+                      </Button>
+                    ))}
+                  </div>
+
+                  {list.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-[#253552] bg-[#0f1624] p-4 text-center text-xs text-slate-400">
+                      Clique em um botão no Xbox e escolha um destino acima para dirigir até lá com o
+                      AD* desviando dos obstáculos (<span className="font-mono">navgrid.json</span>).
+                    </p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {list.map((tp) => (
+                        <div
+                          key={tp.id}
+                          onClick={() => {
+                            if (tp.controller === port) setSelectedButton(tp.button);
+                          }}
+                          className="rounded-lg border border-[#22304a] bg-[#0f1624] p-3 space-y-2.5"
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Input
+                              className="h-7 flex-1 min-w-[110px] text-xs font-mono"
+                              value={tp.name}
+                              onChange={(e) =>
+                                patchTeleopPathfinding((prev) =>
+                                  prev.map((x) =>
+                                    x.id === tp.id ? { ...x, name: e.target.value } : x,
+                                  ),
+                                )
+                              }
+                            />
+                            <Select
+                              className="h-7 w-24 text-[11px]"
+                              value={tp.controller}
+                              onChange={(e) =>
+                                patchTeleopPathfinding((prev) =>
+                                  prev.map((x) =>
+                                    x.id === tp.id
+                                      ? { ...x, controller: e.target.value as "pilot" | "copilot" }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="pilot">Piloto</option>
+                              <option value="copilot">Copiloto</option>
+                            </Select>
+                            <Select
+                              className="h-7 w-20 font-mono text-[11px]"
+                              value={tp.button}
+                              onChange={(e) => {
+                                const btn = e.target.value as XboxButton;
+                                patchTeleopPathfinding((prev) =>
+                                  prev.map((x) =>
+                                    x.id === tp.id
+                                      ? {
+                                          ...x,
+                                          button: btn,
+                                          triggerThreshold: isAnalogTrigger(btn)
+                                            ? (x.triggerThreshold ?? 0.5)
+                                            : undefined,
+                                        }
+                                      : x,
+                                  ),
+                                );
+                              }}
+                            >
+                              {XBOX_BUTTONS.map((b) => (
+                                <option key={b.value} value={b.value}>
+                                  {b.label}
+                                </option>
+                              ))}
+                            </Select>
+                            <Select
+                              className="h-7 w-28 text-[11px]"
+                              value={tp.triggerMode}
+                              onChange={(e) =>
+                                patchTeleopPathfinding((prev) =>
+                                  prev.map((x) =>
+                                    x.id === tp.id
+                                      ? { ...x, triggerMode: e.target.value as "whileTrue" | "onTrue" }
+                                      : x,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="whileTrue">Segurar (whileTrue)</option>
+                              <option value="onTrue">1 toque (onTrue)</option>
+                            </Select>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                patchTeleopPathfinding((prev) => prev.filter((x) => x.id !== tp.id));
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                            </Button>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center">
+                            <div className="flex items-center gap-1">
+                              <span className="font-mono text-[10px] text-slate-400">Modo</span>
+                              <Select
+                                className="h-7 flex-1 text-[11px] font-mono"
+                                value={tp.mode}
+                                onChange={(e) =>
+                                  patchTeleopPathfinding((prev) =>
+                                    prev.map((x) =>
+                                      x.id === tp.id
+                                        ? {
+                                            ...x,
+                                            mode: e.target.value as "pose" | "path",
+                                            pathName: x.pathName ?? autoPaths[0]?.name ?? "",
+                                          }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                              >
+                                <option value="pose">Pose 2D</option>
+                                <option value="path">Ir até .path</option>
+                              </Select>
+                            </div>
+
+                            {tp.mode === "pose" ? (
+                              <>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-mono text-[10px] text-slate-400">X</span>
+                                  <Input
+                                    type="number"
+                                    step="0.05"
+                                    className="h-7 px-1.5 text-[11px] font-mono"
+                                    value={tp.x}
+                                    onChange={(e) =>
+                                      patchTeleopPathfinding((prev) =>
+                                        prev.map((x) =>
+                                          x.id === tp.id
+                                            ? { ...x, x: Number.parseFloat(e.target.value) || 0 }
+                                            : x,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-mono text-[10px] text-slate-400">Y</span>
+                                  <Input
+                                    type="number"
+                                    step="0.05"
+                                    className="h-7 px-1.5 text-[11px] font-mono"
+                                    value={tp.y}
+                                    onChange={(e) =>
+                                      patchTeleopPathfinding((prev) =>
+                                        prev.map((x) =>
+                                          x.id === tp.id
+                                            ? { ...x, y: Number.parseFloat(e.target.value) || 0 }
+                                            : x,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-mono text-[10px] text-slate-400">R°</span>
+                                  <Input
+                                    type="number"
+                                    step="5"
+                                    className="h-7 px-1.5 text-[11px] font-mono"
+                                    value={tp.rotationDeg}
+                                    onChange={(e) =>
+                                      patchTeleopPathfinding((prev) =>
+                                        prev.map((x) =>
+                                          x.id === tp.id
+                                            ? {
+                                                ...x,
+                                                rotationDeg: Number.parseFloat(e.target.value) || 0,
+                                              }
+                                            : x,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="col-span-3 flex items-center gap-1.5">
+                                <span className="font-mono text-[10px] text-slate-400">.path</span>
+                                {autoPaths.length > 0 ? (
+                                  <Select
+                                    className="h-7 flex-1 text-[11px] font-mono"
+                                    value={tp.pathName ?? ""}
+                                    onChange={(e) =>
+                                      patchTeleopPathfinding((prev) =>
+                                        prev.map((x) =>
+                                          x.id === tp.id ? { ...x, pathName: e.target.value } : x,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    {!autoPaths.some((p) => p.name === tp.pathName) && (
+                                      <option value={tp.pathName ?? ""}>
+                                        {tp.pathName || "(Selecione .path)"}
+                                      </option>
+                                    )}
+                                    {autoPaths.map((p) => (
+                                      <option key={p.id} value={p.name}>
+                                        {p.name}.path
+                                      </option>
+                                    ))}
+                                  </Select>
+                                ) : (
+                                  <Input
+                                    className="h-7 flex-1 text-[11px] font-mono"
+                                    placeholder="NomeDoPath"
+                                    value={tp.pathName ?? ""}
+                                    onChange={(e) =>
+                                      patchTeleopPathfinding((prev) =>
+                                        prev.map((x) =>
+                                          x.id === tp.id ? { ...x, pathName: e.target.value } : x,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300 border-t border-[#22304a]/70 pt-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[10px] text-slate-400">Vel Máx</span>
+                              <Input
+                                type="number"
+                                step="0.2"
+                                min={0.5}
+                                max={10}
+                                className="h-6 w-16 px-1.5 text-[11px] font-mono"
+                                value={tp.maxVelocityMps ?? Math.min(dt.maxSpeedMps, 3.8)}
+                                onChange={(e) =>
+                                  patchTeleopPathfinding((prev) =>
+                                    prev.map((x) =>
+                                      x.id === tp.id
+                                        ? {
+                                            ...x,
+                                            maxVelocityMps: Math.max(
+                                              0.5,
+                                              Number.parseFloat(e.target.value) || 3.0,
+                                            ),
+                                          }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                              />
+                              {tp.mode === "pose" && (
+                                <label className="flex items-center gap-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={tp.allianceFlip}
+                                    onChange={(e) =>
+                                      patchTeleopPathfinding((prev) =>
+                                        prev.map((x) =>
+                                          x.id === tp.id
+                                            ? { ...x, allianceFlip: e.target.checked }
+                                            : x,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                  Flip aliança
+                                </label>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-[10px] text-emerald-300">Ao chegar:</span>
+                              <Select
+                                className="h-6 w-32 text-[10px] font-mono"
+                                value={tp.onArrivalRequest ?? ""}
+                                onChange={(e) =>
+                                  patchTeleopPathfinding((prev) =>
+                                    prev.map((x) =>
+                                      x.id === tp.id
+                                        ? { ...x, onArrivalRequest: e.target.value || undefined }
+                                        : x,
+                                    ),
+                                  )
+                                }
+                              >
+                                <option value="">(Só dirigir)</option>
+                                {project.superstructure.requests.map((req) => (
+                                  <option key={req} value={req}>
+                                    {req}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {showJava && previewFile && (
             <Card className="h-[380px] flex flex-col overflow-hidden animate-fade-in">

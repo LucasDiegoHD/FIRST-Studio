@@ -1210,6 +1210,69 @@ export function validateProject(
     }
   }
 
+  if (project.drivetrain?.enabled) {
+    const dt = project.drivetrain;
+    const validSuperReqs = new Set(project.superstructure.requests);
+    if (dt.antiTipping?.enabled && dt.type === "differential") {
+      issues.push({
+        id: "dt-antitip-differential",
+        severity: "warning",
+        tab: "subsystems",
+        targetId: "drivetrain",
+        path: "drivetrain.antiTipping.enabled",
+        fieldLabel: "Anti-Tipping",
+        message:
+          locale === "pt"
+            ? "Anti-Tipping em base Tank (differential) corrige apenas inclinação longitudinal (+X), pois não há movimento lateral."
+            : "Anti-Tipping on a Differential drive only corrects longitudinal pitch (+X).",
+      });
+    }
+    for (const tp of dt.teleopPathfinding ?? []) {
+      const targetSet = tp.controller === "copilot" ? copilotButtons : pilotButtons;
+      if (targetSet.has(tp.button)) {
+        issues.push({
+          id: `dt-pathfind-btn-dup-${tp.id}`,
+          severity: "warning",
+          tab: "controls",
+          path: `drivetrain.teleopPathfinding.${tp.id}.button`,
+          fieldLabel: tp.name,
+          message:
+            locale === "pt"
+              ? `Rota AD* "${tp.name}" (${tp.controller}) usa o botão "${tp.button}", que já possui outro comando mapeado.`
+              : `AD* route "${tp.name}" (${tp.controller}) shares button "${tp.button}" with another binding.`,
+        });
+      } else {
+        targetSet.add(tp.button);
+      }
+      if (tp.mode === "path" && !tp.pathName?.trim()) {
+        issues.push({
+          id: `dt-pathfind-path-${tp.id}`,
+          severity: "error",
+          tab: "controls",
+          path: `drivetrain.teleopPathfinding.${tp.id}.pathName`,
+          fieldLabel: tp.name,
+          message:
+            locale === "pt"
+              ? `Rota AD* "${tp.name}" no modo .path está sem arquivo selecionado.`
+              : `AD* route "${tp.name}" in .path mode is missing a path name.`,
+        });
+      }
+      if (tp.onArrivalRequest && !validSuperReqs.has(tp.onArrivalRequest)) {
+        issues.push({
+          id: `dt-pathfind-req-${tp.id}`,
+          severity: "error",
+          tab: "controls",
+          path: `drivetrain.teleopPathfinding.${tp.id}.onArrivalRequest`,
+          fieldLabel: tp.name,
+          message:
+            locale === "pt"
+              ? `Rota AD* "${tp.name}" referencia RobotRequest "${tp.onArrivalRequest}" inexistente.`
+              : `AD* route "${tp.name}" references missing RobotRequest "${tp.onArrivalRequest}".`,
+        });
+      }
+    }
+  }
+
   // Phase 6: PathPlanner / Choreo Autonomous validations
   const auto = project.autonomous;
   if (auto?.enabled) {

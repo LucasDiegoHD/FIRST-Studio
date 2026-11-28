@@ -12,6 +12,7 @@ import {
   parsePathPlannerPathJson,
   stripAutoExtension,
 } from "../autonomous/pathplanner-parser";
+import { evaluateRobotInZones } from "../arena/rebuilt-2026";
 import { REBUILT_AUTO_TEMPLATES } from "../autonomous/templates";
 import { generateProjectFiles, getRequiredVendordeps } from "../generator";
 import {
@@ -472,5 +473,141 @@ describe("Phase 6: PathPlanner & Choreo Autonomous", () => {
     project.autonomous.paths![0].eventMarkers[0].request = "MISSING_REQ";
     const errIssues = validateProject(project, "pt").filter((i) => i.tab === "autonomous");
     expect(errIssues.some((i) => i.id === "auto-marker-req-p-ev-em-req")).toBe(true);
+  });
+
+  it("emits real-time AD* button pathfinding (LocalADStarAK, navgrid.json, settings.json, RobotContainer) even when autonomous is off", () => {
+    const project = createSkeletonPreset();
+    const dt = createDefaultDrivetrain("ctre_swerve");
+    dt.teleopPathfinding = [
+      {
+        id: "ad-outpost",
+        name: "Ir Outpost",
+        controller: "pilot",
+        button: "x",
+        triggerMode: "whileTrue",
+        mode: "pose",
+        x: 1.1,
+        y: 1.05,
+        rotationDeg: 180,
+        allianceFlip: true,
+        goalEndVelocityMps: 0,
+        maxVelocityMps: 3.5,
+        onArrivalRequest: "INTAKE",
+      },
+    ];
+    project.drivetrain = dt;
+    project.autonomous = { ...createDefaultAutonomousConfig(), enabled: false };
+
+    expect(getRequiredVendordeps(project)).toContain("PathplannerLib.json");
+    const files = generateProjectFiles(project);
+
+    const driveJava = files.find((f) => f.path.endsWith("/drive/Drive.java"))?.content ?? "";
+    expect(driveJava).toContain("Pathfinding.setPathfinder(new LocalADStarAK());");
+    expect(driveJava).toContain("AutoBuilder.configure(");
+    expect(driveJava).toContain("public Command pathfindToFieldPose(");
+    expect(driveJava).toContain("public Command pathfindThenFollow(");
+
+    const containerJava = files.find((f) => f.path.endsWith("/RobotContainer.java"))?.content ?? "";
+    expect(containerJava).toContain("pilot.x().whileTrue(drive.pathfindToFieldPose(");
+    expect(containerJava).toContain("RobotRequest.INTAKE");
+
+    const navgridFile = files.find((f) => f.path === "src/main/deploy/pathplanner/navgrid.json");
+    expect(navgridFile).toBeDefined();
+    const navgrid = JSON.parse(navgridFile!.content) as {
+      nodeSizeMeters: number;
+      grid: boolean[][];
+      field_size: { x: number; y: number };
+    };
+    expect(navgrid.nodeSizeMeters).toBe(0.2);
+    expect(navgrid.grid.length).toBeGreaterThan(20);
+    expect(navgrid.grid.some((row) => row.some(Boolean))).toBe(true);
+    expect(files.some((f) => f.path === "src/main/deploy/pathplanner/settings.json")).toBe(true);
+  });
+
+  it("supports robot border magnet zones (FieldZones, RobotContainer gate, and perimeter bumper physics)", () => {
+    const project = createSkeletonPreset();
+    project.drivetrain = createDefaultDrivetrain("akit_swerve");
+    project.zones = [
+      {
+        id: "z-mag",
+        name: "OUTPOST_MAGNET",
+        type: "magnet",
+        shape: { kind: "rectangle", x1: 0.0, y1: 0.4, x2: 1.0, y2: 1.6 },
+        mirror: "both",
+        magnetSide: "front",
+        magnetRangeMeters: 0.55,
+        strength: 0.6,
+        magnetButton: "leftBumper",
+      },
+    ];
+
+    const files = generateProjectFiles(project);
+    const fz = files.find((f) => f.path.endsWith("/field/FieldZones.java"))?.content ?? "";
+    expect(fz).toContain("private static Translation2d applyBorderMagnet(");
+    expect(fz).toContain("zonePoly.getClosestPoint(borderField)");
+    expect(fz).toContain("TranslationModifier.fieldToDriver(");
+    expect(fz).toContain("public void setMagnetGate(ZoneId id, BooleanSupplier gate)");
+
+    const rc = files.find((f) => f.path.endsWith("/RobotContainer.java"))?.content ?? "";
+    expect(rc).toContain("fieldZones.setMagnetGate(ZoneId.OUTPOST_MAGNET, () -> pilot.leftBumper().getAsBoolean());");
+
+    // Robot center at x=1.65 (outside rect x2=1.0), facing left (theta=Math.PI), front bumper at x=1.29 -> gap=0.29 <= 0.55
+    const evalInsideRange = evaluateRobotInZones(
+      project.zones,
+      { x: 1.65, y: 1.0 },
+      "Blue",
+      16.541,
+      8.069,
+      Math.PI,
+      0.36,
+      0.36,
+    );
+    expect(evalInsideRange.activeZones.map((z) => z.id)).toContain("z-mag");
+    expect(evalInsideRange.magnetSnap).toBeDefined();
+    expect(evalInsideRange.magnetSnap!.gapMeters).toBeCloseTo(0.29, 2);
+    expect(evalInsideRange.forceVec.x).toBeLessThan(-0.1);
+  });
+
+  it("keeps Anti-Tipping disabled by default and emits AntiTippingAccel / AntiTipping when enabled", () => {
+    const defaultDt = createDefaultDrivetrain("ctre_swerve");
+    expect(defaultDt.antiTipping?.enabled).toBe(false);
+
+    const project = createSkeletonPreset();
+    project.drivetrain = {
+      ...defaultDt,
+      antiTipping: {
+        enabled: true,
+        mode: "accel",
+        tippingThresholdDeg: 9.5,
+        maxCorrectionSpeedMps: 2.2,
+        kP: 0.25,
+        comHeightMeters: 0.3,
+        dynamicAccelLimits: true,
+      },
+    };
+    const accelFiles = generateProjectFiles(project);
+    const accelDrive = accelFiles.find((f) => f.path.endsWith("/drive/Drive.java"))?.content ?? "";
+    expect(accelDrive).toContain("import org.ciprix.util.security.antitipping.AntiTippingAccel;");
+    expect(accelDrive).toContain("antiTipping.calculate(getRotation3d(), getAccelX(), getAccelY(), this)");
+    expect(accelDrive).toContain("antiTipping.reset();");
+
+    project.drivetrain = {
+      ...createDefaultDrivetrain("akit_swerve"),
+      antiTipping: {
+        enabled: true,
+        mode: "simple",
+        tippingThresholdDeg: 11,
+        maxCorrectionSpeedMps: 1.8,
+        kP: 0.2,
+        comHeightMeters: 0.25,
+        dynamicAccelLimits: false,
+      },
+    };
+    const simpleFiles = generateProjectFiles(project);
+    const simpleDrive = simpleFiles.find((f) => f.path.endsWith("/drive/Drive.java"))?.content ?? "";
+    const gyroIo = simpleFiles.find((f) => f.path.endsWith("/drive/GyroIO.java"))?.content ?? "";
+    expect(simpleDrive).toContain("import org.ciprix.util.security.antitipping.AntiTipping;");
+    expect(simpleDrive).toContain("antiTipping.calculate(getRotation3d())");
+    expect(gyroIo).toContain("public Rotation3d rotation3d = new Rotation3d();");
   });
 });

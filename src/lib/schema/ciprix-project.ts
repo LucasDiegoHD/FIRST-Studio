@@ -453,11 +453,21 @@ export type SuperStructureConfig = z.infer<typeof SuperStructureSchema>;
 export const ZoneTypeSchema = z.enum([
   "trigger",
   "suction",
+  "magnet",
   "repulsion",
   "speedLimit",
   "forbidden",
 ]);
 export type ZoneType = z.infer<typeof ZoneTypeSchema>;
+
+export const RobotBorderSideSchema = z.enum([
+  "any",
+  "front",
+  "back",
+  "left",
+  "right",
+]);
+export type RobotBorderSide = z.infer<typeof RobotBorderSideSchema>;
 
 export const ZoneMirrorSchema = z.enum(["none", "x", "y", "both"]);
 export type ZoneMirror = z.infer<typeof ZoneMirrorSchema>;
@@ -502,6 +512,9 @@ export const FieldZoneSchema = z.object({
   strength: z.number().min(0.05).max(1.0).optional(),
   speedFactor: z.number().min(0.1).max(1.0).optional(),
   alertMessage: z.string().optional(),
+  magnetSide: RobotBorderSideSchema.optional(),
+  magnetRangeMeters: z.number().min(0.05).max(3.0).optional(),
+  magnetButton: XboxButtonSchema.optional(),
 });
 export type FieldZone = z.infer<typeof FieldZoneSchema>;
 
@@ -588,6 +601,37 @@ export const VisionCameraSchema = z.object({
 });
 export type VisionCameraConfig = z.infer<typeof VisionCameraSchema>;
 
+export const AntiTippingConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(["accel", "simple"]).default("accel"),
+  tippingThresholdDeg: z.number().min(3).max(35).default(10.0),
+  maxCorrectionSpeedMps: z.number().min(0.2).max(6.0).default(2.0),
+  kP: z.number().min(0.02).max(2.0).default(0.2),
+  comHeightMeters: z.number().min(0.05).max(1.5).default(0.25),
+  dynamicAccelLimits: z.boolean().default(true),
+});
+export type AntiTippingSettings = z.infer<typeof AntiTippingConfigSchema>;
+
+export const TeleopPathfindTargetSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  controller: z.enum(["pilot", "copilot"]).default("pilot"),
+  button: XboxButtonSchema,
+  triggerThreshold: z.number().min(0.05).max(1.0).optional(),
+  triggerMode: z.enum(["whileTrue", "onTrue"]).default("whileTrue"),
+  mode: z.enum(["pose", "path"]).default("pose"),
+  x: z.number().default(4.6),
+  y: z.number().default(4.03),
+  rotationDeg: z.number().default(0),
+  allianceFlip: z.boolean().default(true),
+  pathName: z.string().optional(),
+  goalEndVelocityMps: z.number().min(0).max(8).default(0),
+  maxVelocityMps: z.number().positive().max(12).optional(),
+  maxAccelMps2: z.number().positive().max(50).optional(),
+  onArrivalRequest: z.string().optional(),
+});
+export type TeleopPathfindTarget = z.infer<typeof TeleopPathfindTargetSchema>;
+
 export const DrivetrainConfigSchema = z.object({
   enabled: z.boolean(),
   type: DrivetrainTypeSchema,
@@ -641,6 +685,8 @@ export const DrivetrainConfigSchema = z.object({
     enabled: z.boolean(),
     cameras: z.array(VisionCameraSchema),
   }),
+  antiTipping: AntiTippingConfigSchema.optional(),
+  teleopPathfinding: z.array(TeleopPathfindTargetSchema).optional(),
 });
 export type DrivetrainConfig = z.infer<typeof DrivetrainConfigSchema>;
 

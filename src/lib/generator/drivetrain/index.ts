@@ -57,14 +57,31 @@ function renderDriveAssistantsImports(dt: DrivetrainConfig, hasZones = false): s
   if (dt.assistants.pidRotation) {
     imports.push("import org.ciprix.util.drivetrain.PIDRotation;");
   }
+  if (dt.antiTipping?.enabled) {
+    imports.push(
+      "import edu.wpi.first.math.geometry.Rotation3d;",
+      "import java.util.Optional;",
+    );
+    if (dt.antiTipping.mode === "simple") {
+      imports.push("import org.ciprix.util.security.antitipping.AntiTipping;");
+    } else {
+      imports.push(
+        "import org.ciprix.util.security.antitipping.AntiTippingAccel;",
+        "import static edu.wpi.first.units.Units.Degrees;",
+        "import static edu.wpi.first.units.Units.Meters;",
+      );
+    }
+  }
   return imports;
 }
 
 function renderAutoBuilderImports(
+  dt: DrivetrainConfig,
   autonomous: AutonomousConfig | undefined,
   isDifferential: boolean,
 ): string[] {
-  if (!autonomous?.enabled) return [];
+  const hasTeleopAdStar = (dt.teleopPathfinding?.length ?? 0) > 0;
+  if (!autonomous?.enabled && !hasTeleopAdStar) return [];
   const list = [
     "import com.pathplanner.lib.auto.AutoBuilder;",
     "import com.pathplanner.lib.config.RobotConfig;",
@@ -78,28 +95,69 @@ function renderAutoBuilderImports(
       "import com.pathplanner.lib.controllers.PPHolonomicDriveController;",
     );
   }
-  if (autonomous.useLocalADStarAK) {
+  if ((autonomous?.enabled && autonomous.useLocalADStarAK) || hasTeleopAdStar) {
     list.push(
       "import com.pathplanner.lib.pathfinding.Pathfinding;",
       "import org.ciprix.util.LocalADStarAK;",
+    );
+  }
+  if (hasTeleopAdStar) {
+    list.push(
+      "import com.pathplanner.lib.path.PathConstraints;",
+      "import com.pathplanner.lib.path.PathPlannerPath;",
+      "import java.util.Set;",
+      "import org.ciprix.util.AllianceFlipUtil;",
     );
   }
   return list;
 }
 
 function renderAutoBuilderMethod(
+  dt: DrivetrainConfig,
   autonomous: AutonomousConfig | undefined,
   isDifferential: boolean,
 ): string {
-  if (!autonomous?.enabled) return "";
-  const tp = autonomous.translationPid;
-  const rp = autonomous.rotationPid;
-  const pathfinderLine = autonomous.useLocalADStarAK
+  const hasTeleopAdStar = (dt.teleopPathfinding?.length ?? 0) > 0;
+  if (!autonomous?.enabled && !hasTeleopAdStar) return "";
+  const tp = autonomous?.translationPid ?? { kP: 5.0, kI: 0.0, kD: 0.0 };
+  const rp = autonomous?.rotationPid ?? { kP: 5.0, kI: 0.0, kD: 0.0 };
+  const needsAdStar = Boolean((autonomous?.enabled && autonomous.useLocalADStarAK) || hasTeleopAdStar);
+  const pathfinderLine = needsAdStar
     ? "    Pathfinding.setPathfinder(new LocalADStarAK());\n"
     : "";
   const controllerExpr = isDifferential
     ? "new PPLTVController(0.02, maxSpeed.in(MetersPerSecond))"
     : `new PPHolonomicDriveController(\n                new PIDConstants(${formatDouble(tp.kP)}, ${formatDouble(tp.kI)}, ${formatDouble(tp.kD)}),\n                new PIDConstants(${formatDouble(rp.kP)}, ${formatDouble(rp.kI)}, ${formatDouble(rp.kD)}))`;
+
+  const teleopMethods = hasTeleopAdStar
+    ? `
+
+  public Command pathfindToFieldPose(
+      Pose2d bluePose,
+      PathConstraints constraints,
+      double goalEndVelMps,
+      boolean flipForAlliance) {
+    return Commands.defer(
+        () -> {
+          Pose2d target = flipForAlliance ? AllianceFlipUtil.apply(bluePose) : bluePose;
+          return AutoBuilder.pathfindToPose(target, constraints, goalEndVelMps);
+        },
+        Set.of(this));
+  }
+
+  public Command pathfindThenFollow(String pathName, PathConstraints constraints) {
+    return Commands.defer(
+        () -> {
+          try {
+            PathPlannerPath path = PathPlannerPath.fromPathFile(pathName);
+            return AutoBuilder.pathfindThenFollowPath(path, constraints);
+          } catch (Exception e) {
+            return Commands.none();
+          }
+        },
+        Set.of(this));
+  }`
+    : "";
 
   return `
   private void configureAutoBuilder() {
@@ -117,7 +175,7 @@ ${pathfinderLine}    try {
     } catch (Exception e) {
       throw new RuntimeException("Failed to configure PathPlanner AutoBuilder", e);
     }
-  }`;
+  }${teleopMethods}`;
 }
 
 function renderDriveTeleopHelper(
@@ -152,6 +210,55 @@ function renderDriveTeleopHelper(
       ? "          targetHeading = getRotation();\n"
       : "";
 
+  const antiTip = dt.antiTipping?.enabled ? dt.antiTipping : undefined;
+  const antiTipSetup = antiTip
+    ? antiTip.mode === "simple"
+      ? `  private final AntiTipping antiTipping = new AntiTipping(${formatDouble(antiTip.kP)}, ${formatDouble(antiTip.tippingThresholdDeg)}, ${formatDouble(antiTip.maxCorrectionSpeedMps)});\n`
+      : `  private static AntiTippingAccel createAntiTipping() {
+    var cfg = new AntiTippingAccel.AntiTippingConfig();
+    cfg.tippingThreshold = Degrees.of(${formatDouble(antiTip.tippingThresholdDeg)});
+    cfg.maxCorrectionSpeed = MetersPerSecond.of(${formatDouble(antiTip.maxCorrectionSpeedMps)});
+    cfg.kP = ${formatDouble(antiTip.kP)};
+    cfg.comHeight = Meters.of(${formatDouble(antiTip.comHeightMeters)});
+    cfg.dynamicAccelerationEnabled = ${antiTip.dynamicAccelLimits};
+    cfg.nominalRobotSpeed = MetersPerSecond.of(${formatDouble(dt.maxSpeedMps)});
+    cfg.defaultMaxAccel = MetersPerSecondPerSecond.of(${formatDouble(dt.maxLinearAccelMps2)});
+    cfg.defaultMaxAngularAccel = RadiansPerSecondPerSecond.of(${formatDouble(dt.maxAngularAccelRadPerSec2)});
+    return new AntiTippingAccel(cfg);
+  }
+
+  private final AntiTippingAccel antiTipping = createAntiTipping();\n`
+    : "";
+
+  const antiTipCalc = antiTip
+    ? antiTip.mode === "simple"
+      ? "          Optional<ChassisSpeeds> antiTipFix = antiTipping.calculate(getRotation3d());\n"
+      : "          Optional<ChassisSpeeds> antiTipFix = antiTipping.calculate(getRotation3d(), getAccelX(), getAccelY(), this);\n"
+    : "";
+
+  const antiTipApply = antiTip
+    ? dt.type === "differential"
+      ? `          if (antiTipFix.isPresent()) {
+            vx += antiTipFix.get().vxMetersPerSecond;
+          }\n`
+      : `          if (antiTipFix.isPresent()) {
+            ChassisSpeeds tipFix = antiTipFix.get();
+            if (fieldOriented) {
+              Translation2d fixField =
+                  new Translation2d(tipFix.vxMetersPerSecond, tipFix.vyMetersPerSecond)
+                      .rotateBy(getRotation());
+              vx += fixField.getX();
+              vy += fixField.getY();
+            } else {
+              vx += tipFix.vxMetersPerSecond;
+              vy += tipFix.vyMetersPerSecond;
+            }
+          }\n`
+    : "";
+
+  const antiTipReset =
+    antiTip && antiTip.mode === "accel" ? "          antiTipping.reset();\n" : "";
+
   const accelStep = dt.assistants.accelerationLimits
     ? `          double dt = 0.02;
           double maxDv = maxLinearAccel.in(MetersPerSecondPerSecond) * dt;
@@ -166,7 +273,7 @@ function renderDriveTeleopHelper(
           double vy = reqVy;
           double omega = reqOmega;\n`;
 
-  return `${throttleSetup}${targetHeadingField}  private double prevVx = 0.0;
+  return `${throttleSetup}${targetHeadingField}${antiTipSetup}  private double prevVx = 0.0;
   private double prevVy = 0.0;
   private double prevOmega = 0.0;
 
@@ -184,11 +291,11 @@ ${rotStrategyInit}
 ${throttleApply}${zoneApply}          double reqVx = mapped.getX() * maxSpeed.in(MetersPerSecond);
           double reqVy = mapped.getY() * maxSpeed.in(MetersPerSecond);
           double reqOmega = rotStrategy.calculate(this);
-${accelStep}          ${applyDriveCall}
+${antiTipCalc}${accelStep}${antiTipApply}          ${applyDriveCall}
         },
             this)
         .beforeStarting(() -> {
-${targetHeadingReset}          rotStrategy.reset(this);
+${targetHeadingReset}${antiTipReset}          rotStrategy.reset(this);
         })
         .withName("DriveTeleop");
   }`;
@@ -259,6 +366,7 @@ function generateGyroIoFiles(
   const gyroIo = `package ${fullPkg};
 
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import org.littletonrobotics.junction.AutoLog;
 
 public interface GyroIO {
@@ -267,6 +375,9 @@ public interface GyroIO {
     public boolean connected = false;
     public Rotation2d yawPosition = new Rotation2d();
     public double yawVelocityRadPerSec = 0.0;
+    public Rotation3d rotation3d = new Rotation3d();
+    public double accelXMps2 = 0.0;
+    public double accelYMps2 = 0.0;
   }
 
   default void updateInputs(GyroIOInputsAutoLogged inputs) {}
@@ -276,6 +387,7 @@ public interface GyroIO {
   const simGyro = `package ${fullPkg};
 
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 
 public class GyroIOSim implements GyroIO {
   private Rotation2d simYaw = new Rotation2d();
@@ -288,6 +400,7 @@ public class GyroIOSim implements GyroIO {
   public void updateInputs(GyroIOInputsAutoLogged inputs) {
     inputs.connected = true;
     inputs.yawPosition = simYaw;
+    inputs.rotation3d = new Rotation3d(0.0, 0.0, simYaw.getRadians());
   }
 }
 `;
@@ -302,9 +415,12 @@ public class GyroIOSim implements GyroIO {
   if (dt.gyro.type === "pigeon2") {
     realGyro = `package ${fullPkg};
 
+import static edu.wpi.first.units.Units.MetersPerSecondPerSecond;
+
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.hardware.Pigeon2;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.util.Units;
 
 public class ${realClass} implements GyroIO {
@@ -316,6 +432,9 @@ public class ${realClass} implements GyroIO {
     inputs.yawPosition = Rotation2d.fromDegrees(pigeon.getYaw().getValueAsDouble());
     inputs.yawVelocityRadPerSec =
         Units.degreesToRadians(pigeon.getAngularVelocityZWorld().getValueAsDouble());
+    inputs.rotation3d = pigeon.getRotation3d();
+    inputs.accelXMps2 = pigeon.getAccelerationX().getValue().in(MetersPerSecondPerSecond);
+    inputs.accelYMps2 = pigeon.getAccelerationY().getValue().in(MetersPerSecondPerSecond);
   }
 }
 `;
@@ -325,6 +444,7 @@ public class ${realClass} implements GyroIO {
 import com.studica.frc.AHRS;
 import com.studica.frc.AHRS.NavXComType;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.util.Units;
 
 public class ${realClass} implements GyroIO {
@@ -335,6 +455,13 @@ public class ${realClass} implements GyroIO {
     inputs.connected = navx.isConnected();
     inputs.yawPosition = Rotation2d.fromDegrees(-navx.getYaw());
     inputs.yawVelocityRadPerSec = Units.degreesToRadians(-navx.getRate());
+    inputs.rotation3d =
+        new Rotation3d(
+            Units.degreesToRadians(navx.getRoll()),
+            Units.degreesToRadians(navx.getPitch()),
+            Units.degreesToRadians(-navx.getYaw()));
+    inputs.accelXMps2 = navx.getWorldLinearAccelX() * 9.80665;
+    inputs.accelYMps2 = navx.getWorldLinearAccelY() * 9.80665;
   }
 }
 `;
@@ -342,6 +469,7 @@ public class ${realClass} implements GyroIO {
     realGyro = `package ${fullPkg};
 
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.ADIS16470_IMU;
 
@@ -353,6 +481,13 @@ public class ${realClass} implements GyroIO {
     inputs.connected = imu.isConnected();
     inputs.yawPosition = Rotation2d.fromDegrees(imu.getAngle(imu.getYawAxis()));
     inputs.yawVelocityRadPerSec = Units.degreesToRadians(imu.getRate(imu.getYawAxis()));
+    inputs.rotation3d =
+        new Rotation3d(
+            Units.degreesToRadians(imu.getYComplementaryAngle()),
+            Units.degreesToRadians(imu.getXComplementaryAngle()),
+            Units.degreesToRadians(imu.getAngle(imu.getYawAxis())));
+    inputs.accelXMps2 = imu.getAccelX();
+    inputs.accelYMps2 = imu.getAccelY();
   }
 }
 `;
@@ -469,7 +604,7 @@ public class CommandSwerveDrivetrain extends SwerveDrivetrain<TalonFX, TalonFX, 
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
-    ...renderAutoBuilderImports(autonomous, false),
+    ...renderAutoBuilderImports(dt, autonomous, false),
     "import com.ctre.phoenix6.swerve.SwerveRequest;",
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -484,8 +619,25 @@ public class CommandSwerveDrivetrain extends SwerveDrivetrain<TalonFX, TalonFX, 
     .sort()
     .join("\n");
 
-  const ctreCtor = autonomous?.enabled
+  const needsAutoBuilder = Boolean(autonomous?.enabled || (dt.teleopPathfinding?.length ?? 0) > 0);
+  const ctreCtor = needsAutoBuilder
     ? `\n  public Drive() {\n    configureAutoBuilder();\n  }\n`
+    : "";
+
+  const ctreImuHelpers = dt.antiTipping?.enabled
+    ? `
+
+  private Rotation3d getRotation3d() {
+    return swerve.getPigeon2().getRotation3d();
+  }
+
+  private LinearAcceleration getAccelX() {
+    return swerve.getPigeon2().getAccelerationX().getValue();
+  }
+
+  private LinearAcceleration getAccelY() {
+    return swerve.getPigeon2().getAccelerationY().getValue();
+  }`
     : "";
 
   const driveJava = `package ${fullPkg};
@@ -535,7 +687,7 @@ ${renderDriveContextMembers(dt, hasZones)}${ctreCtor}
 
   public void zeroHeading() {
     swerve.seedFieldCentric();
-  }
+  }${ctreImuHelpers}
 
 ${renderDriveTeleopHelper(
   dt,
@@ -544,7 +696,7 @@ ${renderDriveTeleopHelper(
                   ? fieldCentric.withVelocityX(vx).withVelocityY(vy).withRotationalRate(omega)
                   : robotCentric.withVelocityX(vx).withVelocityY(vy).withRotationalRate(omega));`,
   hasZones,
-)}${renderAutoBuilderMethod(autonomous, false)}
+)}${renderAutoBuilderMethod(dt, autonomous, false)}
 }
 `;
 
@@ -644,7 +796,7 @@ function generateYagsl(
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
-    ...renderAutoBuilderImports(autonomous, false),
+    ...renderAutoBuilderImports(dt, autonomous, false),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.geometry.Pose2d;",
     "import edu.wpi.first.math.kinematics.ChassisSpeeds;",
@@ -654,16 +806,33 @@ function generateYagsl(
     "import edu.wpi.first.wpilibj2.command.Command;",
     "import edu.wpi.first.wpilibj2.command.Commands;",
     "import edu.wpi.first.wpilibj2.command.SubsystemBase;",
+    "import org.littletonrobotics.junction.Logger;",
     "import java.io.File;",
     "import java.io.IOException;",
-    "import org.littletonrobotics.junction.Logger;",
     "import swervelib.SwerveDrive;",
     "import swervelib.parser.SwerveParser;",
   ]
     .sort()
     .join("\n");
 
-  const autoCtorCall = autonomous?.enabled ? "\n    configureAutoBuilder();" : "";
+  const needsAutoBuilder = Boolean(autonomous?.enabled || (dt.teleopPathfinding?.length ?? 0) > 0);
+  const autoCtorCall = needsAutoBuilder ? "\n    configureAutoBuilder();" : "";
+
+  const yagslImuHelpers = dt.antiTipping?.enabled
+    ? `
+
+  private Rotation3d getRotation3d() {
+    return swerveDrive.getGyroRotation3d();
+  }
+
+  private LinearAcceleration getAccelX() {
+    return MetersPerSecondPerSecond.of(swerveDrive.getAccel().map(a -> a.getX()).orElse(0.0));
+  }
+
+  private LinearAcceleration getAccelY() {
+    return MetersPerSecondPerSecond.of(swerveDrive.getAccel().map(a -> a.getY()).orElse(0.0));
+  }`
+    : "";
 
   const driveJava = `package ${fullPkg};
 
@@ -717,13 +886,13 @@ ${renderDriveContextMembers(dt, hasZones)}
 
   public void zeroHeading() {
     swerveDrive.zeroGyro();
-  }
+  }${yagslImuHelpers}
 
 ${renderDriveTeleopHelper(
   dt,
   "swerveDrive.drive(new Translation2d(vx, vy), omega, fieldOriented, false);",
   hasZones,
-)}${renderAutoBuilderMethod(autonomous, false)}
+)}${renderAutoBuilderMethod(dt, autonomous, false)}
 }
 `;
 
@@ -944,7 +1113,7 @@ public class Module {
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
-    ...renderAutoBuilderImports(autonomous, false),
+    ...renderAutoBuilderImports(dt, autonomous, false),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -962,6 +1131,23 @@ public class Module {
   ]
     .sort()
     .join("\n");
+
+  const needsAutoBuilder = Boolean(autonomous?.enabled || (dt.teleopPathfinding?.length ?? 0) > 0);
+  const gyroInputsHelpers = dt.antiTipping?.enabled
+    ? `
+
+  private Rotation3d getRotation3d() {
+    return gyroInputs.rotation3d;
+  }
+
+  private LinearAcceleration getAccelX() {
+    return MetersPerSecondPerSecond.of(gyroInputs.accelXMps2);
+  }
+
+  private LinearAcceleration getAccelY() {
+    return MetersPerSecondPerSecond.of(gyroInputs.accelYMps2);
+  }`
+    : "";
 
   const driveJava = `package ${fullPkg};
 
@@ -993,7 +1179,7 @@ ${renderDriveContextMembers(dt, hasZones)}
         for (int i = 0; i < 4; i++) modules[i] = new Module("Mod" + i, new ModuleIO() {});
       }
     }
-    poseEstimator = new SwerveDrivePoseEstimator(kinematics, rawGyroRotation, getModulePositions(), new Pose2d());${autonomous?.enabled ? "\n    configureAutoBuilder();" : ""}
+    poseEstimator = new SwerveDrivePoseEstimator(kinematics, rawGyroRotation, getModulePositions(), new Pose2d());${needsAutoBuilder ? "\n    configureAutoBuilder();" : ""}
   }
 
   @Override
@@ -1059,7 +1245,7 @@ ${renderDriveContextMembers(dt, hasZones)}
 
   public void zeroHeading() {
     poseEstimator.resetRotation(new Rotation2d());
-  }
+  }${gyroInputsHelpers}
 
 ${renderDriveTeleopHelper(
   dt,
@@ -1068,7 +1254,7 @@ ${renderDriveTeleopHelper(
               : new ChassisSpeeds(vx, vy, omega);
           runVelocity(target);`,
   hasZones,
-)}${renderAutoBuilderMethod(autonomous, false)}
+)}${renderAutoBuilderMethod(dt, autonomous, false)}
 }
 `;
 
@@ -1219,7 +1405,7 @@ public class DriveIOSim implements DriveIO {
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
-    ...renderAutoBuilderImports(autonomous, true),
+    ...renderAutoBuilderImports(dt, autonomous, true),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.DifferentialDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -1237,6 +1423,23 @@ public class DriveIOSim implements DriveIO {
   ]
     .sort()
     .join("\n");
+
+  const needsAutoBuilder = Boolean(autonomous?.enabled || (dt.teleopPathfinding?.length ?? 0) > 0);
+  const diffImuHelpers = dt.antiTipping?.enabled
+    ? `
+
+  private Rotation3d getRotation3d() {
+    return gyroInputs.rotation3d;
+  }
+
+  private LinearAcceleration getAccelX() {
+    return MetersPerSecondPerSecond.of(gyroInputs.accelXMps2);
+  }
+
+  private LinearAcceleration getAccelY() {
+    return MetersPerSecondPerSecond.of(gyroInputs.accelYMps2);
+  }`
+    : "";
 
   const driveJava = `package ${fullPkg};
 
@@ -1269,7 +1472,7 @@ ${renderDriveContextMembers(dt, hasZones)}
         gyroIO = new GyroIO() {};
       }
     }
-    poseEstimator = new DifferentialDrivePoseEstimator(kinematics, heading, 0.0, 0.0, new Pose2d());${autonomous?.enabled ? "\n    configureAutoBuilder();" : ""}
+    poseEstimator = new DifferentialDrivePoseEstimator(kinematics, heading, 0.0, 0.0, new Pose2d());${needsAutoBuilder ? "\n    configureAutoBuilder();" : ""}
   }
 
   @Override
@@ -1317,14 +1520,15 @@ ${renderDriveContextMembers(dt, hasZones)}
 
   public void zeroHeading() {
     poseEstimator.resetRotation(new Rotation2d());
-  }
+  }${diffImuHelpers}
 
 ${renderDriveTeleopHelper(
   dt,
   `DifferentialDrive.WheelSpeeds wheelSpeeds =
               DifferentialDrive.arcadeDriveIK(vx / maxSpeed.in(MetersPerSecond), omega / maxAngularSpeed.in(RadiansPerSecond), false);
           io.setWheelVolts(wheelSpeeds.left * 12.0, wheelSpeeds.right * 12.0);`,
-)}${renderAutoBuilderMethod(autonomous, true)}
+  hasZones,
+)}${renderAutoBuilderMethod(dt, autonomous, true)}
 }
 `;
 
@@ -1429,7 +1633,7 @@ public class DriveIOSim implements DriveIO {
 
   const imports = [
     ...renderDriveAssistantsImports(dt, hasZones),
-    ...renderAutoBuilderImports(autonomous, false),
+    ...renderAutoBuilderImports(dt, autonomous, false),
     "import edu.wpi.first.math.Matrix;",
     "import edu.wpi.first.math.estimator.MecanumDrivePoseEstimator;",
     "import edu.wpi.first.math.geometry.Pose2d;",
@@ -1448,6 +1652,23 @@ public class DriveIOSim implements DriveIO {
   ]
     .sort()
     .join("\n");
+
+  const needsAutoBuilder = Boolean(autonomous?.enabled || (dt.teleopPathfinding?.length ?? 0) > 0);
+  const mecImuHelpers = dt.antiTipping?.enabled
+    ? `
+
+  private Rotation3d getRotation3d() {
+    return gyroInputs.rotation3d;
+  }
+
+  private LinearAcceleration getAccelX() {
+    return MetersPerSecondPerSecond.of(gyroInputs.accelXMps2);
+  }
+
+  private LinearAcceleration getAccelY() {
+    return MetersPerSecondPerSecond.of(gyroInputs.accelYMps2);
+  }`
+    : "";
 
   const driveJava = `package ${fullPkg};
 
@@ -1483,7 +1704,7 @@ ${renderDriveContextMembers(dt, hasZones)}
     }
     poseEstimator =
         new MecanumDrivePoseEstimator(
-            kinematics, heading, new MecanumDriveWheelPositions(), new Pose2d());${autonomous?.enabled ? "\n    configureAutoBuilder();" : ""}
+            kinematics, heading, new MecanumDriveWheelPositions(), new Pose2d());${needsAutoBuilder ? "\n    configureAutoBuilder();" : ""}
   }
 
   @Override
@@ -1537,7 +1758,7 @@ ${renderDriveContextMembers(dt, hasZones)}
 
   public void zeroHeading() {
     poseEstimator.resetRotation(new Rotation2d());
-  }
+  }${mecImuHelpers}
 
 ${renderDriveTeleopHelper(
   dt,
@@ -1550,7 +1771,7 @@ ${renderDriveTeleopHelper(
           double maxSpd = maxSpeed.in(MetersPerSecond);
           io.setWheelSpeedsMps(ws.frontLeft * maxSpd, ws.frontRight * maxSpd, ws.rearLeft * maxSpd, ws.rearRight * maxSpd);`,
   hasZones,
-)}${renderAutoBuilderMethod(autonomous, false)}
+)}${renderAutoBuilderMethod(dt, autonomous, false)}
 }
 `;
 

@@ -12,7 +12,7 @@
 - **Referência de UI original:** `D:\FGCLib Studio\FGCLibStudio` · Referência PathPlanner: `mjansen4857/pathplanner` (`2025.0`)
 - **Alvo FRC:** **Ciprix `2026.3.0`** (WPILib 2026 + AdvantageKit + `@AutoCommandFactory`)
 - **Stack:** Next.js `15.5.29`, React `19.1.0`, Tailwind CSS v4, TypeScript `5.8`, Zod `3.24` (`schemaVersion: 2`), JSZip `3.10`, Vitest `3.2.7`, `@xyflow/react` `13.0.3`, `prism-react-renderer` `2.4.1`, Radix UI, `lucide-react`.
-- **Verificações mais recentes (pós-polimentos de Autônomos + Event Markers + Mira):**
+- **Verificações mais recentes (pós-AD* Teleop + Ímã de Borda + Anti-Tipping):**
   - `.\node_modules\.bin\tsc.cmd --noEmit`: passou (`0` erros).
   - `.\node_modules\.bin\eslint.cmd src scripts`: passou (`0` erros, `0` avisos).
   - `.\node_modules\.bin\vitest.cmd run`: `phase1`–`phase7`, `generator`, `shortcuts` passando.
@@ -88,6 +88,9 @@
   - **Mira Contínua (`pointTowardsZones`):** suporte completo no schema (`PathPointTowardsZoneSchema`), parser/gerador PathPlanner `"2025.0"`, motor (`aimAtZone` + inversão em `reversePathDoc`) e editor SVG interativo (botão `+ Hub`, alvo arrastável no campo, raios tracejados e controles de faixa + offset `0°/180°`).
   - **Event Markers + `RobotRequest`:** seleção direta de `RobotRequest` da SuperStructure no card do marcador (auto-registrado em `AutonomousSetup.java`), suporte a marcadores em trecho (`endWaypointRelativePos`) e badges no canvas.
   - **Chassi & Rotação Inicial/Final:** quadrado completo do robô com seta e manopla arrastável de ângulo no início (`idealStartingState.rotation`) e no **fim da trajetória** (`goalEndState.rotation`).
+  - **Rotas AD* em Tempo Real (`LocalADStarAK` + `navgrid.json`):** geração de `navgrid.json` (Hubs, Towers e zonas proibidas), métodos `pathfindToFieldPose` / `pathfindThenFollow` em `Drive.java`, `AutoBuilder` sob demanda e mapeamento direto por botão Xbox (`pilot` / `copilot`) com `RobotRequest` opcional ao chegar (`src/components/studio/controls-tab.tsx`).
+  - **Ímã de Borda (`type: "magnet"`):** atração baseada nos limites físicos do bumper (`any`/`front`/`back`/`left`/`right`) via `Polygon2d.getClosestPoint` e `TranslationModifier.fieldToDriver` em `FieldZones.java`, presets REBUILT 2026 (`OUTPOST_MAGNET`, `HUB_MAGNET`) e botão opcional de ativação no `RobotContainer.java` (`src/components/studio/arena-tab.tsx`).
+  - **Modo Anti-Tipping Ciprix (`AntiTippingAccel` & `AntiTipping`):** desligado por padrão com recomendação explícita de programar e testar o robô primeiro, leitura 3D/aceleração nos `GyroIO`s e integração reativa/preventiva em `Drive.java` (`src/components/studio/drivetrain-panel.tsx`).
 - **Polimentos opcionais futuros no PathPlanner Visualizer:** zonas de restrição (`constraintZones`), `linkedName` entre waypoints, zoom/pan no SVG e prévia visual de trajetórias Choreo `.traj`.
 
 ---
